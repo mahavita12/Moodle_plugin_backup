@@ -43,6 +43,78 @@ define([], function () {
         return panel;
     }
 
+    // Enforce no-copy context and disable selection on a given element
+    function hardenReadOnlyContainer(element) {
+        if (!element) return;
+        element.setAttribute('oncopy', 'return false');
+        element.setAttribute('oncut', 'return false');
+        element.setAttribute('onpaste', 'return false');
+        element.setAttribute('oncontextmenu', 'return false');
+        element.style.userSelect = 'none';
+        element.style.webkitUserSelect = 'none';
+        element.style.msUserSelect = 'none';
+
+        ['copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart'].forEach(evt => {
+            element.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); }, { passive: false });
+        });
+    }
+
+    // Ensure spellcheck and auto-features are disabled on essay textareas and editors
+    function disableSpellcheckEverywhere() {
+        // Raw textareas
+        const textareas = document.querySelectorAll('textarea, textarea[name*="answer"], #essay-text');
+        textareas.forEach(ta => {
+            try {
+                ta.setAttribute('spellcheck', 'false');
+                ta.setAttribute('data-spellcheck', 'false');
+                ta.setAttribute('autocomplete', 'off');
+                ta.setAttribute('autocorrect', 'off');
+                ta.setAttribute('data-autocorrect', 'off');
+                ta.setAttribute('data-autocomplete', 'off');
+                ta.setAttribute('data-gramm', 'false');
+                ta.style.caretColor = '#000';
+            } catch (e) {}
+        });
+
+        // TinyMCE (Moodle default in many setups)
+        if (window.tinyMCE || window.tinymce) {
+            const tmce = window.tinyMCE || window.tinymce;
+            try {
+                tmce.editors?.forEach?.(ed => {
+                    if (!ed) return;
+                    if (typeof ed.getBody === 'function') {
+                        const body = ed.getBody();
+                        if (body) {
+                            body.setAttribute('spellcheck', 'false');
+                            body.setAttribute('contenteditable', 'true');
+                            body.style.webkitUserModify = 'read-write-plaintext-only';
+                        }
+                    }
+                    // Disable built-in spellcheck plugin if present
+                    if (ed.plugins && ed.plugins.spellchecker) {
+                        try { ed.plugins.spellchecker?.disable?.(); } catch (_) {}
+                    }
+                });
+            } catch (_) {}
+        }
+
+        // Atto editor
+        try {
+            const attoIframes = document.querySelectorAll('iframe[id*="atto"]');
+            attoIframes.forEach(ifr => {
+                try {
+                    const doc = ifr.contentDocument || ifr.contentWindow?.document;
+                    const body = doc?.body;
+                    if (body) {
+                        body.setAttribute('spellcheck', 'false');
+                        body.setAttribute('data-gramm', 'false');
+                        body.setAttribute('contenteditable', 'true');
+                    }
+                } catch (e) {}
+            });
+        } catch (_) {}
+    }
+
     // 🤖 Essay content storage for validation rounds
     const essayStorage = {
         round1: '',
@@ -901,6 +973,11 @@ define([], function () {
             btn.dataset.emBound = '1';
 
             const panel = ensurePanel(btn);
+            // Harden panel against copying and right-click
+            hardenReadOnlyContainer(panel);
+
+            // Enforce spellcheck off in all editors/inputs relevant to essay
+            disableSpellcheckEverywhere();
 
             // Preserve original behavior
             const original = {
@@ -965,6 +1042,10 @@ define([], function () {
                     essayStorage[`round${round}`] = getCurrentEssayContent();
                     console.log(`📦 Stored essay content for round ${round} validation`);
                     
+                    // Re-apply protections in case DOM changed
+                    hardenReadOnlyContainer(panel);
+                    disableSpellcheckEverywhere();
+
                     // Get AI feedback
                     getFeedback(round, attemptId, function(success, response) {
                         if (success) {
@@ -979,6 +1060,9 @@ define([], function () {
                         const buttonTexts = { 1: "Proofread", 3: "Fix your mistakes", 5: "Polish & Perfect" };
                         startAmberDelay(btn, buttonTexts[round], 10, () => {
                             processing = false;
+                            // Re-apply after delay to keep protections
+                            hardenReadOnlyContainer(panel);
+                            disableSpellcheckEverywhere();
                         });
                     });
                     
@@ -988,6 +1072,8 @@ define([], function () {
                     
                     const previousRound = round - 1;
                     handleValidation(panel, round, previousRound, btn, attemptId);
+                    hardenReadOnlyContainer(panel);
+                    disableSpellcheckEverywhere();
                     
                     processing = false;
                 }
