@@ -394,8 +394,8 @@ define([], function () {
             }
 
             .highlight-legend .legend-color.amber-highlight {
-                background-color: #a3c9ff;
-                border: 1px solid #79b0ff;
+                background-color: #ffc107;
+                border: 1px solid #e0a800;
             }
 
             .highlight-legend .legend-color.validation-highlight {
@@ -472,11 +472,9 @@ define([], function () {
 
     // 🟡 Create essay display with highlighting
     function createEssayDisplay(essayText, improvements, round) {
-        const highlightClass = [2, 4].includes(round) ? 'validation-highlight' : 'amber-highlight';
+        const highlightClass = 'amber-highlight';
         const highlightedText = highlightProblematicText(essayText, improvements, highlightClass);
-        const legendLabel = highlightClass === 'validation-highlight'
-            ? 'Blue highlights show text that needs improvement'
-            : 'Amber highlights show text that needs improvement';
+        const legendLabel = 'Amber highlights show text that needs improvement';
 
         const roundTitles = {
             1: "Grammar, Spelling & Punctuation Issues",
