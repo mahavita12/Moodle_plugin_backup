@@ -569,21 +569,43 @@ a[aria-label*="Flag"],
             arrow.classList.remove("expanded");
             textarea.value = window.structureGuidesData[questionId] || "";
         };
+
+        function applyFlagState(question, questionId, currentFlag) {
+            var normalized = currentFlag === "blue" || currentFlag === "red" ? currentFlag : "";
+
+            question.classList.remove("question-flagged-blue", "question-flagged-red");
+            question.querySelectorAll(".flag-btn").forEach(function(btn) {
+                btn.classList.remove("active");
+            });
+
+            if (normalized) {
+                question.classList.add("question-flagged-" + normalized);
+                var activeBtn = question.querySelector(".flag-btn." + normalized);
+                if (activeBtn) {
+                    activeBtn.classList.add("active");
+                }
+            }
+
+            question.querySelectorAll("input[name=\'current_state\']").forEach(function(inputEl) {
+                inputEl.value = normalized;
+            });
+        }
         
         // Add flag buttons and structure guides to questions
         var questions = document.querySelectorAll(".que");
         questions.forEach(function(question) {
             var questionId = getQuestionId(question);
             if (!questionId) return;
+
+            var currentFlag = window.questionFlagsData[questionId] || "";
             
             // Add flag buttons
             if (!question.querySelector(".question-flag-container")) {
-                var currentFlag = window.questionFlagsData[questionId] || "";
                 
                 var flagDiv = document.createElement("div");
                 flagDiv.className = "question-flag-container";
                 flagDiv.innerHTML = 
-                    "<form class=\\"flag-form\\" method=\\"post\\" style=\\"display: inline;\\">"+
+                    "<form class=\"flag-form\" method=\"post\" style=\"display: inline;\">"+
                         "<input type=\\"hidden\\" name=\\"flag_action\\" value=\\"1\\">"+
                         "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
                         "<input type=\\"hidden\\" name=\\"flagcolor\\" value=\\"blue\\">"+
@@ -610,6 +632,8 @@ a[aria-label*="Flag"],
             if (isEssayQuestion(question)) {
                 addStructureGuideBox(question, questionId);
             }
+
+            applyFlagState(question, questionId, currentFlag);
         });
     });
     </script>';
