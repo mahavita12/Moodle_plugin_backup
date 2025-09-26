@@ -221,6 +221,11 @@ define([], function () {
             }
         });
 
+        if (round === 1 && formatted.length) {
+            const last = formatted[formatted.length - 1];
+            last.extraClass = (last.extraClass || '') + ' feedback-line-emphasis';
+        }
+
         return formatted.map((item, index) => {
             let extraClass = item.extraClass || '';
             if (!extraClass && round === 1) {
