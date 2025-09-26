@@ -187,12 +187,60 @@ function local_essaysmaster_before_footer() {
         ]
     ]);
 
-    // Add inline JS to confirm loading
-    $PAGE->requires->js_init_code('
-        console.log("Essays Master: Legacy function executed - AMD module should load");
-        console.log("Essays Master: Attempt ID = ' . $attemptid . '");
-        console.log("Essays Master: Quiz ID = ' . $attempt->quiz . '");
-    ');
+    // Add inline JS to confirm loading and enforce spellcheck off + feedback hardening
+    $js = <<<JS
+        try {
+            console.log("Essays Master: Legacy function executed - AMD module should load");
+            console.log("Essays Master: Attempt ID = {$attemptid}");
+            console.log("Essays Master: Quiz ID = {$attempt->quiz}");
+
+            // Disable spellcheck/autocorrect sitewide on attempt page inputs/editors
+            (function disableSpellcheckEverywhere(){
+                var sels = ["textarea", "textarea[name*='answer']", "#essay-text"]; 
+                sels.forEach(function(sel){
+                    document.querySelectorAll(sel).forEach(function(el){
+                        try {
+                            el.setAttribute("spellcheck", "false");
+                            el.setAttribute("data-spellcheck", "false");
+                            el.setAttribute("autocomplete", "off");
+                            el.setAttribute("autocorrect", "off");
+                            el.setAttribute("data-autocorrect", "off");
+                            el.setAttribute("data-autocomplete", "off");
+                            el.setAttribute("data-gramm", "false");
+                        } catch(e){}
+                    });
+                });
+
+                // TinyMCE/Atto bodies
+                if (window.tinyMCE || window.tinymce) {
+                    var tmce = window.tinyMCE || window.tinymce;
+                    try {
+                        (tmce.editors || []).forEach(function(ed){
+                            if (ed && typeof ed.getBody === 'function') {
+                                var b = ed.getBody();
+                                if (b) { b.setAttribute('spellcheck','false'); b.setAttribute('data-gramm','false'); }
+                            }
+                        });
+                    } catch(e){}
+                }
+            })();
+
+            // Harden feedback container if present
+            (function hardenFeedback(){
+                var c = document.getElementById('feedback-panel-container');
+                if (c) {
+                    ['copy','cut','paste','contextmenu','dragstart','selectstart'].forEach(function(evt){
+                        c.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); }, {passive:false});
+                    });
+                    c.setAttribute('oncontextmenu','return false');
+                    c.setAttribute('oncopy','return false');
+                    c.setAttribute('oncut','return false');
+                    c.setAttribute('onpaste','return false');
+                }
+            })();
+        } catch (e) { console.warn("Essays Master inline hardening failed", e); }
+    JS;
+    $PAGE->requires->js_init_code($js);
 
     error_log("Essays Master: Successfully called AMD module loader for attempt {$attemptid}");
 }

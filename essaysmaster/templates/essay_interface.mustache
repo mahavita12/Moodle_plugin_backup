@@ -443,6 +443,18 @@ function($, TextHighlighter, CopyPasteBlocker) {
         });
     }
 
+    // Harden feedback container against copy/right-click
+    (function hardenFeedbackContainer(){
+        var $container = $('#feedback-panel-container');
+        if ($container.length) {
+            $container.on('contextmenu copy cut paste dragstart selectstart', function(e){ e.preventDefault(); });
+            $container.attr('oncontextmenu', 'return false');
+            $container.attr('oncopy', 'return false');
+            $container.attr('oncut', 'return false');
+            $container.attr('onpaste', 'return false');
+        }
+    })();
+
     // Initialize panels
     loadPanels();
 

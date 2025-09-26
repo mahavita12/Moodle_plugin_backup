@@ -99,6 +99,11 @@ define(['jquery', 'core/notification', 'core/str'], function($, Notification, St
                 this.feedbackPanel.on('contextmenu', (e) => {
                     e.preventDefault();
                 });
+
+                // Prevent copy/cut actions from the feedback panel
+                this.feedbackPanel.on('copy cut', (e) => {
+                    e.preventDefault();
+                });
             }
 
             // Monitor typing patterns
@@ -139,6 +144,23 @@ define(['jquery', 'core/notification', 'core/str'], function($, Notification, St
 
             // Add warning modal styles
             this.addWarningStyles();
+
+            // Add no-selection CSS for feedback panel to harden against copying
+            if ($('#copy-paste-blocker-noselect-styles').length === 0) {
+                const noselect = `
+                    <style id="copy-paste-blocker-noselect-styles">
+                    #${this.feedbackPanelId},
+                    #${this.feedbackPanelId} .card,
+                    #${this.feedbackPanelId} .feedback-content,
+                    #${this.feedbackPanelId} * {
+                        -webkit-user-select: none !important;
+                        -ms-user-select: none !important;
+                        user-select: none !important;
+                    }
+                    </style>
+                `;
+                $('head').append(noselect);
+            }
         }
 
         /**
