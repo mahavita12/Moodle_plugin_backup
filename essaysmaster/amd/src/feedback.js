@@ -212,9 +212,9 @@ define([], function () {
         btn.disabled = true;
         btn.style.backgroundColor = '#ffc107';
         btn.style.borderColor = '#ffc107';
+        btn.value = amberText;
         
         const timer = setInterval(() => {
-            btn.value = `${amberText} (${timeLeft}s)`;
             timeLeft--;
             
             if (timeLeft < 0) {
