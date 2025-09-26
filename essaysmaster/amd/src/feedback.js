@@ -601,8 +601,118 @@ define([], function () {
                 opacity: 0.7;
                 font-family: Arial, sans-serif;
             }
+
+            /* Non-selectable rendered feedback */
+            #essays-master-feedback .em-nonselectable,
+            #essays-master-feedback .em-nonselectable * {
+                -webkit-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+            }
         `;
         document.head.appendChild(style);
+    }
+
+    // Install capture-phase guards for copy/context menu within panel
+    function installCaptureGuards(panel) {
+        if (!panel) return;
+        if (window.__EM_CAPTURE_GUARDS__) return; // one-time per page
+        window.__EM_CAPTURE_GUARDS__ = true;
+
+        const isInsidePanel = (target) => !!panel && panel.contains(target);
+
+        const blockIfInside = (e) => {
+            if (isInsidePanel(e.target)) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+        };
+
+        // Capture-phase listeners on document
+        ['copy','cut','paste','contextmenu','dragstart','selectstart'].forEach(evt => {
+            document.addEventListener(evt, blockIfInside, true);
+        });
+
+        // Mouse button guards (right/middle)
+        const mouseGuard = (e) => {
+            if (!isInsidePanel(e.target)) return;
+            if (e.button === 1 || e.button === 2) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+        };
+        document.addEventListener('mousedown', mouseGuard, true);
+        document.addEventListener('mouseup', mouseGuard, true);
+        document.addEventListener('auxclick', mouseGuard, true);
+    }
+
+    // Render feedback inner content as a non-selectable canvas
+    function rasterizeFeedbackToCanvas(panel) {
+        if (!panel) return;
+        const container = panel.querySelector('#em-feedback-render');
+        if (!container) return;
+
+        const text = (container.innerText || '').trim();
+        if (!text) return;
+
+        // Compute canvas size
+        const padding = 16;
+        const maxWidth = Math.max(480, Math.min(panel.clientWidth - 20, 900));
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const font = '14px \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif';
+        const lineHeight = 22;
+
+        // Create a measurement canvas
+        const measure = document.createElement('canvas');
+        const mctx = measure.getContext('2d');
+        mctx.font = font;
+
+        // Word wrap
+        const words = text.split(/\s+/);
+        const lines = [];
+        let current = '';
+        const available = maxWidth - padding * 2;
+        words.forEach(word => {
+            const test = current ? current + ' ' + word : word;
+            const w = mctx.measureText(test).width;
+            if (w > available && current) {
+                lines.push(current);
+                current = word;
+            } else {
+                current = test;
+            }
+        });
+        if (current) lines.push(current);
+
+        const height = padding * 2 + lines.length * lineHeight;
+
+        // Draw to canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(maxWidth * dpr);
+        canvas.height = Math.ceil(height * dpr);
+        canvas.style.width = maxWidth + 'px';
+        canvas.style.height = height + 'px';
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, maxWidth, height);
+        ctx.strokeStyle = '#e9ecef';
+        ctx.strokeRect(0.5, 0.5, maxWidth - 1, height - 1);
+        ctx.fillStyle = '#212529';
+        ctx.font = font;
+        let y = padding + 4;
+        lines.forEach(line => {
+            y += lineHeight;
+            ctx.fillText(line, padding, y);
+        });
+
+        // Replace content with canvas (non-selectable)
+        container.classList.add('em-nonselectable');
+        container.innerHTML = '';
+        container.appendChild(canvas);
     }
 
     // 🟡 Find and highlight problematic text in essay
@@ -671,6 +781,7 @@ define([], function () {
         const config = getRoundConfig(round);
         
         let content = `<h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">${config.title}</h3>`;
+        content += `<div id="em-feedback-render">`;
 
         if (config.type === 'feedback') {
             // AI Feedback rounds (1, 3, 5) - Show essay with amber highlights
@@ -732,9 +843,12 @@ define([], function () {
                 <strong>Round ${round} of 6</strong>
             </div>
         `;
-
+        content += `</div>`;
         panel.innerHTML = content;
         panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // Apply capture guards and rasterize content to canvas
+        installCaptureGuards(panel);
+        rasterizeFeedbackToCanvas(panel);
     }
 
     // Parse AI validation response with scoring
