@@ -331,7 +331,6 @@ class questions_manager {
                         FROM {question_attempts} qatt
                         JOIN {quiz_attempts} qa
                           ON qa.uniqueid = qatt.questionusageid
-                         AND qa.state = :finished
                         JOIN (
                             SELECT qas1.questionattemptid, MAX(qas1.sequencenumber) AS maxseq
                             FROM {question_attempt_steps} qas1
@@ -345,7 +344,8 @@ class questions_manager {
                         ORDER BY qa.userid, qatt.slot
                     ";
                     
-                    $params = ['finished' => 'finished'] + $attempt_params;
+                    // Include results for both finished and inprogress (preview) attempts
+                    $params = $attempt_params;
                     $results = $DB->get_records_sql($sql_results, $params);
                     
                     foreach ($results as $result) {
