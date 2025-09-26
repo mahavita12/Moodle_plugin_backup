@@ -103,67 +103,80 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
     }
 
     function extractQuestionId(questionElement) {
+        // First try to get the question slot ID from data attributes or input names
+        var questionSlot = questionElement.find('input[name*="q"][name*=":"]').first().attr('name');
+        if (questionSlot) {
+            var match = questionSlot.match(/q(\d+):/);
+            if (match) {
+                return 'question_' + match[1];
+            }
+        }
+        
+        // Fallback: try to get from question classes
         var classes = questionElement.attr('class').split(/\s+/);
         for (var i = 0; i < classes.length; i++) {
             if (classes[i].startsWith('que-')) {
                 return classes[i];
             }
         }
+        
+        // Last resort: use a unique identifier based on question text
+        var questionText = questionElement.find('.qtext').text().trim();
+        if (questionText) {
+            return 'q_' + questionText.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        }
+        
         return 'q' + questionElement.index();
     }
 
     function addHelpButton(questionElement, questionId, attempts) {
         console.log('QuestionHelper: Adding button to question:', questionId);
 
-        var targetContainer = null;
-        var locations = [
-            '.submitbtns',
-            '.mod_quiz-next-nav',
-            '.im-controls',
-            '.questionflag',
-            '.answer',
-            '.ablock',
-            '.content'
-        ];
+        // Find the question text area
+        var qtext = questionElement.find('.qtext').first();
+        if (qtext.length === 0) {
+            console.log('QuestionHelper: Could not find question text for question:', questionId);
+            return;
+        }
 
-        for (var i = 0; i < locations.length; i++) {
-            targetContainer = questionElement.find(locations[i]).first();
-            if (targetContainer.length > 0) {
-                console.log('QuestionHelper: Found target container:', locations[i]);
+        // Create a container div below the question text
+        var containerDiv = $('<div class="question-helper-container" style="margin-top: 10px; text-align: left;"></div>');
+        
+        // Try to find the Previous page button in various locations
+        var prevButton = null;
+        var buttonSearchSelectors = [
+            '.submitbtns .prevpage',
+            '.mod_quiz-next-nav .prevpage', 
+            '.im-controls .prevpage',
+            '.prevpage'
+        ];
+        
+        for (var i = 0; i < buttonSearchSelectors.length; i++) {
+            var foundButton = $(buttonSearchSelectors[i]);
+            if (foundButton.length > 0) {
+                prevButton = foundButton.first();
+                console.log('QuestionHelper: Found Previous page button with selector:', buttonSearchSelectors[i]);
                 break;
             }
         }
 
-        if (targetContainer.length === 0) {
-            var qtext = questionElement.find('.qtext').first();
-            if (qtext.length > 0) {
-                qtext.after('<div class="question-helper-container"></div>');
-                targetContainer = questionElement.find('.question-helper-container');
-                console.log('QuestionHelper: Created custom container');
-            }
-        }
-
-        if (targetContainer.length === 0) {
-            questionElement.prepend('<div class="question-helper-container"></div>');
-            targetContainer = questionElement.find('.question-helper-container');
-            console.log('QuestionHelper: Added container to question element');
-        }
-
-        if (targetContainer.length === 0) {
-            console.log('QuestionHelper: Could not find target container for question:', questionId);
-            return;
-        }
-
         var helpButton = createHelpButton(questionId, attempts);
-
-        var prevButton = targetContainer.find('.prevpage');
-        if (prevButton.length > 0) {
-            prevButton.after(helpButton);
+        
+        if (prevButton && prevButton.length > 0) {
+            // Clone the Previous page button to our container and add Help button next to it
+            var prevClone = prevButton.clone(true);
+            containerDiv.append(prevClone);
+            containerDiv.append(helpButton);
+            console.log('QuestionHelper: Added button next to Previous page button');
         } else {
-            targetContainer.prepend(helpButton);
+            // No Previous page button found, just add Help button
+            containerDiv.append(helpButton);
+            console.log('QuestionHelper: Added button without Previous page button');
         }
 
-        console.log('QuestionHelper: Button added successfully');
+        // Insert the container below the question text
+        qtext.after(containerDiv);
+        console.log('QuestionHelper: Button positioned below question text');
     }
 
     function createHelpButton(questionId, attempts) {
