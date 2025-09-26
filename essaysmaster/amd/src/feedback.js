@@ -302,6 +302,25 @@ define([], function () {
                 color: #495057;
                 margin-bottom: 15px;
             }
+
+            .feedback-text .feedback-line {
+                margin-bottom: 8px;
+                font-size: 15px;
+            }
+
+            .feedback-line-warning {
+                color: #dc3545;
+                font-weight: 600;
+            }
+
+            .feedback-line-emphasis {
+                background: #e7f3ff;
+                border-left: 4px solid #0f6cbf;
+                border-radius: 4px;
+                padding: 8px 12px;
+                color: #0f3c75;
+                font-weight: 600;
+            }
             
             /* 🟡 AMBER HIGHLIGHTING STYLES */
             .amber-highlight {
@@ -313,6 +332,17 @@ define([], function () {
                 margin: 0 1px !important;
                 border: 1px solid #e0a800 !important;
                 box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3) !important;
+            }
+
+            .validation-highlight {
+                background-color: #cfe2ff !important;
+                color: #084298 !important;
+                font-weight: 600 !important;
+                border-radius: 3px !important;
+                padding: 2px 4px !important;
+                margin: 0 1px !important;
+                border: 1px solid #9ec5fe !important;
+                box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2) !important;
             }
             
             .essay-display-container {
@@ -361,6 +391,16 @@ define([], function () {
                 margin-right: 5px;
                 vertical-align: middle;
             }
+
+            .highlight-legend .legend-color.amber-highlight {
+                background-color: #ffc107;
+                border: 1px solid #e0a800;
+            }
+
+            .highlight-legend .legend-color.validation-highlight {
+                background-color: #cfe2ff;
+                border: 1px solid #9ec5fe;
+            }
             
             /* Enhanced Resizable feedback panel */
             #essays-master-feedback {
@@ -407,7 +447,7 @@ define([], function () {
     }
 
     // 🟡 Find and highlight problematic text in essay
-    function highlightProblematicText(essayText, improvements) {
+    function highlightProblematicText(essayText, improvements, highlightClass = 'amber-highlight') {
         if (!improvements || improvements.length === 0) return essayText;
         
         let highlightedText = essayText;
@@ -421,7 +461,7 @@ define([], function () {
                 const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
                 
                 highlightedText = highlightedText.replace(regex, (match) => {
-                    return `<span class="amber-highlight" title="Suggested improvement: ${improvement.improved}">${match}</span>`;
+                    return `<span class="${highlightClass}" title="Suggested improvement: ${improvement.improved}">${match}</span>`;
                 });
             }
         });
@@ -431,8 +471,12 @@ define([], function () {
 
     // 🟡 Create essay display with highlighting
     function createEssayDisplay(essayText, improvements, round) {
-        const highlightedText = highlightProblematicText(essayText, improvements);
-        
+        const highlightClass = [2, 4].includes(round) ? 'validation-highlight' : 'amber-highlight';
+        const highlightedText = highlightProblematicText(essayText, improvements, highlightClass);
+        const legendLabel = highlightClass === 'validation-highlight'
+            ? 'Blue highlights show text that needs improvement'
+            : 'Amber highlights show text that needs improvement';
+
         const roundTitles = {
             1: "Grammar, Spelling & Punctuation Issues",
             3: "Language Enhancement Opportunities", 
@@ -448,8 +492,8 @@ define([], function () {
                 ${improvements && improvements.length > 0 ? `
                     <div class="highlight-legend">
                         <span class="legend-item">
-                            <span class="legend-color amber-highlight"></span>
-                            <strong>Amber highlights</strong> show text that needs improvement
+                            <span class="legend-color ${highlightClass}"></span>
+                            <strong>${legendLabel}</strong>
                         </span>
                         <span class="legend-item">
                             💡 <em>Hover over highlighted text for suggestions</em>
@@ -467,17 +511,7 @@ define([], function () {
         panel.style.display = 'block';
         addImprovementStyles();
         
-        // Define round configurations
-        const roundConfigs = {
-            1: { type: 'feedback', title: 'GrowMinds Academy Feedback - Round 1', focus: 'Grammar, Spelling & Punctuation' },
-            2: { type: 'validation', title: 'GrowMinds Academy Validation - Round 2', focus: 'Proofreading Validation' },
-            3: { type: 'feedback', title: 'GrowMinds Academy Feedback - Round 3', focus: 'Language Enhancement' },
-            4: { type: 'validation', title: 'GrowMinds Academy Validation - Round 4', focus: 'Language Validation' },
-            5: { type: 'feedback', title: 'GrowMinds Academy Feedback - Round 5', focus: 'Relevance & Structure' },
-            6: { type: 'validation', title: 'GrowMinds Academy Validation - Round 6', focus: 'Final Validation' }
-        };
-
-        const config = roundConfigs[round];
+        const config = getRoundConfig(round);
         
         let content = `<h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">${config.title}</h3>`;
 
@@ -502,7 +536,7 @@ define([], function () {
                 });
                 
                 // 1. AI Feedback text first
-                content += `<div class="feedback-text">${mainFeedback.replace(/\n/g, '<br>')}</div>`;
+                content += `<div class="feedback-text">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
                 
                 // 2. Originalâ†’improved examples second
                 if (feedback.improvements && feedback.improvements.length > 0) {
@@ -649,8 +683,10 @@ define([], function () {
             .then(result => {
                 addImprovementStyles();
                 
+                const config = getRoundConfig(round);
+
                 let validationContent = `
-                    <h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">GrowMinds Academy Validation - Round ${round}</h3>
+                    <h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">${config.title}</h3>
                     <div class="ai-feedback-content" style="border-left:4px solid ${result.success ? '#28a745' : '#dc3545'};">
                         <p><strong>Validation Score: ${result.score}/100 ${result.success ? 'Passed' : 'Failed'}</strong></p>
                 `;
@@ -671,7 +707,7 @@ define([], function () {
                 });
                 
                 if (result.success) {
-                    validationContent += `<div class="feedback-text" style="color:#28a745;">${mainFeedback.replace(/\n/g, '<br>')}</div>`;
+                    validationContent += `<div class="feedback-text" style="color:#28a745;">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
                     
                     // Add formatted improvements for success cases too
                     if (result.improvements && result.improvements.length > 0) {
@@ -685,7 +721,7 @@ define([], function () {
                         validationContent += `<p style="font-weight:bold;color:#28a745;">All rounds completed! Ready for final submission.</p>`;
                     }
                 } else {
-                    validationContent += `<div class="feedback-text" style="color:#dc3545;">${mainFeedback.replace(/\n/g, '<br>')}</div>`;
+                    validationContent += `<div class="feedback-text" style="color:#dc3545;">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
                     
                     // Add formatted improvements for failure cases
                     if (result.improvements && result.improvements.length > 0) {
@@ -727,8 +763,9 @@ define([], function () {
             })
             .catch(error => {
                 console.error('Validation error:', error);
+                const config = getRoundConfig(round);
                 panel.innerHTML = `
-                    <h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">GrowMinds Academy Validation - Round ${round}</h3>
+                    <h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">${config.title}</h3>
                     <div class="ai-feedback-content" style="border-left:4px solid #dc3545;">
                         <div class="feedback-text" style="color:#dc3545;">Error getting validation feedback: ${error.message || error}. Please try again.</div>
                         <div class="feedback-text" style="color:#6c757d;font-size:12px;margin-top:10px;">Debug info: Round ${round}, Previous round ${previousRound}, AttemptId: ${attemptId}</div>
