@@ -1,6 +1,6 @@
 <?php
 /**
- * Fix Grade Calculation - Simple Manual Fix - added
+ * Fix Grade Calculation - Simple Manual Fix - 
  * Manually calculates and updates quiz sumgrades for attempts with null sumgrades
  */
 

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__moodle-server__update_plugin_file",
+      "mcp__moodle-server__execute_command",
+      "Bash(cp:*)",
+      "mcp__moodle-server__purge_moodle_cache",
+      "mcp__moodle-server__read_plugin_file",
+      "mcp__moodle-server__search_memories",
+      "mcp__moodle-server__store_memory",
+      "Read(//c/MCP_servers/moodle_mcp_server/shared_memory/screenshots/**)",
+      "Bash(dir \"C:\\MCP_servers\\moodle_mcp_server\\shared_memory\\screenshots\")",
+      "mcp__moodle-server__search_plugin_code",
+      "mcp__moodle-server__write_plugin_file",
+      "mcp__moodle-server__retrieve_memory",
+      "mcp__moodle-server__get_plugin_structure",
+      "mcp__moodle-server__list_plugins",
+      "mcp__moodle-server__tail_log_file",
+      "mcp__moodle-server__create_plugin_file",
+      "mcp__moodle-server__restart_service",
+      "mcp__moodle-server__get_running_processes",
+      "mcp__moodle-server__delete_plugin_file",
+      "mcp__moodle-server__execute_sql"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
