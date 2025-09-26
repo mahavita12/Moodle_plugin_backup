@@ -114,7 +114,7 @@ define([], function () {
                 if (parts.length === 2) {
                     // Clean [HIGHLIGHT] tags from original text
                     const originalClean = parts[0].trim().replace(/\[HIGHLIGHT\]/g, '').replace(/\[\/HIGHLIGHT\]/g, '');
-                    const improvedClean = parts[1].trim();
+                    const improvedClean = parts[1].trim().replace(/\[HIGHLIGHT\]/g, '').replace(/\[\/HIGHLIGHT\]/g, '');
                     
                     // Relaxed validation - just check if both parts exist
                     if (originalClean && improvedClean) {
@@ -155,7 +155,84 @@ define([], function () {
         return html;
     }
 
+    // Format feedback paragraphs for display
+    function formatFeedbackParagraphs(text, round) {
+        if (!text) {
+            return '';
+        }
 
+        const paragraphs = text.split(/\n+/).map(p => p.trim()).filter(Boolean);
+        const formatted = [];
+
+        paragraphs.forEach((paragraph) => {
+            if (round === 1 && /spelling/i.test(paragraph) && /grammar/i.test(paragraph)) {
+                const spellingRegex = /(\d+\s+spelling mistakes?)/i;
+                const grammarRegex = /(\d+\s+grammar[^-\.]+)/i;
+
+                const spellingMatch = paragraph.match(spellingRegex);
+                const grammarMatch = paragraph.match(grammarRegex);
+
+                if (spellingMatch) {
+                    formatted.push({
+                        text: `We noticed ${spellingMatch[1].trim()}.`,
+                        extraClass: ' feedback-line-warning'
+                    });
+                }
+
+                if (grammarMatch) {
+                    let grammarText = grammarMatch[1].trim();
+                    grammarText = grammarText.replace(/^and\s+/i, '');
+                    if (!/^we\s/i.test(grammarText)) {
+                        grammarText = `We also found ${grammarText}`;
+                    }
+                    grammarText = grammarText.replace(/\.$/, '');
+                    formatted.push({
+                        text: `${grammarText}.`,
+                        extraClass: ' feedback-line-warning'
+                    });
+                }
+
+                let finalMessage = '';
+                const hyphenParts = paragraph.split(' - ');
+                if (hyphenParts.length > 1) {
+                    finalMessage = hyphenParts.slice(1).join(' - ').trim();
+                }
+                if (!finalMessage) {
+                    finalMessage = paragraph
+                        .replace(spellingRegex, '')
+                        .replace(grammarRegex, '')
+                        .replace(/\s+/g, ' ')
+                        .replace(/^and\s+/i, '')
+                        .replace(/^I\s+found\s*/i, '')
+                        .trim();
+                }
+                finalMessage = finalMessage.replace(/^[-:,\s]+/, '').trim();
+                if (finalMessage) {
+                    if (!/[.!?]$/.test(finalMessage)) {
+                        finalMessage = `${finalMessage}.`;
+                    }
+                    formatted.push({
+                        text: finalMessage,
+                        extraClass: ' feedback-line-emphasis'
+                    });
+                }
+            } else {
+                formatted.push({ text: paragraph });
+            }
+        });
+
+        return formatted.map((item, index) => {
+            let extraClass = item.extraClass || '';
+            if (!extraClass && round === 1) {
+                if (index === 1) {
+                    extraClass = ' feedback-line-warning';
+                } else if (index === 2) {
+                    extraClass = ' feedback-line-emphasis';
+                }
+            }
+            return `<p class="feedback-line${extraClass}">${item.text}</p>`;
+        }).join('');
+    }
 
     // Get feedback from real AI backend
     function getFeedback(round, attemptId, callback) {
