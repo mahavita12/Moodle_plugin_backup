@@ -613,5 +613,87 @@ a[aria-label*="Flag"],
         });
     });
     </script>';
+        // Append safe, isolated script to exclude essay flags and update navigation panel
+        echo <<<'QFJS'
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        function isEssay(question) {
+            var hasTextarea = question.querySelectorAll("textarea[name*='answer']").length > 0;
+            var hasFile = !!question.querySelector("input[type='file']");
+            var hasRTE = !!question.querySelector(".editor_atto");
+            return hasTextarea || hasFile || hasRTE;
+        }
+
+        function getSlotFromQuestion(question) {
+            var id = question && question.id ? question.id : '';
+            if (id.indexOf('question-') !== -1) {
+                var parts = id.split('-');
+                return parts[parts.length - 1];
+            }
+            return null;
+        }
+
+        function collectEssaySlots() {
+            var map = {};
+            var nodes = document.querySelectorAll('.que');
+            nodes.forEach(function(q){
+                var slot = getSlotFromQuestion(q);
+                if (!slot) { return; }
+                if (isEssay(q)) {
+                    map[slot] = true;
+                    // Remove any flag UI if it exists
+                    var flag = q.querySelector('.question-flag-container');
+                    if (flag && flag.parentNode) { flag.parentNode.removeChild(flag); }
+                    q.classList.remove('question-flagged-blue','question-flagged-red');
+                }
+            });
+            return map;
+        }
+
+        function getSlotFromNav(btn) {
+            var slot = (btn.dataset && btn.dataset.slot) || btn.getAttribute('data-slot');
+            if (!slot && btn.id) {
+                var m = btn.id.match(/quiznavbutton(\d+)/);
+                if (m) { slot = m[1]; }
+            }
+            if (!slot) {
+                var a = btn.querySelector('a');
+                var href = a ? a.getAttribute('href') : btn.getAttribute('href');
+                if (href) {
+                    var mh = href.match(/[?&]slot=(\d+)/);
+                    if (mh) { slot = mh[1]; }
+                }
+            }
+            return slot;
+        }
+
+        function updateNav(essaySlots) {
+            var buttons = document.querySelectorAll('.qnbutton');
+            buttons.forEach(function(b){
+                b.classList.remove('blue-flagged','red-flagged');
+                var slot = getSlotFromNav(b);
+                if (!slot) { return; }
+                if (essaySlots && essaySlots[slot]) { return; }
+                if (!window.questionMapping) { return; }
+                var qid = window.questionMapping[slot];
+                if (!qid) { return; }
+                var color = (window.questionFlagsData || {})[qid];
+                if (color === 'blue') { b.classList.add('blue-flagged'); }
+                else if (color === 'red') { b.classList.add('red-flagged'); }
+            });
+        }
+
+        var essaySlots = collectEssaySlots();
+        updateNav(essaySlots);
+
+        // In case navigation is re-rendered dynamically, observe and refresh
+        var nav = document.querySelector('#quiznavblock, .qnbuttons');
+        if (nav && window.MutationObserver) {
+            var obs = new MutationObserver(function(){ updateNav(essaySlots); });
+            obs.observe(nav, { childList: true, subtree: true });
+        }
+    });
+</script>
+QFJS;
     }
 }
