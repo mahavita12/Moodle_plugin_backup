@@ -581,11 +581,21 @@ class questions_manager {
             return $flags;
         }
 
-        // Simple direct lookup - the questionflags plugin should now use real question IDs
+        // 1) Prefer a flag set by this specific user (historical behavior)
         $color = $DB->get_field('local_questionflags', 'flagcolor', [
             'userid'     => $userid,
             'questionid' => $questionid,
         ]);
+
+        // 2) Fallback: if this user has no flag, show the latest flag for this question
+        //    This allows teacher preview flags to appear for all students on the dashboard
+        if (!$color) {
+            $sql = "SELECT flagcolor
+                      FROM {local_questionflags}
+                     WHERE questionid = :qid
+                  ORDER BY timemodified DESC, timecreated DESC";
+            $color = $DB->get_field_sql($sql, ['qid' => $questionid]);
+        }
 
         if ($color === 'blue') {
             $flags .= '<span style="color:#007cba;" title="Blue Flag">🟦</span>';
