@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/quizdashboard/db" VERSION="20250829" COMMENT="XMLDB file for Moodle local/quizdashboard"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_quizdashboard_gradings" COMMENT="Stores auto-grading results for essays">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz attempt ID"/>
+        <FIELD NAME="feedback_html" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Complete feedback HTML"/>
+        <FIELD NAME="overall_comments" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Overall comments for email"/>
+        <FIELD NAME="ai_likelihood" TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="AI assistance likelihood percentage"/>
+        <FIELD NAME="grading_level" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" DEFAULT="general" COMMENT="Grading level: general or advanced"/>
+        <FIELD NAME="drive_link" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Google Drive download link"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="attempt_id_unique" TYPE="unique" FIELDS="attempt_id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="attempt_id" UNIQUE="false" FIELDS="attempt_id"/>
+        <INDEX NAME="timecreated" UNIQUE="false" FIELDS="timecreated"/>
+      </INDEXES>
+    </TABLE>
+    
+    <TABLE NAME="local_quizdashboard_trash_backup" COMMENT="Backup data for trashed quiz attempts">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz attempt ID"/>
+        <FIELD NAME="original_state" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false" COMMENT="Original attempt state"/>
+        <FIELD NAME="original_timefinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Original finish time"/>
+        <FIELD NAME="trashed_time" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When moved to trash"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="attempt_id_unique" TYPE="unique" FIELDS="attempt_id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="attempt_id" UNIQUE="false" FIELDS="attempt_id"/>
+        <INDEX NAME="trashed_time" UNIQUE="false" FIELDS="trashed_time"/>
+      </INDEXES>
+    </TABLE>
+
+  <TABLE NAME="local_quizdashboard_resubmissions" COMMENT="Tracks resubmission relationships and progression">
+    <FIELDS>
+      <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+      <FIELD NAME="current_attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      <FIELD NAME="previous_attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      <FIELD NAME="submission_number" TYPE="int" LENGTH="3" NOTNULL="true" SEQUENCE="false"/>
+      <FIELD NAME="is_copy_detected" TYPE="int" LENGTH="1" NOTNULL="true" SEQUENCE="false" DEFAULT="0"/>
+      <FIELD NAME="similarity_percentage" TYPE="number" LENGTH="5,2" NOTNULL="false" SEQUENCE="false"/>
+      <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+    </FIELDS>
+    <KEYS>
+      <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      <KEY NAME="current_attempt_unique" TYPE="unique" FIELDS="current_attempt_id"/>
+    </KEYS>
+    <INDEXES>
+      <INDEX NAME="previous_attempt_idx" UNIQUE="false" FIELDS="previous_attempt_id"/>
+    </INDEXES>
+  </TABLE>
+
+  </TABLES>
+</XMLDB>
