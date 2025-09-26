@@ -1,0 +1,33 @@
+<?php
+defined('MOODLE_INTERNAL') || die;
+
+if ($hassiteconfig) {
+    $settings = new admin_settingpage('local_essaysmaster', 'Essays Master');
+
+    if ($ADMIN->fulltree) {
+        $settings->add(new admin_setting_configcheckbox(
+            'local_essaysmaster/enabled',
+            'Enable Essays Master',
+            'Enable the Essays Master plugin globally',
+            1
+        ));
+
+        $settings->add(new admin_setting_configtext(
+            'local_essaysmaster/min_essay_length',
+            'Minimum Essay Length (words)',
+            'Essays shorter than this will trigger the "too short" message',
+            50,
+            PARAM_INT
+        ));
+
+        $settings->add(new admin_setting_configtextarea(
+            'local_essaysmaster/msg_short_sentence',
+            'Short Sentence Message',
+            'Message shown for sentences that are too short',
+            'This sentence is very short. Consider expanding it with more detail.',
+            PARAM_TEXT
+        ));
+    }
+
+    $ADMIN->add('localplugins', $settings);
+}

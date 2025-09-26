@@ -1,0 +1,320 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_essaysmaster/progress_indicator
+
+    Progress indicator for Essays Master levels and completion.
+
+    Context variables required for this template:
+    * current_level - Current active level number
+    * max_levels - Maximum number of levels
+    * levels - Array of level objects with completion data
+    * overall_completion - Overall completion percentage
+    * can_submit - Boolean indicating if final submission is allowed
+
+    Example context (json):
+    {
+        "current_level": 2,
+        "max_levels": 3,
+        "overall_completion": 60,
+        "can_submit": false,
+        "levels": [
+            {
+                "number": 1,
+                "title": "Grammar & Mechanics",
+                "completion": 100,
+                "is_completed": true,
+                "is_current": false,
+                "requirements": [
+                    {"name": "Grammar fixes", "completed": true, "target": 5, "current": 5},
+                    {"name": "Spelling fixes", "completed": true, "target": 3, "current": 3}
+                ]
+            },
+            {
+                "number": 2,
+                "title": "Language & Style",
+                "completion": 45,
+                "is_completed": false,
+                "is_current": true,
+                "requirements": [
+                    {"name": "Vocabulary improvements", "completed": false, "target": 4, "current": 2}
+                ]
+            }
+        ]
+    }
+}}
+
+<div class="progress-indicator-container">
+    <!-- Overall Progress Header -->
+    <div class="progress-header mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h4 class="mb-0">
+                <i class="fa fa-trophy text-warning"></i>
+                {{#str}}current_level, local_essaysmaster, {{current_level}}{{/str}}
+            </h4>
+            <span class="badge badge-{{#can_submit}}success{{/can_submit}}{{^can_submit}}secondary{{/can_submit}} badge-lg">
+                {{overall_completion}}% Complete
+            </span>
+        </div>
+
+        <!-- Overall Progress Bar -->
+        <div class="progress progress-lg mb-2">
+            <div class="progress-bar {{#can_submit}}bg-success{{/can_submit}}{{^can_submit}}bg-primary{{/can_submit}}"
+                 role="progressbar"
+                 style="width: {{overall_completion}}%"
+                 aria-valuenow="{{overall_completion}}"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+            </div>
+        </div>
+
+        {{#can_submit}}
+        <div class="alert alert-success mb-0">
+            <i class="fa fa-check-circle"></i>
+            {{#str}}all_levels_completed, local_essaysmaster{{/str}}
+        </div>
+        {{/can_submit}}
+    </div>
+
+    <!-- Level Progress Steps -->
+    <div class="level-steps">
+        <div class="row">
+            {{#levels}}
+            <div class="col-md-4 mb-3">
+                <div class="level-step card {{#is_current}}border-primary{{/is_current}}{{#is_completed}}border-success{{/is_completed}}">
+                    <div class="card-header {{#is_current}}bg-primary text-white{{/is_current}}{{#is_completed}}bg-success text-white{{/is_completed}}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <span class="level-number badge {{#is_current}}badge-light{{/is_current}}{{#is_completed}}badge-light{{/is_completed}}{{^is_current}}{{^is_completed}}badge-secondary{{/is_completed}}{{/is_current}}">
+                                    {{number}}
+                                </span>
+                                {{title}}
+                            </h6>
+                            {{#is_completed}}
+                            <i class="fa fa-check-circle"></i>
+                            {{/is_completed}}
+                            {{#is_current}}
+                            <i class="fa fa-play-circle"></i>
+                            {{/is_current}}
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <!-- Level Progress Bar -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="text-muted">Progress</small>
+                                <small class="text-muted">{{completion}}%</small>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar {{#is_completed}}bg-success{{/is_completed}}{{^is_completed}}bg-warning{{/is_completed}}"
+                                     role="progressbar"
+                                     style="width: {{completion}}%"
+                                     aria-valuenow="{{completion}}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Requirements Checklist -->
+                        {{#requirements}}
+                        <div class="requirement-item d-flex justify-content-between align-items-center mb-2">
+                            <div class="requirement-info">
+                                <i class="fa {{#completed}}fa-check-circle text-success{{/completed}}{{^completed}}fa-circle-o text-muted{{/completed}}"></i>
+                                <span class="{{#completed}}text-success{{/completed}}{{^completed}}text-muted{{/completed}}">
+                                    {{name}}
+                                </span>
+                            </div>
+                            <small class="text-muted">
+                                {{current}}/{{target}}
+                            </small>
+                        </div>
+                        {{/requirements}}
+
+                        {{^requirements}}
+                        <div class="text-center text-muted">
+                            <i class="fa fa-hourglass-half"></i>
+                            <small>Complete previous levels to unlock requirements</small>
+                        </div>
+                        {{/requirements}}
+                    </div>
+
+                    {{#is_current}}
+                    <div class="card-footer">
+                        <small class="text-muted">
+                            <i class="fa fa-info-circle"></i>
+                            {{#str}}help_level{{number}}, local_essaysmaster{{/str}}
+                        </small>
+                    </div>
+                    {{/is_current}}
+                </div>
+            </div>
+            {{/levels}}
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="progress-actions mt-4">
+        <div class="text-center">
+            {{#can_submit}}
+            <button type="button" class="btn btn-success btn-lg" id="submit-final-btn">
+                <i class="fa fa-check"></i>
+                {{#str}}submit_final_essay, local_essaysmaster{{/str}}
+            </button>
+            {{/can_submit}}
+
+            {{^can_submit}}
+            <div class="alert alert-info">
+                <i class="fa fa-info-circle"></i>
+                Complete Level {{current_level}} requirements to continue.
+            </div>
+            {{/can_submit}}
+        </div>
+    </div>
+
+    <!-- Detailed Requirements Modal (Hidden) -->
+    <div class="modal fade" id="requirements-modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fa fa-list-check"></i>
+                        Level Requirements
+                    </h5>
+                    <button type="button" class="close" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="requirements-modal-body">
+                    <!-- Content loaded dynamically -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.progress-indicator-container {
+    background: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.progress-header {
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 1rem;
+}
+
+.progress-lg {
+    height: 1.5rem;
+}
+
+.level-step {
+    transition: all 0.3s ease;
+}
+
+.level-step:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.level-number {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.requirement-item {
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.requirement-item:last-child {
+    border-bottom: none;
+}
+
+.badge-lg {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+}
+
+@media (max-width: 768px) {
+    .level-steps .col-md-4 {
+        margin-bottom: 1rem;
+    }
+
+    .progress-indicator-container {
+        padding: 1rem;
+    }
+}
+</style>
+
+{{#js}}
+require(['jquery'], function($) {
+    // Handle level step clicks for detailed view
+    $('.level-step').on('click', function() {
+        var levelNumber = $(this).find('.level-number').text();
+        var levelTitle = $(this).find('h6').text().replace(levelNumber, '').trim();
+
+        // Load detailed requirements for this level
+        var modalBody = $('#requirements-modal-body');
+        modalBody.html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
+
+        $('#requirements-modal .modal-title').text('Level ' + levelNumber + ': ' + levelTitle);
+        $('#requirements-modal').modal('show');
+
+        // Trigger event to load detailed requirements
+        $(document).trigger('essaysmaster:load-level-details', {
+            level: parseInt(levelNumber),
+            title: levelTitle
+        });
+    });
+
+    // Handle final submission
+    $('#submit-final-btn').on('click', function() {
+        $(document).trigger('essaysmaster:submit-final', {
+            confirmation: true
+        });
+    });
+
+    // Listen for progress updates
+    $(document).on('essaysmaster:progress-updated', function(event, data) {
+        // Update progress bars and completion status
+        $('.level-step[data-level="' + data.level + '"] .progress-bar').css('width', data.completion + '%');
+        $('.level-step[data-level="' + data.level + '"] .progress-bar').attr('aria-valuenow', data.completion);
+
+        // Update overall progress
+        if (data.overall_completion !== undefined) {
+            $('.progress-header .progress-bar').css('width', data.overall_completion + '%');
+            $('.progress-header .badge').text(data.overall_completion + '% Complete');
+        }
+
+        // Update submit button availability
+        if (data.can_submit) {
+            $('#submit-final-btn').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
+        }
+    });
+});
+{{/js}}
