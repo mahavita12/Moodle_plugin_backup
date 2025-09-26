@@ -230,6 +230,10 @@ define([], function () {
                     extraClass = ' feedback-line-emphasis';
                 }
             }
+            if (extraClass.includes('feedback-line-emphasis')) {
+                return `<div class="essay-emphasis-box">${item.text}</div>`;
+            }
+
             return `<p class="feedback-line${extraClass}">${item.text}</p>`;
         }).join('');
     }
@@ -797,7 +801,7 @@ define([], function () {
                         validationContent += `<p style="font-weight:bold;color:#28a745;">All rounds completed! Ready for final submission.</p>`;
                     }
                 } else {
-                    validationContent += `<div class="feedback-text" style="color:#dc3545;">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
+                    validationContent += `<div class="feedback-text" style="color:#dc3545;">${mainFeedback.replace(/\n/g, '<br>')}</div>`;
                     
                     // Add formatted improvements for failure cases
                     if (result.improvements && result.improvements.length > 0) {
