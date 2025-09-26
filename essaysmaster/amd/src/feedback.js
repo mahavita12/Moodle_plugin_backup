@@ -351,7 +351,7 @@ define([], function () {
                 border-radius: 8px;
                 padding: 20px;
                 margin: 15px 0;
-                font-family: 'Times New Roman', serif;
+                font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
                 font-size: 16px;
                 line-height: 1.8;
                 max-height: 400px;
@@ -369,12 +369,13 @@ define([], function () {
             }
             
             .highlight-legend {
-                background: #fff3cd;
-                border: 1px solid #ffeeba;
+                background: #e7f3ff;
+                border: 1px solid #b6daff;
                 border-radius: 4px;
                 padding: 10px;
                 margin: 10px 0;
                 font-size: 14px;
+                color: #0f3c75;
             }
             
             .highlight-legend .legend-item {
@@ -393,8 +394,8 @@ define([], function () {
             }
 
             .highlight-legend .legend-color.amber-highlight {
-                background-color: #ffc107;
-                border: 1px solid #e0a800;
+                background-color: #a3c9ff;
+                border: 1px solid #79b0ff;
             }
 
             .highlight-legend .legend-color.validation-highlight {
@@ -486,7 +487,7 @@ define([], function () {
         return `
             <div class="essay-display-container">
                 <div class="essay-display-title">
-                    📝 Your Essay - ${roundTitles[round] || 'Review'}
+                    Your Essay - ${roundTitles[round] || 'Review'}
                 </div>
                 
                 ${improvements && improvements.length > 0 ? `
@@ -496,7 +497,7 @@ define([], function () {
                             <strong>${legendLabel}</strong>
                         </span>
                         <span class="legend-item">
-                            💡 <em>Hover over highlighted text for suggestions</em>
+                            <em>Hover over highlighted text for suggestions</em>
                         </span>
                     </div>
                 ` : ''}
