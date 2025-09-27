@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 namespace local_quizdashboard;
 
 defined('MOODLE_INTERNAL') || die();
@@ -369,7 +369,7 @@ class essay_grader {
   
 
     /**
-     * ✅ UPDATED: Extracts the grade and calls the new helper to save it to Moodle.
+     * âœ… UPDATED: Extracts the grade and calls the new helper to save it to Moodle.
      */
     protected function save_grade_to_moodle(array $essay_data, array $feedback_data): void {
         $student_comment = $this->create_student_feedback($feedback_data['feedback_html'], $essay_data['attempt_id']);
@@ -385,8 +385,8 @@ class essay_grader {
                 error_log("DEBUG: Calculated fraction: {$fraction} for attempt {$essay_data['attempt_id']}");
             }
         } 
-        // Try resubmission format: "Final Score (Previous → New): 75/100 → 82/100"
-        else if (preg_match('/<strong>Final Score \\(Previous.*?→.*?New\\):.*?→\\s*(\\d+(?:\\.\\d+)?)\\s*\\/\\s*(\\d+(?:\\.\\d+)?)<\\/strong>/i', $feedback_data['feedback_html'], $matches)) {
+        // Try resubmission format: "Final Score (Previous â†’ New): 75/100 â†’ 82/100"
+        else if (preg_match('/<strong>Final Score \\(Previous.*?â†’.*?New\\):.*?â†’\\s*(\\d+(?:\\.\\d+)?)\\s*\\/\\s*(\\d+(?:\\.\\d+)?)<\\/strong>/i', $feedback_data['feedback_html'], $matches)) {
             $score = (float) $matches[1];  // Gets the NEW score after the arrow
             $max_score = (float) $matches[2];
             error_log("DEBUG: Grade extraction SUCCESS (resubmission) - Found score: {$score}, max_score: {$max_score}");
@@ -431,13 +431,13 @@ class essay_grader {
     }
 
     /**
-     * ✅ FIXED: Programmatically grades essay questions using corrected Moodle 4.4+ sequence.
+     * âœ… FIXED: Programmatically grades essay questions using corrected Moodle 4.4+ sequence.
      */
     protected function grade_moodle_attempt(int $attemptid, float $fraction, string $comment, int $userid): void {
         global $DB, $CFG;
 
         try {
-            // ✅ EXACT TESTED SEQUENCE: Get attempt and QUBA
+            // âœ… EXACT TESTED SEQUENCE: Get attempt and QUBA
             $attemptobj = \mod_quiz\quiz_attempt::create($attemptid);
             $uniqueid = $attemptobj->get_attempt()->uniqueid;
             $quba = \question_engine::load_questions_usage_by_activity($uniqueid);
@@ -453,7 +453,7 @@ class essay_grader {
 
                 $qa = $quba->get_question_attempt($slot);
                 
-                // ✅ FIXED: Calculate mark and validate parameters before calling manual_grade
+                // âœ… FIXED: Calculate mark and validate parameters before calling manual_grade
                 $max_mark = $qa->get_max_mark();
                 $mark = $fraction * $max_mark;
                 
@@ -477,7 +477,7 @@ class essay_grader {
                 error_log("DEBUG: Grading attempt {$attemptid} - fraction: {$fraction}, max_mark: {$max_mark}, calculated_mark: {$mark}");
                 error_log("DEBUG: Parameters - comment: " . substr($comment, 0, 100) . "..., mark: {$mark}, format: " . FORMAT_HTML);
                 
-                // ✅ FIXED: Use try-catch around manual_grade call and check method signature compatibility
+                // âœ… FIXED: Use try-catch around manual_grade call and check method signature compatibility
                 try {
                     // Check if we're using the correct signature by testing with reflection
                     $reflection = new \ReflectionMethod($qa, 'manual_grade');
@@ -492,7 +492,7 @@ class essay_grader {
                     $qa->manual_grade($comment, $mark, FORMAT_HTML);
                     $essaysGraded++;
                     
-                    error_log("✅ Successfully called manual_grade for attempt {$attemptid}");
+                    error_log("âœ… Successfully called manual_grade for attempt {$attemptid}");
                     
                 } catch (\ArgumentCountError $e) {
                     error_log("ERROR: ArgumentCountError in manual_grade for attempt {$attemptid}: " . $e->getMessage());
@@ -502,7 +502,7 @@ class essay_grader {
                     try {
                         $qa->manual_grade($comment, $mark);
                         $essaysGraded++;
-                        error_log("✅ Successfully called manual_grade with 2 parameters for attempt {$attemptid}");
+                        error_log("âœ… Successfully called manual_grade with 2 parameters for attempt {$attemptid}");
                     } catch (\Exception $e2) {
                         error_log("ERROR: Both manual_grade signatures failed for attempt {$attemptid}: " . $e2->getMessage());
                         throw $e2;
@@ -516,26 +516,26 @@ class essay_grader {
             }
 
             if ($essaysGraded > 0) {
-                // ✅ EXACT TESTED SEQUENCE: Save QUBA
+                // âœ… EXACT TESTED SEQUENCE: Save QUBA
                 \question_engine::save_questions_usage_by_activity($quba);
-                error_log("✅ QUBA saved directly via question_engine for attempt $attemptid");
+                error_log("âœ… QUBA saved directly via question_engine for attempt $attemptid");
                 
-                // ✅ EXACT TESTED SEQUENCE: Recompute totals via factory
+                // âœ… EXACT TESTED SEQUENCE: Recompute totals via factory
                 try {
                     $quizobj = \mod_quiz\quiz_settings::create($attemptobj->get_attempt()->quiz);
                     $calc = $quizobj->get_grade_calculator();
                     
                     if (method_exists($calc, 'recompute_quiz_sumgrades_for_attempts')) {
                         $calc->recompute_quiz_sumgrades_for_attempts([$attemptobj->get_attempt()]);
-                        error_log("✅ Per-attempt recompute completed for attempt $attemptid");
+                        error_log("âœ… Per-attempt recompute completed for attempt $attemptid");
                     } else {
                         $calc->recompute_quiz_sumgrades();
-                        error_log("✅ Full quiz recompute completed for attempt $attemptid");
+                        error_log("âœ… Full quiz recompute completed for attempt $attemptid");
                     }
                     
-                    // ✅ EXACT TESTED SEQUENCE: Update gradebook
+                    // âœ… EXACT TESTED SEQUENCE: Update gradebook
                     quiz_update_grades($quizobj->get_quiz(), $attemptobj->get_userid());
-                    error_log("✅ Gradebook updated via quiz_settings for attempt $attemptid");
+                    error_log("âœ… Gradebook updated via quiz_settings for attempt $attemptid");
                     
                 } catch (\Exception $e) {
                     error_log("Grade calculator error for attempt $attemptid: " . $e->getMessage());
@@ -546,20 +546,20 @@ class essay_grader {
                         $totalmark = $fresh_quba->get_total_mark();
                         if ($totalmark !== null) {
                             $DB->set_field('quiz_attempts', 'sumgrades', $totalmark, ['id' => $attemptid]);
-                            error_log("✅ Grade updated using QUBA fallback for attempt $attemptid: $totalmark");
+                            error_log("âœ… Grade updated using QUBA fallback for attempt $attemptid: $totalmark");
                         }
                         
                         // Gradebook update with basic quiz record
                         $quiz = $DB->get_record('quiz', ['id' => $attemptobj->get_attempt()->quiz]);
                         quiz_update_grades($quiz, $attemptobj->get_userid());
-                        error_log("✅ Gradebook updated via fallback for attempt $attemptid");
+                        error_log("âœ… Gradebook updated via fallback for attempt $attemptid");
                         
                     } catch (\Exception $e2) {
                         error_log("Fallback also failed for attempt $attemptid: " . $e2->getMessage());
                     }
                 }
                 
-                error_log("✅ Successfully graded {$essaysGraded} essay(s) for attempt {$attemptid} using proven working sequence");
+                error_log("âœ… Successfully graded {$essaysGraded} essay(s) for attempt {$attemptid} using proven working sequence");
                 
             } else {
                 error_log("No essay questions found to grade for attempt {$attemptid}");
@@ -628,7 +628,7 @@ class essay_grader {
         <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
-        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
+        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use originalâ†’improved format for this section.</span></li>
         <li><span style=\"color:#3399cc;\">- At least three examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
         </ul> 
 
@@ -638,7 +638,7 @@ class essay_grader {
         <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
-        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
+        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use originalâ†’improved format for this section.</span></li>
         <li><span style=\"color:#3399cc;\">- At least three specific examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
         </ul> 
 
@@ -649,8 +649,8 @@ class essay_grader {
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
         <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples showing original and improved versions. ALWAYS format as:
-        <br>• <span style=\"color:#808080;\">Original: [student's text in grey]</span>
-        <br>• <span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
+        <br>â€¢ <span style=\"color:#808080;\">Original: [student's text in grey]</span>
+        <br>â€¢ <span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
         NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following it MUST be in grey color (#808080). Use separate lines for each original and improved pair.</span></li>
         <li><span style=\"color:#3399cc;\">- At least five examples must be included showing the original and improved version separately on different lines, but do not mention quantity in the output.</span></li></ul></li> 
         </ul> 
@@ -661,7 +661,7 @@ class essay_grader {
         <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
-        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
+        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use originalâ†’improved format for this section.</span></li>
         <li><span style=\"color:#3399cc;\">- At least four specific examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
         </ul> 
 
@@ -679,7 +679,7 @@ class essay_grader {
         </ul> 
 
         <h2 style=\"font-size:18px;\">Overall Comments</h2> 
-        <div id=\"overall-comments\"><p>Encouraging tone with 2–3 specific suggestions for improvement.</p></div> 
+        <div id=\"overall-comments\"><p>Encouraging tone with 2â€“3 specific suggestions for improvement.</p></div> 
 
         <h2 style=\"font-size:16px;\"><p><strong>Final Score: X/100</strong></p></h2> 
 
@@ -1121,13 +1121,132 @@ class essay_grader {
         }
         
         $html_output .= '</div>';
-        return $html_output;
+
+
+    /**
+     * Score section definitions used for extraction and persistence.
+     */
+    protected function get_score_sections(): array {
+        return [
+            'content_and_ideas' => [
+                'dbfield' => 'score_content_ideas',
+                'max' => 25,
+                'patterns' => [
+                    '/Content and Ideas.*?Score \(Previous.*?.*?New\):.*?\\d+\\s*\\/\\s*25\\s*\\s*(\\d+)\\s*\\/\\s*25/si',
+                    '/Content and Ideas.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
+                ]
+            ],
+            'structure_and_organization' => [
+                'dbfield' => 'score_structure_organization',
+                'max' => 25,
+                'patterns' => [
+                    '/Structure and Organization.*?Score \(Previous.*?.*?New\):.*?\\d+\\s*\\/\\s*25\\s*\\s*(\\d+)\\s*\\/\\s*25/si',
+                    '/Structure and Organization.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
+                ]
+            ],
+            'language_use' => [
+                'dbfield' => 'score_language_use',
+                'max' => 20,
+                'patterns' => [
+                    '/Language Use.*?Score \(Previous.*?.*?New\):.*?\\d+\\s*\\/\\s*20\\s*\\s*(\\d+)\\s*\\/\\s*20/si',
+                    '/Language Use.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
+                ]
+            ],
+            'creativity_and_originality' => [
+                'dbfield' => 'score_creativity_originality',
+                'max' => 20,
+                'patterns' => [
+                    '/Creativity and Originality.*?Score \(Previous.*?.*?New\):.*?\\d+\\s*\\/\\s*20\\s*\\s*(\\d+)\\s*\\/\\s*20/si',
+                    '/Creativity and Originality.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
+                ]
+            ],
+            'mechanics' => [
+                'dbfield' => 'score_mechanics',
+                'max' => 10,
+                'patterns' => [
+                    '/Mechanics.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*10\\s*→\\s*(\\d+)\\s*\\/\\s*10/si',
+                    '/Mechanics.*?Score:.*?(\\d+)\\s*\\/\\s*10/si'
+                ]
+            ],
+        ];
     }
 
     /**
-     * Save grading result with optional homework
+     * Extract scores from feedback HTML using regex fallbacks.
      */
-        protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '') {
+    protected function extract_scores_from_feedback_html(string ): array {
+         = [];
+
+        foreach (->get_score_sections() as  => ) {
+             = null;
+
+            foreach (['patterns'] as ([ \t]*return \$html_output;\s*\}\s*)(?s).*?(\n\s*/\*\*\s*\n\s*\* Save grading result)) {
+                if (preg_match(([ \t]*return \$html_output;\s*\}\s*)(?s).*?(\n\s*/\*\*\s*\n\s*\* Save grading result), , )) {
+                     = (int) [1];
+                    break;
+                }
+            }
+
+            [] = [
+                'score' =>  ?? 0,
+                'max' => ['max']
+            ];
+        }
+
+        if (!isset(['final_score'])) {
+             = 0;
+             = 0;
+            foreach ( as ) {
+                 += ['score'];
+                 += ['max'];
+            }
+            ['final_score'] = [
+                'score' => ,
+                'max' =>  ?: 100
+            ];
+        }
+
+        return ;
+    }
+
+    /**
+     * Build score array from stored database values.
+     */
+    protected function get_scores_from_record(): array {
+         = [];
+
+        if (!) {
+            return ;
+        }
+
+        foreach (->get_score_sections() as  => ) {
+             = ['dbfield'];
+            if (!empty() && isset(->) && -> !== null) {
+                [] = [
+                    'score' => (int) ->,
+                    'max' => ['max']
+                ];
+            }
+        }
+
+        if (!empty()) {
+             = 0;
+             = 0;
+            foreach ( as ) {
+                 += ['score'];
+                 += ['max'];
+            }
+            ['final_score'] = [
+                'score' => ,
+                'max' =>  ?: 100
+            ];
+        }
+
+        return ;
+    }
+ with optional homework
+     */
+    protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '') {
         global $DB;
         
         error_log("DEBUG: Starting save_grading_result for attempt {$attempt_id}");
@@ -1140,34 +1259,25 @@ class essay_grader {
             $clean_ai_likelihood = $this->sanitize_ai_likelihood($ai_likelihood);
             error_log("DEBUG: Cleaned AI likelihood: " . ($clean_ai_likelihood ?? 'null'));
             
-            // Extract subcategory scores from feedback data if available
-            $scores = $feedback_data['scores'] ?? [];
-            
-            $score_content_ideas = $scores['content_and_ideas'] ?? null;
-            $score_structure_organization = $scores['structure_and_organization'] ?? null;
-            $score_language_use = $scores['language_use'] ?? null;
-            $score_creativity_originality = $scores['creativity_and_originality'] ?? null;
-            $score_mechanics = $scores['mechanics'] ?? null;
-            
-            error_log("DEBUG: Extracted scores - Content: {" . ($score_content_ideas ?? 'null') . "}, " .
-                     "Structure: {" . ($score_structure_organization ?? 'null') . "}, " . 
-                     "Language: {" . ($score_language_use ?? 'null') . "}, " .
-                     "Creativity: {" . ($score_creativity_originality ?? 'null') . "}, " . 
-                     "Mechanics: {" . ($score_mechanics ?? 'null') . "}");
-            
             $record = new \stdClass();
             $record->attempt_id = $attempt_id;
             $record->feedback_html = $complete_html;
             $record->overall_comments = $feedback_data['overall_comments'] ?? '';
             $record->ai_likelihood = $clean_ai_likelihood;
             $record->homework_html = $homework_html;
-            $record->score_content_ideas = $score_content_ideas;
-            $record->score_structure_organization = $score_structure_organization;
-            $record->score_language_use = $score_language_use;
-            $record->score_creativity_originality = $score_creativity_originality;
-            $record->score_mechanics = $score_mechanics;
             $record->timemodified = time();
             
+            $score_source_html = $feedback_data['feedback_html'] ?? $complete_html;
+            $extracted_scores = $this->extract_scores_from_feedback_html((string) $score_source_html);
+
+            foreach ($this->get_score_sections() as $section => $config) {
+                if (empty($config['dbfield'])) {
+                    continue;
+                }
+
+                $field = $config['dbfield'];
+                $record->$field = (int) ($extracted_scores[$section]['score'] ?? 0);
+            }
             error_log("DEBUG: Checking for existing record...");
             $existing = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt_id]);
             
@@ -1510,6 +1620,17 @@ class essay_grader {
             $record->ai_likelihood = $clean_likelihood;
             $record->timecreated = time();
             $record->timemodified = time();
+            $score_source_html = $feedback_data['feedback_html'] ?? $complete_html;
+            $extracted_scores = $this->extract_scores_from_feedback_html((string) $score_source_html);
+
+            foreach ($this->get_score_sections() as $section => $config) {
+                if (empty($config['dbfield'])) {
+                    continue;
+                }
+
+                $field = $config['dbfield'];
+                $record->$field = (int) ($extracted_scores[$section]['score'] ?? 0);
+            }
             $DB->insert_record('local_quizdashboard_gradings', $record);
         }
     }
@@ -1590,18 +1711,18 @@ class essay_grader {
             $result = $DB->set_field('quiz_attempts', 'sumgrades', $update_score, ['id' => $attempt_id]);
             
             if ($result) {
-                error_log("✅ Successfully updated sumgrades to {$update_score} for attempt {$attempt_id}");
+                error_log("âœ… Successfully updated sumgrades to {$update_score} for attempt {$attempt_id}");
                 
                 // Verify the update
                 $updated_attempt = $DB->get_record('quiz_attempts', ['id' => $attempt_id], 'sumgrades');
                 if ($updated_attempt && $updated_attempt->sumgrades == $update_score) {
-                    error_log("✅ Verification successful - sumgrades is now {$updated_attempt->sumgrades}");
+                    error_log("âœ… Verification successful - sumgrades is now {$updated_attempt->sumgrades}");
                     return true;
                 } else {
-                    error_log("❌ Verification failed - sumgrades is still " . ($updated_attempt->sumgrades ?? 'NULL'));
+                    error_log("âŒ Verification failed - sumgrades is still " . ($updated_attempt->sumgrades ?? 'NULL'));
                 }
             } else {
-                error_log("❌ Failed to update sumgrades for attempt {$attempt_id}");
+                error_log("âŒ Failed to update sumgrades for attempt {$attempt_id}");
             }
             
             return $result;
@@ -2019,4 +2140,8 @@ PROMPT;
         return !empty($this->google_folder_id) && file_exists($this->service_account_path);
     }
 }
+
+
+
+
 

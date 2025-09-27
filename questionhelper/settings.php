@@ -27,12 +27,51 @@ defined('MOODLE_INTERNAL') || die();
 if ($hassiteconfig) {
     $settings = new admin_settingpage('local_questionhelper', get_string('pluginname', 'local_questionhelper'));
 
+    // Provider select
+    $settings->add(new admin_setting_configselect(
+        'local_questionhelper/provider',
+        get_string('provider', 'local_questionhelper'),
+        get_string('provider_desc', 'local_questionhelper'),
+        'openai',
+        [
+            'openai' => get_string('provider_openai', 'local_questionhelper'),
+            'anthropic' => get_string('provider_anthropic', 'local_questionhelper'),
+        ]
+    ));
+
     // OpenAI API Key setting
     $settings->add(new admin_setting_configtext(
         'local_questionhelper/openai_apikey',
         get_string('openai_apikey', 'local_questionhelper'),
         get_string('openai_apikey_desc', 'local_questionhelper'),
         '',
+        PARAM_TEXT
+    ));
+
+    // OpenAI model (optional)
+    $settings->add(new admin_setting_configtext(
+        'local_questionhelper/openai_model',
+        get_string('openai_model', 'local_questionhelper'),
+        get_string('openai_model_desc', 'local_questionhelper'),
+        'gpt-3.5-turbo',
+        PARAM_TEXT
+    ));
+
+    // Anthropic API Key setting
+    $settings->add(new admin_setting_configtext(
+        'local_questionhelper/anthropic_apikey',
+        get_string('anthropic_apikey', 'local_questionhelper'),
+        get_string('anthropic_apikey_desc', 'local_questionhelper'),
+        '',
+        PARAM_TEXT
+    ));
+
+    // Anthropic model setting (default to user request: sonnet-4)
+    $settings->add(new admin_setting_configtext(
+        'local_questionhelper/anthropic_model',
+        get_string('anthropic_model', 'local_questionhelper'),
+        get_string('anthropic_model_desc', 'local_questionhelper'),
+        'sonnet-4',
         PARAM_TEXT
     ));
 

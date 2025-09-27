@@ -48,27 +48,5 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025091101, 'local', 'quizdashboard');
     }
 
-    // Add subcategory score columns for stored grading data
-    if ($oldversion < 2025092601) {
-        $table = new xmldb_table('local_quizdashboard_gradings');
-
-        $fields = [
-            new xmldb_field('score_content_ideas', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'grading_level'),
-            new xmldb_field('score_structure_organization', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_content_ideas'),
-            new xmldb_field('score_language_use', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_structure_organization'),
-            new xmldb_field('score_creativity_originality', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_language_use'),
-            new xmldb_field('score_mechanics', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_creativity_originality'),
-        ];
-
-        foreach ($fields as $field) {
-            if (!$dbman->field_exists($table, $field)) {
-                $dbman->add_field($table, $field);
-            }
-        }
-
-        upgrade_plugin_savepoint(true, 2025092601, 'local', 'quizdashboard');
-    }
-
     return true;
 }
-

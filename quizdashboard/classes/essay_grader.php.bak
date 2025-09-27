@@ -1127,7 +1127,7 @@ class essay_grader {
     /**
      * Save grading result with optional homework
      */
-        protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '') {
+    protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '') {
         global $DB;
         
         error_log("DEBUG: Starting save_grading_result for attempt {$attempt_id}");
@@ -1140,32 +1140,12 @@ class essay_grader {
             $clean_ai_likelihood = $this->sanitize_ai_likelihood($ai_likelihood);
             error_log("DEBUG: Cleaned AI likelihood: " . ($clean_ai_likelihood ?? 'null'));
             
-            // Extract subcategory scores from feedback data if available
-            $scores = $feedback_data['scores'] ?? [];
-            
-            $score_content_ideas = $scores['content_and_ideas'] ?? null;
-            $score_structure_organization = $scores['structure_and_organization'] ?? null;
-            $score_language_use = $scores['language_use'] ?? null;
-            $score_creativity_originality = $scores['creativity_and_originality'] ?? null;
-            $score_mechanics = $scores['mechanics'] ?? null;
-            
-            error_log("DEBUG: Extracted scores - Content: {" . ($score_content_ideas ?? 'null') . "}, " .
-                     "Structure: {" . ($score_structure_organization ?? 'null') . "}, " . 
-                     "Language: {" . ($score_language_use ?? 'null') . "}, " .
-                     "Creativity: {" . ($score_creativity_originality ?? 'null') . "}, " . 
-                     "Mechanics: {" . ($score_mechanics ?? 'null') . "}");
-            
             $record = new \stdClass();
             $record->attempt_id = $attempt_id;
             $record->feedback_html = $complete_html;
             $record->overall_comments = $feedback_data['overall_comments'] ?? '';
             $record->ai_likelihood = $clean_ai_likelihood;
             $record->homework_html = $homework_html;
-            $record->score_content_ideas = $score_content_ideas;
-            $record->score_structure_organization = $score_structure_organization;
-            $record->score_language_use = $score_language_use;
-            $record->score_creativity_originality = $score_creativity_originality;
-            $record->score_mechanics = $score_mechanics;
             $record->timemodified = time();
             
             error_log("DEBUG: Checking for existing record...");
@@ -2019,4 +1999,3 @@ PROMPT;
         return !empty($this->google_folder_id) && file_exists($this->service_account_path);
     }
 }
-

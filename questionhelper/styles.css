@@ -42,7 +42,20 @@
 /* Question helper container for cases where we need to add our own container */
 .question-helper-container {
     margin: 10px 0;
-    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.question-helper-container .prevpage {
+    margin-right: 0;
+}
+
+.attempts-counter {
+    font-size: 12px;
+    color: #6c757d;
+    margin-left: 10px;
 }
 
 /* Modal content styling */
@@ -177,7 +190,14 @@
     }
 
     .question-helper-container {
-        text-align: center;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .question-helper-container .prevpage {
+        margin-right: 0;
+        margin-bottom: 0;
     }
 }
 

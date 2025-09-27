@@ -51,6 +51,16 @@ function local_questionhelper_get_api_key() {
  * @return bool True if configured, false otherwise
  */
 function local_questionhelper_is_configured() {
-    $apikey = local_questionhelper_get_api_key();
-    return !empty($apikey);
+    $provider = get_config('local_questionhelper', 'provider');
+    if ($provider === 'anthropic') {
+        return !empty(get_config('local_questionhelper', 'anthropic_apikey'));
+    }
+    return !empty(get_config('local_questionhelper', 'openai_apikey'));
+}
+
+/**
+ * Declare external services
+ */
+function local_questionhelper_extend_navigation() {
+    // No-op, placeholder to keep file structured for plugin callbacks.
 }

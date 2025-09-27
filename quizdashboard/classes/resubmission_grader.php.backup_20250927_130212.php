@@ -14,6 +14,85 @@ class resubmission_grader extends essay_grader {
         parent::__construct();
         $this->quiz_manager = new quiz_manager();
     }
+
+    /**
+     * Generate penalty feedback for copied submissions
+     */
+    private function generate_penalty_feedback($previous_scores, $submission_number) {
+        $ordinal = $this->get_ordinal_string($submission_number);
+        $penalty_message = "This {$ordinal} submission was identified as a copy of the revision from the previous feedback. Submitting work that is not your own does not demonstrate learning or effort.";
+
+        $sections = [
+            "content_and_ideas" => ["title" => "1. Content and Ideas (25%)", "max" => 25],
+            "structure_and_organization" => ["title" => "2. Structure and Organization (25%)", "max" => 25],
+            "language_use" => ["title" => "3. Language Use (20%)", "max" => 20],
+            "creativity_and_originality" => ["title" => "4. Creativity and Originality (20%)", "max" => 20],
+            "mechanics" => ["title" => "5. Mechanics (10%)", "max" => 10]
+        ];
+
+        $html = "";  // Initialize with empty string
+        $previous_total = 0;
+        $new_total = 0;
+
+        foreach ($sections as $key => $config) {
+            $prev_score = $previous_scores[$key]["score"] ?? 0;
+            $previous_total += $prev_score;
+            
+            // Set new score to 0 for all sections in case of penalty
+            $new_score = 0;
+            $new_total += $new_score;
+            
+            $html .= "<h2 style=\"font-size:18px;\">" . $config["title"] . "</h2>";
+            $html .= "<p><strong>Score (Previous  New):</strong> " . $prev_score . "/" . $config["max"] . "  " . $new_score . "/" . $config["max"] . "</p>";
+            $html .= "<ul>";
+            $html .= "<li><strong>Analysis of Changes:</strong> " . $penalty_message . "</li>";
+            $html .= "<li><strong>Areas for Improvement:</strong>";
+            $html .= "<ul><li>Please revise the essay using your own ideas and words, incorporating the feedback provided. Focus on genuine improvement rather than copying.</li></ul>";
+            $html .= "</li></ul>";
+        }
+
+        $html .= "<h2 style=\"font-size:18px;\">Overall Comments</h2>";
+        $html .= "<div id=\"overall-comments\"><p><strong>" . $penalty_message . " We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): " . $previous_total . "/100  " . $new_total . "/100</strong></p></h2>";
+
+        return $html;
+    }
+
+        $html .= "<h2 style=\"font-size:18px;\">Overall Comments</h2>";
+        $html .= "<div id=\"overall-comments\"><p><strong>" . $penalty_message . " We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): " . $previous_total . "/100  " . $new_total . "/100</strong></p></h2>";
+
+        return $html;
+    }
+
+        $html .= "<h2 style=\"font-size:18px;\">Overall Comments</h2>";
+        $html .= "<div id=\"overall-comments\"><p><strong>" . $penalty_message . " We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): " . $previous_total . "/100  " . $new_total . "/100</strong></p></h2>";
+
+        return $html;
+    }
+
+        $html .= ''<h2 style="font-size:18px;">Overall Comments</h2>'';
+        $html .= "<div id=\"overall-comments\"><p><strong>" . $penalty_message . " We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): " . $previous_total . "/100  " . $new_total . "/100</strong></p></h2>";
+
+        return $html;
+    }
+
+        $html .= '<h2 style="font-size:18px;">Overall Comments</h2>';
+        $html .= "<div id=\"overall-comments\"><p><strong>{$penalty_message} We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): {$previous_total}/100  {$new_total}/100</strong></p></h2>";
+
+        return $html;
+    }
+
+        $html .= '<h2 style="font-size:18px;">Overall Comments</h2>';
+        $html .= "<div id=\"overall-comments\"><p><strong>{$penalty_message} We encourage you to try again with your own improvements.</strong></p></div>";
+        $html .= "<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous â†’ New): {$previous_total}/100 â†’ 0/100</strong></p></h2>";
+
+        return $html;
+    }
+
     /**
      * Generate comparative feedback using OpenAI with robust API call method
      */
@@ -21,7 +100,7 @@ class resubmission_grader extends essay_grader {
      * Generate comparative feedback using OpenAI with robust API call method
      */
     private function generate_comparative_feedback($current_essay_data, $previous_grading, $previous_scores, $level, $submission_number) {
-
+        
         $ordinal = $this->get_ordinal_string($submission_number);
         $prev_ordinal = $this->get_ordinal_string($submission_number - 1);
 
@@ -115,17 +194,17 @@ Remember: When showing original and improved examples in Language Use and Mechan
         // Extract previous essay text and feedback using strategic markers
         $previous_essay_text = $this->extract_original_essay_from_feedback($previous_grading->feedback_html);
         $key_feedback_points = $this->extract_key_feedback_points($previous_grading->feedback_html);
-
+        
         // Include previous scores in the prompt for context
         $previous_scores_text = "Previous Scores from {$prev_ordinal} submission:\n";
         foreach ($previous_scores as $key => $score) {
             if ($key !== 'final_score') {
                 $title = ucwords(str_replace('_', ' ', $key));
                 $previous_scores_text .= "- {$title}: {$score['score']}/{$score['max']}\n";
-    }
-    }
+            }
+        }
         $previous_scores_text .= "- Final Score: {$previous_scores['final_score']['score']}/100\n\n";
-
+        
         $user_content = "Essay Question:\n" . $current_essay_data['question_text'] . 
                        "\n\nPrevious ({$prev_ordinal}) Essay:\n" . $previous_essay_text .
                        "\n\n" . $previous_scores_text .
@@ -145,23 +224,26 @@ Remember: When showing original and improved examples in Language Use and Mechan
         $result = $this->make_openai_api_call($data, 'generate_comparative_feedback');
         if (!$result['success']) {
             return $result;
-    }
+        }
+
         return [
             'success' => true,
             'data' => ['feedback_html' => $result['response']]
         ];
     }
+
         return [
             'success' => true,
             'data' => ['feedback_html' => $result['response']]
         ];
     }
+
     /**
      * Build complete resubmission feedback HTML
      */
     private function build_resubmission_feedback_html($current_essay_data, $feedback_data, $revision_html, $previous_grading, $submission_number) {
         $ordinal = ucfirst($this->get_ordinal_string($submission_number));
-
+        
         $print_styles = "
         <style>
             .ld-essay-feedback {
@@ -174,7 +256,8 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 border-radius: 12px;
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
                 border: 1px solid #dee2e6;
-    }
+            }
+            
             .feedback-section {
                 background: #ffffff;
                 margin-bottom: 25px;
@@ -183,7 +266,8 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
                 border: 2px solid #007bff;
                 transition: all 0.3s ease;
-    }
+            }
+            
             .section-header {
                 color: #2c3e50;
                 font-size: 22px;
@@ -191,12 +275,12 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 font-weight: 600;
                 border-bottom: 2px solid #e9ecef;
                 padding-bottom: 10px;
-    }
+            }
         </style>";
-
+        
         $html = $print_styles;
         $html .= '<div class="ld-essay-feedback">';
-
+        
         // Header section with enhanced styling (consistent with first submission)
         $html .= '<div class="feedback-section no-page-break">';
         $html .= '<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white !important; padding: 20px; border-radius: 8px; margin: -25px -25px 20px -25px;">';
@@ -211,7 +295,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
         $html .= '</div>';
         $html .= '</div>';
         $html .= '</div>';
-
+        
         // Quiz name and question section (consistent styling)
         if (!empty($current_essay_data['question_text'])) {
             $html .= '<div class="feedback-section">';
@@ -225,7 +309,8 @@ Remember: When showing original and improved examples in Language Use and Mechan
             $html .= '<div class="feedback-section">';
             $html .= '<h2 class="section-header" style="color: #6f42c1;">' . htmlspecialchars($current_essay_data['quiz_name']) . ' - ' . $ordinal . ' Submission</h2>';
             $html .= '</div>';
-    }
+        }
+        
         // Current essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
         $html .= '<div class="feedback-section">';
         $html .= '<h2 class="section-header" style="color: #17a2b8;">Current Essay - ' . $ordinal . ' Submission</h2>';
@@ -235,12 +320,12 @@ Remember: When showing original and improved examples in Language Use and Mechan
         foreach ($paragraphs as $p) {
             if (!empty(trim($p))) {
                 $html .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
-    }
-    }
+            }
+        }
         $html .= '</div>';
         $html .= '<hr>';
         $html .= '</div>';
-
+        
         // Revision section (with consistent styling)
         if (!empty($revision_html)) {
             $filtered_revision_html = $this->remove_homework_from_html($revision_html);
@@ -251,8 +336,9 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 $html .= $filtered_revision_html;
                 $html .= '<hr>';
                 $html .= '</div>';
-    }
-    }
+            }
+        }
+        
         // Comparative feedback section (with consistent styling)
         $html .= '<div class="feedback-section page-break-before">';
         $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Comparative Feedback - ' . $ordinal . ' Submission</h2>';
@@ -260,7 +346,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
         $html .= $feedback_data['feedback_html'];
         $html .= '<hr>';
         $html .= '</div>';
-
+        
         // Previous feedback (for reference, but filter out homework)
         if (!empty($previous_grading->feedback_html)) {
             $filtered_previous_feedback = $this->remove_homework_from_html($previous_grading->feedback_html);
@@ -270,11 +356,13 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 $html .= '<div style="background:#f9f9f9;border:1px solid #ddd;padding:20px;margin-top:1em;">';
                 $html .= $filtered_previous_feedback;
                 $html .= '</div>';
-    }
-    }
+            }
+        }
+        
         $html .= '</div>';
         return $html;
     }
+
     /**
      * Save resubmission tracking record
      */
@@ -283,10 +371,10 @@ Remember: When showing original and improved examples in Language Use and Mechan
 
         try {
             error_log("DEBUG: Saving resubmission record - current_id: {$current_id}, previous_id: {$previous_id}, submission_number: {$submission_number}");
-
+            
             // Check if record already exists
             $existing = $DB->get_record('local_quizdashboard_resubmissions', ['current_attempt_id' => $current_id]);
-
+            
             if ($existing) {
                 error_log("DEBUG: Updating existing resubmission record");
                 $existing->previous_attempt_id = $previous_id;
@@ -294,7 +382,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 $existing->is_copy_detected = $is_copy ? 1 : 0;
                 $existing->similarity_percentage = $similarity_percentage;
                 $existing->timecreated = time(); // Update time
-
+                
                 $result = $DB->update_record('local_quizdashboard_resubmissions', $existing);
                 error_log("DEBUG: Resubmission record update result: " . ($result ? 'SUCCESS' : 'FAILED'));
             } else {
@@ -309,44 +397,51 @@ Remember: When showing original and improved examples in Language Use and Mechan
 
                 $new_id = $DB->insert_record('local_quizdashboard_resubmissions', $record);
                 error_log("DEBUG: Resubmission record insert result - new ID: " . ($new_id ?: 'FAILED'));
-    }
+            }
+            
             error_log("DEBUG: Resubmission record saved successfully");
             return true;
-
+            
         } catch (\Exception $e) {
             error_log("DEBUG: Error saving resubmission record: " . $e->getMessage());
             error_log("DEBUG: Error code: " . $e->getCode());
             error_log("DEBUG: Error file: " . $e->getFile() . " line " . $e->getLine());
             throw $e; // Re-throw the exception so we can see the exact error
+        }
     }
-    }
+
     // Helper methods
     private function get_ordinal_string($number) {
         $ordinals = [1 => 'first', 2 => 'second', 3 => 'third', 4 => 'fourth', 5 => 'fifth'];
         return $ordinals[$number] ?? $number . 'th';
     }
+
     private function format_previous_scores_for_prompt($scores) {
         $formatted = '';
         foreach ($scores as $key => $data) {
             if ($key !== 'final_score') {
                 $title = ucwords(str_replace('_', ' ', $key));
                 $formatted .= "- {$title}: {$data['score']}/{$data['max']}\n";
-    }
-    }
+            }
+        }
         $formatted .= "- Final Score: {$scores['final_score']['score']}/{$scores['final_score']['max']}";
         return $formatted;
     }
+
     private function extract_original_essay_from_feedback($feedback_html) {
         // First try to extract using strategic markers (more reliable)
         if (preg_match('/<!-- EXTRACT_ORIGINAL_START -->(.*?)<!-- EXTRACT_ORIGINAL_END -->/s', $feedback_html, $matches)) {
             return trim(strip_tags($matches[1]));
-    }
+        }
+        
         // Fallback to original method for backward compatibility
         if (preg_match('/<h2[^>]*>.*?Original Essay.*?<\/h2>(.*?)(?=<h2|<hr)/si', $feedback_html, $matches)) {
             return trim(strip_tags($matches[1]));
-    }
+        }
+        
         return '';
     }
+
     private function extract_key_feedback_points($feedback_html) {
         $key_points = '';
         $sections = [
@@ -356,7 +451,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
             'Creativity and Originality' => 'CREATIVITY_ORIG',
             'Mechanics' => 'MECHANICS'
         ];
-
+        
         foreach ($sections as $section_title => $marker_name) {
             // First try to extract using strategic markers (more reliable)
             $marker_pattern = "/<!-- EXTRACT_{$marker_name}_START -->(.*?)<!-- EXTRACT_{$marker_name}_END -->/si";
@@ -365,33 +460,37 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 if (preg_match('/Areas for Improvement:.*?<ul>(.*?)<\/ul>/si', $marker_matches[1], $improvement_matches)) {
                     $improvements = strip_tags($improvement_matches[1]);
                     $key_points .= "{$section_title}: " . trim($improvements) . "\n";
-    }
+                }
             } else {
                 // Fallback to original method for backward compatibility
                 if (preg_match("/<h2[^>]*>{$section_title}.*?<\/h2>(.*?)(?=<h2|$)/si", $feedback_html, $matches)) {
                     if (preg_match('/Areas for Improvement:.*?<ul>(.*?)<\/ul>/si', $matches[1], $improvement_matches)) {
                         $improvements = strip_tags($improvement_matches[1]);
                         $key_points .= "{$section_title}: " . trim($improvements) . "\n";
-    }
-    }
-    }
-    }
+                    }
+                }
+            }
+        }
+        
         return $key_points;
     }
+
     /**
      * Remove homework content from HTML using strategic markers (most reliable)
      */
     private function remove_homework_from_html($html) {
         if (empty($html)) {
             return $html;
-    }
+        }
+
         // First try to remove using strategic markers (most reliable method)
         $clean_html = preg_replace('/<!-- EXTRACT_HOMEWORK_START -->.*?<!-- EXTRACT_HOMEWORK_END -->/s', '', $html);
-
+        
         // If markers worked, return clean result
         if ($clean_html !== $html) {
             return rtrim($clean_html);
-    }
+        }
+
         // Fallback: Define patterns to match homework sections for backward compatibility
         $homework_patterns = [
             // Remove div with homework-section class and everything until its closing div
@@ -411,29 +510,32 @@ Remember: When showing original and improved examples in Language Use and Mechan
             '/These exercises target specific areas.*$/s',
             '/These challenging exercises target sophisticated.*$/s'
         ];
-
+        
         foreach ($homework_patterns as $pattern) {
             $clean_html = preg_replace($pattern, '', $clean_html);
-    }
+        }
+        
         // Clean up any trailing whitespace or empty divs
         $clean_html = rtrim($clean_html);
-
+        
         // Remove any dangling empty divs at the end
         $clean_html = preg_replace('/<\\/div>\\s*$/', '', $clean_html);
-
+        
         return $clean_html;
     }
+
     /**
      * Upload complete resubmission feedback to Google Drive with consistent naming
      */
     protected function upload_to_google_drive($complete_html, $essay_data, $submission_number = null) {
         global $CFG;
-
+        
         try {
             // Determine submission number if not provided
             if ($submission_number === null) {
                 $submission_number = $this->get_submission_number($essay_data['attempt_id']);
-    }
+            }
+            
             // Generate appropriate suffix for resubmission
             $submission_ordinals = [
                 2 => 'second_submission',
@@ -441,17 +543,26 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 4 => 'fourth_submission',
                 5 => 'fifth_submission'
             ];
-
+            
             $suffix = $submission_ordinals[$submission_number] ?? "{$submission_number}th_submission";
-
+            
             error_log("DEBUG: Uploading resubmission to Google Drive with suffix: {$suffix}");
-
+            
             // Call parent's upload method with the submission suffix
             return parent::upload_to_google_drive($complete_html, $essay_data, $suffix);
-
+            
         } catch (Exception $e) {
             error_log("Error uploading resubmission to Google Drive: " . $e->getMessage());
             return null;
+        }
     }
-    }
-    }
+}
+
+
+
+
+
+
+
+
+

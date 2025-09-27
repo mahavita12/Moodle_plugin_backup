@@ -20,7 +20,13 @@
       "mcp__moodle-server__restart_service",
       "mcp__moodle-server__get_running_processes",
       "mcp__moodle-server__delete_plugin_file",
-      "mcp__moodle-server__execute_sql"
+      "mcp__moodle-server__execute_sql",
+      "mcp__moodle-server__read_system_file",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Read(//c/MoodleWindowsInstaller-latest-404/server/moodle/**)",
+      "Bash(mkdir:*)",
+      "mcp__moodle-server__make_http_request"
     ],
     "deny": [],
     "ask": []

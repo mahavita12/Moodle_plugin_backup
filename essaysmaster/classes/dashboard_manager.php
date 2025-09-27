@@ -55,6 +55,7 @@ class dashboard_manager {
                         s.status as session_status,
                         s.timemodified,
                         s.attempt_id,
+                        qa.attempt as student_attempt_number,
                         u.firstname,
                         u.lastname,
                         u.email,
@@ -134,6 +135,7 @@ class dashboard_manager {
                 $progress_item->student_name = $record->firstname . ' ' . $record->lastname;
                 $progress_item->student_email = $record->email;
                 $progress_item->course_name = $record->course_name;
+                $progress_item->student_attempt_number = isset($record->student_attempt_number) ? (int)$record->student_attempt_number : null;
                 $progress_item->quiz_name = $record->quiz_name;
                 $progress_item->current_round = $record->current_level;
                 $progress_item->total_rounds = 6;
@@ -549,6 +551,7 @@ class dashboard_manager {
             $output .= \html_writer::tag('th', 'Student Name');
             $output .= \html_writer::tag('th', 'Course');
             $output .= \html_writer::tag('th', 'Quiz Name');
+            $output .= \html_writer::tag('th', 'Attempt #');
             $output .= \html_writer::tag('th', 'Round');
             $output .= \html_writer::tag('th', 'Status');
             
@@ -623,6 +626,7 @@ class dashboard_manager {
                 } else {
                     $output .= \html_writer::tag('td', $progress->quiz_name ?? 'Unknown Quiz');
                 }
+                $output .= \html_writer::tag('td', $progress->student_attempt_number ?? '-');
                 $output .= \html_writer::tag('td', ($progress->current_round ?? 1) . '/6');
                 
                 // Status badge
