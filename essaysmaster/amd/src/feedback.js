@@ -722,7 +722,7 @@ define([], function () {
                 font-family: Arial, sans-serif;
             }
 
-            /* ENHANCED: Non-selectable rendered feedback */
+            /* FIXED: Non-selectable rendered feedback - only disable selection, not pointer events */
             #essays-master-feedback,
             #essays-master-feedback *,
             #essays-master-feedback .em-nonselectable,
@@ -737,10 +737,10 @@ define([], function () {
                 user-select: none !important;
                 -webkit-touch-callout: none !important;
                 -webkit-tap-highlight-color: transparent !important;
-                pointer-events: none !important;
+                /* REMOVED: pointer-events: none !important; - This was blocking button clicks */
             }
             
-            /* Re-enable pointer events for scrolling but keep selection disabled */
+            /* Keep feedback panel interactive for scrolling and button clicks */
             #essays-master-feedback {
                 pointer-events: auto !important;
                 -webkit-user-select: none !important;
@@ -799,17 +799,35 @@ define([], function () {
             }
         };
 
-        // Enhanced event blocking - more comprehensive list
+        // FIXED: More selective event blocking - allow normal clicks but block copy operations
         const eventsToBlock = [
-            'copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart',
-            'select', 'mousedown', 'mouseup', 'auxclick', 'keydown', 'keyup',
-            'touchstart', 'touchend', 'pointerdown', 'pointerup'
+            'copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart', 'select'
         ];
 
         // Capture-phase listeners on document (highest priority)
         eventsToBlock.forEach(evt => {
             document.addEventListener(evt, blockIfInside, true);
         });
+
+        // Selective mouse event blocking - only block right/middle clicks
+        const mouseGuard = (e) => {
+            if (!isInsidePanel(e.target)) return;
+            
+            // Block right-click (context menu) and middle-click
+            if (e.button === 2 || e.which === 3 || e.button === 1 || e.which === 2) {
+                console.log('🚫 Blocked mouse action:', e.type, 'button:', e.button);
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return false;
+            }
+            // Allow normal left clicks (button 0) - needed for Submit button
+        };
+
+        // Add selective mouse guards
+        document.addEventListener('mousedown', mouseGuard, true);
+        document.addEventListener('mouseup', mouseGuard, true);
+        document.addEventListener('auxclick', mouseGuard, true);
 
         // Keyboard shortcuts blocking
         const keyboardGuard = (e) => {
