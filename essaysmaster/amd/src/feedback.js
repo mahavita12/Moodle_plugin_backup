@@ -182,6 +182,34 @@ define([], function () {
                 } catch (e) {
                     console.warn('⚠️ TinyMCE spellcheck disable failed:', e);
                 }
+
+                // Enforcement loop: student editors may (re)enable after init
+                try {
+                    if (!window.__EM_TINYMCE_ENFORCER__) {
+                        let attempts = 0;
+                        const enforce = () => {
+                            attempts++;
+                            try {
+                                tmce.editors?.forEach?.(ed => {
+                                    try {
+                                        const body = typeof ed.getBody === 'function' ? ed.getBody() : null;
+                                        if (body) {
+                                            body.setAttribute('spellcheck', 'false');
+                                            body.setAttribute('data-gramm', 'false');
+                                            body.setAttribute('data-enable-grammarly', 'false');
+                                            body.spellcheck = false;
+                                        }
+                                    } catch (_) {}
+                                });
+                            } catch (_) {}
+                            if (attempts >= 24) { // ~12 seconds at 500ms
+                                clearInterval(window.__EM_TINYMCE_ENFORCER__);
+                                window.__EM_TINYMCE_ENFORCER__ = null;
+                            }
+                        };
+                        window.__EM_TINYMCE_ENFORCER__ = setInterval(enforce, 500);
+                    }
+                } catch (_) {}
             }
         };
         
