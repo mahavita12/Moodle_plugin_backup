@@ -64,9 +64,17 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             // Fallback: try to get from navigation or other indicators
             allQuestions = $('.qn_buttons .qnbutton').length;
         }
+        if (allQuestions === 0) {
+            // Another fallback: check question navigation
+            allQuestions = $('[data-questionid]').length;
+        }
+        if (allQuestions === 0) {
+            // Set a minimum default if no questions found
+            allQuestions = 10;
+        }
         
         totalQuestionsInQuiz = allQuestions;
-        maxAttemptsAllowed = Math.floor(totalQuestionsInQuiz / 2);
+        maxAttemptsAllowed = Math.max(1, Math.floor(totalQuestionsInQuiz / 2));
         
         console.log('QuestionHelper: Total questions in quiz:', totalQuestionsInQuiz);
         console.log('QuestionHelper: Max attempts allowed:', maxAttemptsAllowed);
@@ -89,7 +97,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         questionSelectors.forEach(function(selector) {
             $(selector).each(function(index) {
                 var questionElement = $(this);
-                if (questionElement.find('.question-helper-btn').length > 0) {
+                if (questionElement.find('.question-helper-btn, .question-helper-container').length > 0) {
                     return;
                 }
 
@@ -106,7 +114,8 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             console.log('QuestionHelper: No multichoice questions found, searching all questions...');
             $('.que').each(function(index) {
                 var questionElement = $(this);
-                if (questionElement.find('input[type="radio"]').length > 0) {
+                if (questionElement.find('input[type="radio"]').length > 0 && 
+                    questionElement.find('.question-helper-btn, .question-helper-container').length === 0) {
                     var questionId = extractQuestionId(questionElement);
                     console.log('QuestionHelper: Found radio question with ID:', questionId);
                     addHelpButton(questionElement, questionId, currentAttempts);
