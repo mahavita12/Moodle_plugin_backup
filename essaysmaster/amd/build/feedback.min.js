@@ -629,6 +629,16 @@ define([], function () {
                 color: #0f3c75;
                 font-weight: 600;
             }
+            /* Blue emphasis box for the last sentence of round 1 */
+            .essay-emphasis-box {
+                background: #e7f3ff;
+                border-left: 4px solid #0f6cbf;
+                border-radius: 4px;
+                padding: 10px 12px;
+                color: #0f3c75;
+                font-weight: 600;
+                margin-top: 8px;
+            }
             
             /* 🟡 AMBER HIGHLIGHTING STYLES */
             .amber-highlight {
@@ -1026,7 +1036,7 @@ define([], function () {
     }
 
     // 🟡 Find and highlight problematic text in essay
-    function highlightProblematicText(essayText, improvements, highlightClass = 'amber-highlight') {
+    function highlightProblematicText(essayText, improvements, highlightClass = 'amber-highlight', round) {
         if (!improvements || improvements.length === 0) return essayText;
         
         let highlightedText = essayText;
@@ -1040,7 +1050,10 @@ define([], function () {
                 const regex = new RegExp(`\\b${escapedOriginal}\\b`, 'gi');
                 
                 highlightedText = highlightedText.replace(regex, (match) => {
-                    return `<span class="${highlightClass}" title="Suggested improvement: ${improvement.improved}">${match}</span>`;
+                    const tooltip = (round >= 2 && round <= 4)
+                        ? `${improvement.improved}`
+                        : `Suggested improvement: ${improvement.improved}`;
+                    return `<span class="${highlightClass}" title="${tooltip}">${match}</span>`;
                 });
             }
         });
@@ -1051,7 +1064,7 @@ define([], function () {
     // 🟡 Create essay display with highlighting
     function createEssayDisplay(essayText, improvements, round) {
         const highlightClass = 'amber-highlight';
-        const highlightedText = highlightProblematicText(essayText, improvements, highlightClass);
+        const highlightedText = highlightProblematicText(essayText, improvements, highlightClass, round);
         const legendLabel = 'Amber highlights show text that needs improvement';
 
         const roundTitles = {
