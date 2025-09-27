@@ -69,8 +69,13 @@ class ai_helper {
      */
     protected function get_anthropic_model(): string {
         $model = get_config('local_essaysmaster', 'anthropic_model');
-        $model = is_string($model) ? trim($model) : '';
-        return $model !== '' ? $model : 'sonnet-4';
+        $model = is_string($model) ? trim(strtolower($model)) : '';
+        // Map friendly aliases to current Anthropic model ids
+        if ($model === '' || in_array($model, ['sonnet-4', 'sonnet4', 'sonnet'], true)) {
+            // Fallback to widely available Sonnet model id
+            return 'claude-3-5-sonnet-latest';
+        }
+        return $model;
     }
 
     /**
@@ -88,7 +93,7 @@ class ai_helper {
                 'model' => $this->get_anthropic_model(),
                 'system' => $prompt['system'],
                 'messages' => [
-                    ['role' => 'user', 'content' => $prompt['user']]
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $prompt['user']] ]]
                 ],
                 'max_tokens' => 1500
             ];
@@ -132,7 +137,7 @@ class ai_helper {
                 'model' => $this->get_anthropic_model(),
                 'system' => $prompt['system'],
                 'messages' => [
-                    ['role' => 'user', 'content' => $prompt['user']]
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $prompt['user']] ]]
                 ],
                 'max_tokens' => 2000
             ];

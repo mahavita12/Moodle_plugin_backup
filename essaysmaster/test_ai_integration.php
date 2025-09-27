@@ -255,6 +255,8 @@ function test_ai_connection() {
         
         // Test feedback generation (round 1)
         echo '<h4>Testing Feedback Generation (Round 1)</h4>';
+        echo '<p><em>Provider:</em> ' . htmlspecialchars(get_config('local_essaysmaster','provider') ?: 'anthropic') . ', ' .
+             '<em>Model:</em> ' . htmlspecialchars(get_config('local_essaysmaster','anthropic_model') ?: 'claude-3-5-sonnet-latest') . '</p>';
         $feedback_result = $ai_helper->generate_feedback(1, $test_text, 'Sample question prompt');
         
         if ($feedback_result['success']) {
