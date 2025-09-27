@@ -263,6 +263,51 @@ define([], function () {
         }
         
         console.log('✅ Essays Master: Spellcheck disabling complete');
+
+        // Resiliency: re-apply when late editors load (student attempts often load editors later)
+        if (!window.__EM_SPELLCHECK_OBSERVER__) {
+            const reapply = () => {
+                try {
+                    // Re-run textareas
+                    textareaSelectors.forEach(selector => {
+                        document.querySelectorAll(selector).forEach(ta => {
+                            try {
+                                ta.setAttribute('spellcheck', 'false');
+                                ta.setAttribute('data-spellcheck', 'false');
+                                ta.spellcheck = false;
+                                ta.setAttribute('autocomplete', 'off');
+                                ta.setAttribute('autocorrect', 'off');
+                                ta.setAttribute('autocapitalize', 'off');
+                                ta.setAttribute('data-autocorrect', 'off');
+                                ta.setAttribute('data-autocomplete', 'off');
+                                ta.setAttribute('data-gramm', 'false');
+                                ta.setAttribute('data-gramm_editor', 'false');
+                                ta.setAttribute('data-enable-grammarly', 'false');
+                            } catch (_) {}
+                        });
+                    });
+                    // Re-run editors
+                    disableTinyMCE();
+                    disableAtto();
+                } catch (_) {}
+            };
+
+            // Observe DOM changes for dynamically injected editors
+            try {
+                const observer = new MutationObserver(() => reapply());
+                observer.observe(document.body, { childList: true, subtree: true });
+                window.__EM_SPELLCHECK_OBSERVER__ = observer;
+            } catch (e) {}
+
+            // Re-apply on focus and after short delays
+            document.addEventListener('focusin', (e) => {
+                if (e.target && (e.target.matches('textarea, [contenteditable]') || e.target.closest('iframe'))) {
+                    reapply();
+                }
+            }, true);
+
+            [1000, 2000, 4000, 8000].forEach(t => setTimeout(reapply, t));
+        }
     }
 
     // 🤖 Essay content storage for validation rounds
