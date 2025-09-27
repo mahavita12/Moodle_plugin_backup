@@ -166,10 +166,10 @@ function call_openai($questiontext, $options, $mode = 'help') {
 function call_anthropic($questiontext, $options, $mode = 'help') {
     $apikey = get_config('local_questionhelper', 'anthropic_apikey');
     $model = get_config('local_questionhelper', 'anthropic_model');
-    // Normalise model; fall back to a valid Claude Sonnet model if a shorthand like "sonnet-4" is configured
-    if (empty($model)) { $model = 'claude-3-5-sonnet-20241022'; }
-    if (stripos($model, 'sonnet') === 0 || stripos($model, 'sonnet-4') === 0) {
-        $model = 'claude-3-5-sonnet-20241022';
+    // Normalise model; map to official Claude 4 Sonnet model identifier
+    if (empty($model)) { $model = 'claude-sonnet-4-20250514'; }
+    if (stripos($model, 'sonnet-4') === 0 || stripos($model, 'sonnet4') === 0 || stripos($model, 'claude-4') === 0) {
+        $model = 'claude-sonnet-4-20250514';
     }
     if (empty($apikey)) {
         throw new Exception('Anthropic API key not configured');

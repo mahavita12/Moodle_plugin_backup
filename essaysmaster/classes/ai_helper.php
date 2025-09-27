@@ -69,11 +69,11 @@ class ai_helper {
      */
     protected function get_anthropic_model(): string {
         $model = get_config('local_essaysmaster', 'anthropic_model');
-        $model = is_string($model) ? trim(strtolower($model)) : '';
-        // Map friendly aliases to current Anthropic model ids
-        if ($model === '' || in_array($model, ['sonnet-4', 'sonnet4', 'sonnet'], true)) {
-            // Fallback to widely available Sonnet model id
-            return 'claude-3-5-sonnet-latest';
+        $model = is_string($model) ? trim($model) : '';
+        // Map friendly aliases to official Claude 4 Sonnet model identifier
+        if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
+            // Use official Claude 4 Sonnet model from Anthropic docs
+            return 'claude-sonnet-4-20250514';
         }
         return $model;
     }
