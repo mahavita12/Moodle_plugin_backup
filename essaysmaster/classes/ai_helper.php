@@ -6,8 +6,8 @@ defined('MOODLE_INTERNAL') || die();
 require_once($GLOBALS['CFG']->libdir . '/filelib.php');
 
 /**
- * AI Helper for Essays Master - integrates with OpenAI GPT-4o
- * Uses the same API key as quizdashboard plugin
+ * AI Helper for Essays Master - supports Anthropic Sonnet 4 and OpenAI
+ * Uses Essays Master plugin's own configuration (no dependency on other plugins)
  */
 class ai_helper {
 
@@ -16,23 +16,61 @@ class ai_helper {
     private const MAX_RETRY_ATTEMPTS = 2;
 
     /**
-     * Get OpenAI API key from quizdashboard config (reuse same key)
+     * Get current AI provider from Essays Master config.
+     */
+    protected function get_provider(): string {
+        $provider = get_config('local_essaysmaster', 'provider');
+        $provider = is_string($provider) ? strtolower(trim($provider)) : '';
+        return in_array($provider, ['anthropic', 'openai']) ? $provider : 'anthropic';
+    }
+
+    /**
+     * Get OpenAI API key from Essays Master config.
      */
     protected function get_openai_api_key(): string {
-        // Use the same API key as quizdashboard
-        $key = get_config('local_quizdashboard', 'openai_api_key');
-        
+        $key = get_config('local_essaysmaster', 'openai_apikey');
         if (empty($key)) {
-            throw new \moodle_exception('OpenAI API key not configured. Please set it in Quiz Dashboard (/local/quizdashboard/config.php)');
+            throw new \moodle_exception('OpenAI API key not configured. Set it in Essays Master configuration.');
         }
-        
         $key = preg_replace('/\s+/', '', trim((string)$key));
-        
         if (!preg_match('/^sk-[a-zA-Z0-9_-]{20,}$/', $key)) {
-            throw new \moodle_exception('Invalid OpenAI API key format. Please check Quiz Dashboard settings.');
+            throw new \moodle_exception('Invalid OpenAI API key format.');
         }
-
         return $key;
+    }
+
+    /**
+     * Get OpenAI model from Essays Master config.
+     */
+    protected function get_openai_model(): string {
+        $model = get_config('local_essaysmaster', 'openai_model');
+        $model = is_string($model) ? trim($model) : '';
+        return $model !== '' ? $model : 'gpt-4o';
+    }
+
+    /**
+     * Get Anthropic API key from Essays Master config.
+     */
+    protected function get_anthropic_api_key(): string {
+        $key = get_config('local_essaysmaster', 'anthropic_apikey');
+        if (empty($key)) {
+            throw new \moodle_exception('Anthropic API key not configured. Set it in Essays Master configuration.');
+        }
+        $key = preg_replace('/\s+/', '', trim((string)$key));
+        // Anthropic keys typically start with sk-ant- but allow broader formats
+        if (!preg_match('/^(sk|ak|tok)[-a-zA-Z0-9_]{10,}$/', $key)) {
+            // Do not block too strictly; accept as-is if non-empty
+        }
+        return $key;
+    }
+
+    /**
+     * Get Anthropic model from Essays Master config (default: Sonnet 4).
+     */
+    protected function get_anthropic_model(): string {
+        $model = get_config('local_essaysmaster', 'anthropic_model');
+        $model = is_string($model) ? trim($model) : '';
+        return $model !== '' ? $model : 'sonnet-4';
     }
 
     /**
@@ -43,17 +81,29 @@ class ai_helper {
         
         // Get the prompt based on round
         $prompt = $this->get_feedback_prompt($round, $student_text, $question_prompt);
-        
-        $data = [
-            'model' => 'gpt-4o',
-            'messages' => [
-                ['role' => 'system', 'content' => $prompt['system']],
-                ['role' => 'user', 'content' => $prompt['user']]
-            ],
-            'max_completion_tokens' => 1500
-        ];
 
-        $result = $this->make_openai_api_call($data, "feedback_round_$round");
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => $prompt['system'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_tokens' => 1500
+            ];
+            $result = $this->make_anthropic_api_call($data, "feedback_round_$round");
+        } else {
+            $data = [
+                'model' => $this->get_openai_model(),
+                'messages' => [
+                    ['role' => 'system', 'content' => $prompt['system']],
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_completion_tokens' => 1500
+            ];
+            $result = $this->make_openai_api_call($data, "feedback_round_$round");
+        }
         if (!$result['success']) {
             return [
                 'success' => false,
@@ -75,17 +125,29 @@ class ai_helper {
         
         // Get the validation prompt based on round
         $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt);
-        
-        $data = [
-            'model' => 'gpt-4o',
-            'messages' => [
-                ['role' => 'system', 'content' => $prompt['system']],
-                ['role' => 'user', 'content' => $prompt['user']]
-            ],
-            'max_completion_tokens' => 2000  // Increased for rich validation feedback
-        ];
 
-        $result = $this->make_openai_api_call($data, "validation_round_$round");
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => $prompt['system'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_tokens' => 2000
+            ];
+            $result = $this->make_anthropic_api_call($data, "validation_round_$round");
+        } else {
+            $data = [
+                'model' => $this->get_openai_model(),
+                'messages' => [
+                    ['role' => 'system', 'content' => $prompt['system']],
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_completion_tokens' => 2000
+            ];
+            $result = $this->make_openai_api_call($data, "validation_round_$round");
+        }
         if (!$result['success']) {
             return [
                 'success' => false,
@@ -461,6 +523,112 @@ DO NOT use section headers - just list improvements directly. DO NOT use emojis,
                 $last_error = "Exception: " . $e->getMessage();
                 error_log("🚨 Helper: {$operation_name} attempt {$attempts} failed - {$last_error}");
                 
+                if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                    sleep(3 * $attempts);
+                    continue;
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
+    }
+
+    /**
+     * Make robust Anthropic API call.
+     */
+    protected function make_anthropic_api_call($data, $operation_name = 'API call') {
+        $attempts = 0;
+        $last_error = '';
+
+        while ($attempts < self::MAX_RETRY_ATTEMPTS) {
+            $attempts++;
+            error_log("🤖 Helper (Anthropic): Attempting {$operation_name} - attempt {$attempts}/" . self::MAX_RETRY_ATTEMPTS);
+
+            try {
+                $apikey = $this->get_anthropic_api_key();
+
+                $curl = new \curl();
+                $curl->setHeader([
+                    'Content-Type: application/json',
+                    'x-api-key: ' . $apikey,
+                    'anthropic-version: 2023-06-01'
+                ]);
+
+                $curl->setopt([
+                    'CURLOPT_TIMEOUT' => self::API_TOTAL_TIMEOUT,
+                    'CURLOPT_CONNECTTIMEOUT' => self::API_CONNECT_TIMEOUT,
+                    'CURLOPT_NOSIGNAL' => 1,
+                    'CURLOPT_TCP_KEEPALIVE' => 1,
+                    'CURLOPT_TCP_KEEPIDLE' => 120,
+                    'CURLOPT_TCP_KEEPINTVL' => 60
+                ]);
+
+                $response = $curl->post('https://api.anthropic.com/v1/messages', json_encode($data));
+
+                if ($curl->get_errno() !== 0) {
+                    $curl_error = $curl->error;
+                    $last_error = "cURL error: {$curl_error}";
+                    error_log("🚨 Helper (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(2 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => "Request timeout after {$attempts} attempts: {$curl_error}"];
+                }
+
+                $body = json_decode($response, true);
+
+                if (isset($body['error'])) {
+                    $last_error = 'API error: ' . (is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : $body['error']);
+                    error_log("🚨 Helper (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(5 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                // Extract text content from Anthropic response
+                $text = '';
+                if (isset($body['content']) && is_array($body['content'])) {
+                    foreach ($body['content'] as $part) {
+                        if (isset($part['type']) && $part['type'] === 'text' && isset($part['text'])) {
+                            $text .= $part['text'];
+                        }
+                    }
+                }
+
+                if ($text === '' && isset($body['message']['content'])) {
+                    foreach ($body['message']['content'] as $part) {
+                        if (($part['type'] ?? '') === 'text' && isset($part['text'])) {
+                            $text .= $part['text'];
+                        }
+                    }
+                }
+
+                if ($text === '') {
+                    $last_error = 'Invalid Anthropic API response structure';
+                    error_log("🚨 Helper (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(2 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                error_log("✅ Helper (Anthropic): {$operation_name} succeeded on attempt {$attempts}");
+                return ['success' => true, 'response' => $text];
+
+            } catch (\Exception $e) {
+                $last_error = 'Exception: ' . $e->getMessage();
+                error_log("🚨 Helper (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
                 if ($attempts < self::MAX_RETRY_ATTEMPTS) {
                     sleep(3 * $attempts);
                     continue;

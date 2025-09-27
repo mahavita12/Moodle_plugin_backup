@@ -110,8 +110,8 @@ function show_overview() {
 function test_configuration() {
     global $CFG;
     
-    echo '<div class="test-section">';
-    echo '<h2>Configuration Testing</h2>';
+echo '<div class="test-section">';
+echo '<h2>Configuration Testing</h2>';
     
     // Check if debug logging is enabled
     $debug_enabled = $CFG->debug == (E_ALL | E_STRICT);
@@ -119,16 +119,18 @@ function test_configuration() {
         '<span class="success">Enabled</span>' : 
         '<span class="warning">Disabled - Enable for better testing</span>') . '</p>';
     
-    // Check OpenAI API key
-    $api_key = get_config('local_quizdashboard', 'openai_api_key');
-    echo '<p><strong>OpenAI API Key:</strong> ';
-    if (empty($api_key)) {
-        echo '<span class="error">Not configured</span>';
-    } else {
-        $masked_key = substr($api_key, 0, 7) . '...' . substr($api_key, -4);
-        echo "<span class=\"success\">Configured ($masked_key)</span>";
-    }
-    echo '</p>';
+    // Essays Master provider and API keys
+    $provider = get_config('local_essaysmaster', 'provider') ?: 'anthropic';
+    $openai_key = get_config('local_essaysmaster', 'openai_apikey');
+    $anthropic_key = get_config('local_essaysmaster', 'anthropic_apikey');
+    $openai_model = get_config('local_essaysmaster', 'openai_model') ?: 'gpt-4o';
+    $anthropic_model = get_config('local_essaysmaster', 'anthropic_model') ?: 'sonnet-4';
+
+    echo '<p><strong>Provider:</strong> ' . htmlspecialchars($provider) . '</p>';
+    echo '<p><strong>Anthropic Key:</strong> ' . ($anthropic_key ? '<span class="success">Configured</span>' : '<span class="warning">Not configured</span>') . '</p>';
+    echo '<p><strong>Anthropic Model:</strong> ' . htmlspecialchars($anthropic_model) . '</p>';
+    echo '<p><strong>OpenAI Key:</strong> ' . ($openai_key ? '<span class="success">Configured</span>' : '<span class="warning">Not configured</span>') . '</p>';
+    echo '<p><strong>OpenAI Model:</strong> ' . htmlspecialchars($openai_model) . '</p>';
     
     // Check if Quiz Dashboard is available
     $quizdashboard_available = file_exists($CFG->dirroot . '/local/quizdashboard/classes/essay_grader.php');

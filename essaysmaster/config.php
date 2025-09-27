@@ -24,6 +24,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && confirm_sesskey()) {
     set_config('short_sentence_threshold', $_POST['short_sentence_threshold'] ?? 5, 'local_essaysmaster');
     set_config('repetitive_word_threshold', $_POST['repetitive_word_threshold'] ?? 3, 'local_essaysmaster');
 
+    // Provider + API settings
+    $provider = isset($_POST['provider']) ? trim((string)$_POST['provider']) : 'anthropic';
+    if (!in_array($provider, ['anthropic', 'openai'])) { $provider = 'anthropic'; }
+    set_config('provider', $provider, 'local_essaysmaster');
+
+    // OpenAI settings
+    if (isset($_POST['openai_apikey']) && $_POST['openai_apikey'] !== '') {
+        set_config('openai_apikey', trim((string)$_POST['openai_apikey']), 'local_essaysmaster');
+    }
+    if (isset($_POST['openai_model'])) {
+        set_config('openai_model', trim((string)$_POST['openai_model']), 'local_essaysmaster');
+    }
+
+    // Anthropic settings
+    if (isset($_POST['anthropic_apikey']) && $_POST['anthropic_apikey'] !== '') {
+        set_config('anthropic_apikey', trim((string)$_POST['anthropic_apikey']), 'local_essaysmaster');
+    }
+    if (isset($_POST['anthropic_model'])) {
+        set_config('anthropic_model', trim((string)$_POST['anthropic_model']), 'local_essaysmaster');
+    }
+
     // Save messages
     set_config('msg_short_sentence', $_POST['msg_short_sentence'] ?? '', 'local_essaysmaster');
     set_config('msg_repetitive_word', $_POST['msg_repetitive_word'] ?? '', 'local_essaysmaster');
@@ -42,6 +63,12 @@ $enabled = get_config('local_essaysmaster', 'enabled') ?? 1;
 $min_essay_length = get_config('local_essaysmaster', 'min_essay_length') ?? 50;
 $short_sentence_threshold = get_config('local_essaysmaster', 'short_sentence_threshold') ?? 5;
 $repetitive_word_threshold = get_config('local_essaysmaster', 'repetitive_word_threshold') ?? 3;
+
+$provider = get_config('local_essaysmaster', 'provider') ?? 'anthropic';
+$openai_apikey = get_config('local_essaysmaster', 'openai_apikey') ?? '';
+$openai_model = get_config('local_essaysmaster', 'openai_model') ?? 'gpt-4o';
+$anthropic_apikey = get_config('local_essaysmaster', 'anthropic_apikey') ?? '';
+$anthropic_model = get_config('local_essaysmaster', 'anthropic_model') ?? 'sonnet-4';
 
 $msg_short_sentence = get_config('local_essaysmaster', 'msg_short_sentence') ?? 'This sentence is very short. Consider expanding it with more detail.';
 $msg_repetitive_word = get_config('local_essaysmaster', 'msg_repetitive_word') ?? 'The word \'{word}\' appears {count} times. Consider using synonyms for variety.';
@@ -100,6 +127,45 @@ echo $OUTPUT->heading('Essays Master Configuration');
                 <label for="repetitive_word_threshold">Repetitive Word Threshold</label>
                 <input type="number" name="repetitive_word_threshold" id="repetitive_word_threshold" value="<?php echo $repetitive_word_threshold; ?>" min="1">
                 <small>Words appearing more than this many times will be flagged</small>
+            </div>
+        </div>
+
+        <div class="config-section">
+            <h3>AI Provider Settings</h3>
+
+            <div class="form-group">
+                <label for="provider">Provider</label>
+                <select name="provider" id="provider">
+                    <option value="anthropic" <?php echo ($provider === 'anthropic') ? 'selected' : ''; ?>>Anthropic</option>
+                    <option value="openai" <?php echo ($provider === 'openai') ? 'selected' : ''; ?>>OpenAI</option>
+                </select>
+                <small>Select Anthropic (Sonnet 4) by default while keeping OpenAI available.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="anthropic_apikey">Anthropic API Key</label>
+                <input type="password" name="anthropic_apikey" id="anthropic_apikey" value="" placeholder="Leave blank to keep existing">
+                <small>Stored securely in config. Current status: <?php echo $anthropic_apikey ? 'Configured' : 'Not configured'; ?></small>
+            </div>
+
+            <div class="form-group">
+                <label for="anthropic_model">Anthropic Model</label>
+                <input type="text" name="anthropic_model" id="anthropic_model" value="<?php echo htmlspecialchars($anthropic_model); ?>">
+                <small>Default: sonnet-4</small>
+            </div>
+
+            <hr>
+
+            <div class="form-group">
+                <label for="openai_apikey">OpenAI API Key</label>
+                <input type="password" name="openai_apikey" id="openai_apikey" value="" placeholder="Leave blank to keep existing">
+                <small>Current status: <?php echo $openai_apikey ? 'Configured' : 'Not configured'; ?></small>
+            </div>
+
+            <div class="form-group">
+                <label for="openai_model">OpenAI Model</label>
+                <input type="text" name="openai_model" id="openai_model" value="<?php echo htmlspecialchars($openai_model); ?>">
+                <small>Default: gpt-4o</small>
             </div>
         </div>
 
