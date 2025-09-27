@@ -99,7 +99,7 @@ echo $OUTPUT->heading('Essays Master Configuration');
 
 <div class="config-form">
     <form method="post" action="">
-        <?php echo sesskey_hidden(); ?>
+        <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>">
 
         <div class="config-section">
             <h3>General Settings</h3>
