@@ -14,14 +14,31 @@ define([], function () {
     function findSubmitButton() {
         // Common id
         let btn = document.getElementById('mod_quiz-next-nav');
-        if (btn) return btn;
+        if (btn) {
+            console.log('Essays Master: Found submit button by ID:', btn);
+            // Ensure button is visible and clickable
+            btn.style.display = '';
+            btn.style.visibility = 'visible';
+            btn.style.pointerEvents = 'auto';
+            return btn;
+        }
 
         // Fallbacks: look for submit inputs that mention "finish" or "submit"
         const inputs = document.querySelectorAll('input[type="submit"], input[type="button"], button');
+        console.log('Essays Master: Searching through', inputs.length, 'potential buttons');
         for (const el of inputs) {
             const v = (el.value || el.textContent || '').toLowerCase();
-            if (v.includes('finish') || v.includes('submit')) return el;
+            console.log('Essays Master: Checking button:', el, 'value/text:', v);
+            if (v.includes('finish') || v.includes('submit')) {
+                console.log('Essays Master: Found submit button by content:', el);
+                // Ensure button is visible and clickable
+                el.style.display = '';
+                el.style.visibility = 'visible';
+                el.style.pointerEvents = 'auto';
+                return el;
+            }
         }
+        console.log('Essays Master: No submit button found');
         return null;
     }
 
@@ -724,13 +741,9 @@ define([], function () {
 
             /* FIXED: Non-selectable rendered feedback - only disable selection, not pointer events */
             #essays-master-feedback,
-            #essays-master-feedback *,
             #essays-master-feedback .em-nonselectable,
-            #essays-master-feedback .em-nonselectable *,
             .ai-feedback-content,
-            .ai-feedback-content *,
-            .improvements-section,
-            .improvements-section * {
+            .improvements-section {
                 -webkit-user-select: none !important;
                 -moz-user-select: none !important;
                 -ms-user-select: none !important;
@@ -738,6 +751,35 @@ define([], function () {
                 -webkit-touch-callout: none !important;
                 -webkit-tap-highlight-color: transparent !important;
                 /* REMOVED: pointer-events: none !important; - This was blocking button clicks */
+            }
+            
+            /* Apply to most child elements but EXCLUDE buttons, inputs, and interactive elements */
+            #essays-master-feedback *:not(button):not(input):not(select):not(textarea):not(a):not([role="button"]),
+            #essays-master-feedback .em-nonselectable *:not(button):not(input):not(select):not(textarea):not(a):not([role="button"]),
+            .ai-feedback-content *:not(button):not(input):not(select):not(textarea):not(a):not([role="button"]),
+            .improvements-section *:not(button):not(input):not(select):not(textarea):not(a):not([role="button"]) {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+                -webkit-touch-callout: none !important;
+                -webkit-tap-highlight-color: transparent !important;
+            }
+            
+            /* Explicitly ensure buttons and interactive elements work */
+            #essays-master-feedback button,
+            #essays-master-feedback input,
+            #essays-master-feedback select,
+            #essays-master-feedback textarea,
+            #essays-master-feedback a,
+            #essays-master-feedback [role="button"],
+            button[id*="quiz"],
+            input[type="submit"],
+            input[type="button"] {
+                pointer-events: auto !important;
+                -webkit-user-select: auto !important;
+                -moz-user-select: auto !important;
+                user-select: auto !important;
             }
             
             /* Keep feedback panel interactive for scrolling and button clicks */
