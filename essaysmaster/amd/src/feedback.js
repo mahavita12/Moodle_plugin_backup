@@ -59,60 +59,180 @@ define([], function () {
         });
     }
 
-    // Ensure spellcheck and auto-features are disabled on essay textareas and editors
+    // ENHANCED: Comprehensive spellcheck and auto-features disabling
     function disableSpellcheckEverywhere() {
-        // Raw textareas
-        const textareas = document.querySelectorAll('textarea, textarea[name*="answer"], #essay-text');
-        textareas.forEach(ta => {
+        console.log('🚫 Essays Master: Disabling spellcheck and auto-features...');
+        
+        // 1. Raw textareas - Enhanced targeting
+        const textareaSelectors = [
+            'textarea',
+            'textarea[name*="answer"]', 
+            'textarea[name*="response"]',
+            'textarea[name*="essay"]',
+            '#essay-text',
+            '.que.essay textarea',
+            '.formulation textarea',
+            'div[data-fieldtype="textarea"] textarea'
+        ];
+        
+        textareaSelectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(ta => {
+                try {
+                    // Core spellcheck attributes
+                    ta.setAttribute('spellcheck', 'false');
+                    ta.setAttribute('data-spellcheck', 'false');
+                    ta.spellcheck = false;
+                    
+                    // Autocomplete/autocorrect
+                    ta.setAttribute('autocomplete', 'off');
+                    ta.setAttribute('autocorrect', 'off');
+                    ta.setAttribute('autocapitalize', 'off');
+                    ta.setAttribute('data-autocorrect', 'off');
+                    ta.setAttribute('data-autocomplete', 'off');
+                    
+                    // Grammar checkers
+                    ta.setAttribute('data-gramm', 'false');
+                    ta.setAttribute('data-gramm_editor', 'false');
+                    ta.setAttribute('data-enable-grammarly', 'false');
+                    
+                    // Browser-specific
+                    ta.style.caretColor = '#000';
+                    ta.style.webkitUserModify = 'read-write-plaintext-only';
+                    
+                    console.log('✅ Disabled spellcheck on textarea:', ta.name || ta.id || 'unnamed');
+                } catch (e) {
+                    console.warn('⚠️ Failed to disable spellcheck on textarea:', e);
+                }
+            });
+        });
+
+        // 2. TinyMCE - Enhanced with multiple approaches
+        const disableTinyMCE = () => {
+            if (window.tinyMCE || window.tinymce) {
+                const tmce = window.tinyMCE || window.tinymce;
+                try {
+                    // Method 1: Existing editors
+                    tmce.editors?.forEach?.(ed => {
+                        if (!ed) return;
+                        
+                        try {
+                            // Disable spellcheck on editor body
+                            if (typeof ed.getBody === 'function') {
+                                const body = ed.getBody();
+                                if (body) {
+                                    body.setAttribute('spellcheck', 'false');
+                                    body.setAttribute('data-gramm', 'false');
+                                    body.setAttribute('data-enable-grammarly', 'false');
+                                    body.spellcheck = false;
+                                    console.log('✅ Disabled spellcheck on TinyMCE editor:', ed.id);
+                                }
+                            }
+                            
+                            // Disable spellcheck plugin
+                            if (ed.plugins && ed.plugins.spellchecker) {
+                                ed.plugins.spellchecker.disable?.();
+                            }
+                            
+                            // Set editor settings
+                            if (ed.settings) {
+                                ed.settings.browser_spellcheck = false;
+                                ed.settings.gecko_spellcheck = false;
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Failed to disable spellcheck on TinyMCE editor:', e);
+                        }
+                    });
+                    
+                    // Method 2: Global TinyMCE settings for future editors
+                    if (tmce.settings) {
+                        tmce.settings.browser_spellcheck = false;
+                        tmce.settings.gecko_spellcheck = false;
+                    }
+                    
+                } catch (e) {
+                    console.warn('⚠️ TinyMCE spellcheck disable failed:', e);
+                }
+            }
+        };
+        
+        disableTinyMCE();
+        // Re-run after delay for dynamically loaded editors
+        setTimeout(disableTinyMCE, 1000);
+        setTimeout(disableTinyMCE, 3000);
+
+        // 3. Atto editor - Enhanced
+        const disableAtto = () => {
             try {
-                ta.setAttribute('spellcheck', 'false');
-                ta.setAttribute('data-spellcheck', 'false');
-                ta.setAttribute('autocomplete', 'off');
-                ta.setAttribute('autocorrect', 'off');
-                ta.setAttribute('data-autocorrect', 'off');
-                ta.setAttribute('data-autocomplete', 'off');
-                ta.setAttribute('data-gramm', 'false');
-                ta.style.caretColor = '#000';
+                const attoSelectors = [
+                    'iframe[id*="atto"]',
+                    '.editor_atto iframe',
+                    'div[data-fieldtype="editor"] iframe'
+                ];
+                
+                attoSelectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(ifr => {
+                        try {
+                            const doc = ifr.contentDocument || ifr.contentWindow?.document;
+                            const body = doc?.body;
+                            if (body) {
+                                body.setAttribute('spellcheck', 'false');
+                                body.setAttribute('data-gramm', 'false');
+                                body.setAttribute('data-enable-grammarly', 'false');
+                                body.spellcheck = false;
+                                console.log('✅ Disabled spellcheck on Atto editor iframe');
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Failed to access Atto iframe:', e);
+                        }
+                    });
+                });
+            } catch (e) {
+                console.warn('⚠️ Atto spellcheck disable failed:', e);
+            }
+        };
+        
+        disableAtto();
+        setTimeout(disableAtto, 1000);
+
+        // 4. ContentEditable elements
+        document.querySelectorAll('[contenteditable="true"], [contenteditable=""]').forEach(el => {
+            try {
+                el.setAttribute('spellcheck', 'false');
+                el.setAttribute('data-gramm', 'false');
+                el.spellcheck = false;
+                console.log('✅ Disabled spellcheck on contenteditable element');
             } catch (e) {}
         });
 
-        // TinyMCE (Moodle default in many setups)
-        if (window.tinyMCE || window.tinymce) {
-            const tmce = window.tinyMCE || window.tinymce;
-            try {
-                tmce.editors?.forEach?.(ed => {
-                    if (!ed) return;
-                    if (typeof ed.getBody === 'function') {
-                        const body = ed.getBody();
-                        if (body) {
-                            body.setAttribute('spellcheck', 'false');
-                            body.setAttribute('contenteditable', 'true');
-                            body.style.webkitUserModify = 'read-write-plaintext-only';
-                        }
-                    }
-                    // Disable built-in spellcheck plugin if present
-                    if (ed.plugins && ed.plugins.spellchecker) {
-                        try { ed.plugins.spellchecker?.disable?.(); } catch (_) {}
-                    }
-                });
-            } catch (_) {}
+        // 5. Add global CSS to override any remaining spellcheck
+        if (!document.getElementById('essays-master-spellcheck-override')) {
+            const style = document.createElement('style');
+            style.id = 'essays-master-spellcheck-override';
+            style.textContent = `
+                /* Force disable spellcheck on all form elements */
+                textarea, input[type="text"], [contenteditable] {
+                    -webkit-spellcheck: false !important;
+                    -moz-spellcheck: false !important;
+                    spellcheck: false !important;
+                }
+                
+                /* Hide browser spellcheck underlines */
+                textarea::-webkit-input-placeholder,
+                input::-webkit-input-placeholder,
+                [contenteditable]::-webkit-input-placeholder {
+                    -webkit-text-decoration-line: none !important;
+                }
+                
+                /* Disable Grammarly and other extensions */
+                textarea[data-gramm="false"],
+                [contenteditable][data-gramm="false"] {
+                    background-image: none !important;
+                }
+            `;
+            document.head.appendChild(style);
         }
-
-        // Atto editor
-        try {
-            const attoIframes = document.querySelectorAll('iframe[id*="atto"]');
-            attoIframes.forEach(ifr => {
-                try {
-                    const doc = ifr.contentDocument || ifr.contentWindow?.document;
-                    const body = doc?.body;
-                    if (body) {
-                        body.setAttribute('spellcheck', 'false');
-                        body.setAttribute('data-gramm', 'false');
-                        body.setAttribute('contenteditable', 'true');
-                    }
-                } catch (e) {}
-            });
-        } catch (_) {}
+        
+        console.log('✅ Essays Master: Spellcheck disabling complete');
     }
 
     // 🤖 Essay content storage for validation rounds
@@ -602,50 +722,182 @@ define([], function () {
                 font-family: Arial, sans-serif;
             }
 
-            /* Non-selectable rendered feedback */
+            /* ENHANCED: Non-selectable rendered feedback */
+            #essays-master-feedback,
+            #essays-master-feedback *,
             #essays-master-feedback .em-nonselectable,
-            #essays-master-feedback .em-nonselectable * {
+            #essays-master-feedback .em-nonselectable *,
+            .ai-feedback-content,
+            .ai-feedback-content *,
+            .improvements-section,
+            .improvements-section * {
                 -webkit-user-select: none !important;
+                -moz-user-select: none !important;
                 -ms-user-select: none !important;
                 user-select: none !important;
+                -webkit-touch-callout: none !important;
+                -webkit-tap-highlight-color: transparent !important;
+                pointer-events: none !important;
+            }
+            
+            /* Re-enable pointer events for scrolling but keep selection disabled */
+            #essays-master-feedback {
+                pointer-events: auto !important;
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                user-select: none !important;
+            }
+            
+            /* Prevent text highlighting with pseudo-elements */
+            #essays-master-feedback::selection,
+            #essays-master-feedback *::selection {
+                background: transparent !important;
+            }
+            
+            #essays-master-feedback::-moz-selection,
+            #essays-master-feedback *::-moz-selection {
+                background: transparent !important;
+            }
+            
+            /* Hide cursor when hovering over feedback content */
+            .ai-feedback-content,
+            .improvements-section {
+                cursor: default !important;
+            }
+            
+            /* Prevent drag operations */
+            #essays-master-feedback img,
+            #essays-master-feedback canvas {
+                -webkit-user-drag: none !important;
+                -khtml-user-drag: none !important;
+                -moz-user-drag: none !important;
+                -o-user-drag: none !important;
+                user-drag: none !important;
+                pointer-events: none !important;
             }
         `;
         document.head.appendChild(style);
     }
 
-    // Install capture-phase guards for copy/context menu within panel
+    // ENHANCED: Install comprehensive capture-phase guards for copy/context menu within panel
     function installCaptureGuards(panel) {
         if (!panel) return;
         if (window.__EM_CAPTURE_GUARDS__) return; // one-time per page
         window.__EM_CAPTURE_GUARDS__ = true;
 
+        console.log('🛡️ Essays Master: Installing enhanced copy protection...');
+
         const isInsidePanel = (target) => !!panel && panel.contains(target);
 
         const blockIfInside = (e) => {
             if (isInsidePanel(e.target)) {
+                console.log('🚫 Blocked action:', e.type, 'on', e.target.tagName);
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                return false;
             }
         };
 
-        // Capture-phase listeners on document
-        ['copy','cut','paste','contextmenu','dragstart','selectstart'].forEach(evt => {
+        // Enhanced event blocking - more comprehensive list
+        const eventsToBlock = [
+            'copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart',
+            'select', 'mousedown', 'mouseup', 'auxclick', 'keydown', 'keyup',
+            'touchstart', 'touchend', 'pointerdown', 'pointerup'
+        ];
+
+        // Capture-phase listeners on document (highest priority)
+        eventsToBlock.forEach(evt => {
             document.addEventListener(evt, blockIfInside, true);
         });
 
-        // Mouse button guards (right/middle)
-        const mouseGuard = (e) => {
+        // Keyboard shortcuts blocking
+        const keyboardGuard = (e) => {
             if (!isInsidePanel(e.target)) return;
-            if (e.button === 1 || e.button === 2) {
+            
+            // Block common copy/paste shortcuts
+            const blockedKeys = [
+                'KeyC', 'KeyV', 'KeyX', 'KeyA', 'KeyS', 'KeyP', 'F12'
+            ];
+            
+            const isModified = e.ctrlKey || e.metaKey || e.altKey;
+            
+            if (isModified && blockedKeys.includes(e.code)) {
+                console.log('🚫 Blocked keyboard shortcut:', e.code, 'with modifier');
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
+                return false;
+            }
+            
+            // Block F12 (dev tools)
+            if (e.code === 'F12') {
+                console.log('🚫 Blocked F12 (dev tools)');
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
             }
         };
+        
+        document.addEventListener('keydown', keyboardGuard, true);
+        document.addEventListener('keyup', keyboardGuard, true);
+
+        // Mouse button guards (enhanced)
+        const mouseGuard = (e) => {
+            if (!isInsidePanel(e.target)) return;
+            
+            // Block right-click (button 2) and middle-click (button 1)
+            if (e.button === 1 || e.button === 2) {
+                console.log('🚫 Blocked mouse button:', e.button);
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return false;
+            }
+        };
+        
         document.addEventListener('mousedown', mouseGuard, true);
         document.addEventListener('mouseup', mouseGuard, true);
         document.addEventListener('auxclick', mouseGuard, true);
+        document.addEventListener('contextmenu', mouseGuard, true);
+
+        // Touch event blocking for mobile
+        const touchGuard = (e) => {
+            if (!isInsidePanel(e.target)) return;
+            
+            // Block long press (context menu on mobile)
+            if (e.touches && e.touches.length > 1) {
+                console.log('🚫 Blocked multi-touch gesture');
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        };
+        
+        document.addEventListener('touchstart', touchGuard, true);
+        document.addEventListener('touchend', touchGuard, true);
+
+        // Selection blocking
+        const selectionGuard = () => {
+            if (window.getSelection) {
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    if (range && panel.contains(range.commonAncestorContainer)) {
+                        console.log('🚫 Cleared text selection in feedback panel');
+                        selection.removeAllRanges();
+                    }
+                }
+            }
+        };
+        
+        // Clear selection periodically
+        setInterval(selectionGuard, 500);
+        
+        // Clear selection on any interaction
+        document.addEventListener('selectionchange', selectionGuard, true);
+
+        console.log('✅ Essays Master: Enhanced copy protection installed');
     }
 
     // Render feedback inner content as a non-selectable canvas
