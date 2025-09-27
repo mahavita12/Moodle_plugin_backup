@@ -14,9 +14,15 @@ $PAGE->set_pagelayout('admin');
 
 // Handle form submission
 if (data_submitted() && confirm_sesskey()) {
+    $provider = optional_param('provider', 'anthropic', PARAM_TEXT);
     $openai_key = optional_param('openai_api_key', '', PARAM_TEXT);
+    $anthropic_key = optional_param('anthropic_apikey', '', PARAM_TEXT);
+    $anthropic_model = optional_param('anthropic_model', 'sonnet-4', PARAM_TEXT);
     $google_folder_id = optional_param('google_folder_id', '', PARAM_TEXT);
     $service_account_json = optional_param('service_account_json', '', PARAM_RAW);
+    
+    // Save provider
+    set_config('provider', $provider, 'local_quizdashboard');
     
 // Save OpenAI API key with debugging
     if (!empty($openai_key)) {
@@ -48,6 +54,18 @@ if (data_submitted() && confirm_sesskey()) {
         }
     }
     
+    // Save Anthropic API key
+    if (!empty($anthropic_key)) {
+        set_config('anthropic_apikey', trim($anthropic_key), 'local_quizdashboard');
+        \core\notification::success('Anthropic API key saved successfully.');
+    }
+    
+    // Save Anthropic model
+    if (!empty($anthropic_model)) {
+        set_config('anthropic_model', trim($anthropic_model), 'local_quizdashboard');
+        \core\notification::success('Anthropic model saved successfully.');
+    }
+    
     // Save Google Drive folder ID
     if (!empty($google_folder_id)) {
         set_config('google_drive_folder_id', trim($google_folder_id), 'local_quizdashboard');
@@ -74,7 +92,10 @@ if (data_submitted() && confirm_sesskey()) {
 }
 
 // Get current settings
+$current_provider = get_config('local_quizdashboard', 'provider') ?: 'anthropic';
 $current_openai_key = get_config('local_quizdashboard', 'openai_api_key');
+$current_anthropic_key = get_config('local_quizdashboard', 'anthropic_apikey');
+$current_anthropic_model = get_config('local_quizdashboard', 'anthropic_model') ?: 'sonnet-4';
 $current_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
 
 echo $OUTPUT->header();
@@ -87,6 +108,42 @@ echo $OUTPUT->header();
     <div class="card-body">
         <form method="post" action="">
             <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>">
+            
+            <div class="form-group row">
+                <label for="provider" class="col-sm-3 col-form-label">AI Provider:</label>
+                <div class="col-sm-9">
+                    <select class="form-control" id="provider" name="provider">
+                        <option value="anthropic" <?php echo ($current_provider === 'anthropic') ? 'selected' : ''; ?>>Anthropic (Claude)</option>
+                        <option value="openai" <?php echo ($current_provider === 'openai') ? 'selected' : ''; ?>>OpenAI (GPT)</option>
+                    </select>
+                    <small class="form-text text-muted">Choose AI provider for essay grading</small>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label for="anthropic_apikey" class="col-sm-3 col-form-label">Anthropic API Key:</label>
+                <div class="col-sm-9">
+                    <input type="password" class="form-control" id="anthropic_apikey" name="anthropic_apikey" 
+                        placeholder="<?php echo $current_anthropic_key ? 'Enter new key to replace existing one' : 'Enter your Anthropic API key'; ?>"
+                        value="">
+                    <small class="form-text text-muted">
+                        <?php if ($current_anthropic_key): ?>
+                            Status: ✅ Anthropic API key is configured. Leave blank to keep current key.
+                        <?php else: ?>
+                            Your Anthropic API key for Claude access
+                        <?php endif; ?>
+                    </small>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label for="anthropic_model" class="col-sm-3 col-form-label">Anthropic Model:</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="anthropic_model" name="anthropic_model" 
+                           value="<?php echo htmlspecialchars($current_anthropic_model); ?>">
+                    <small class="form-text text-muted">Default: sonnet-4 (maps to Claude 4 Sonnet)</small>
+                </div>
+            </div>
             
             <div class="form-group row">
                 <label for="openai_api_key" class="col-sm-3 col-form-label">OpenAI API Key:</label>

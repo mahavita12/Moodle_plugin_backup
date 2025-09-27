@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 namespace local_quizdashboard;
 
 defined('MOODLE_INTERNAL') || die();
@@ -56,7 +56,7 @@ Improved: [corrected text]
 **OUTPUT STRUCTURE**: You must follow this exact HTML format:
 
 <h2 style=\"font-size:18px;\">1. Content and Ideas (25%)</h2>
-<p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
+<p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/25 ? [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -93,7 +93,7 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 </ul>
 
 <h2 style=\"font-size:18px;\">5. Mechanics (10%)</h2>
-<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/10 → [NEW_SCORE]/10</p>
+<p><strong>Score (Previous ? New):</strong> [PREVIOUS_SCORE]/10 ? [NEW_SCORE]/10</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -132,24 +132,30 @@ Remember: When showing original and improved examples in Language Use and Mechan
                        "Previous Feedback Summary:\n" . $key_feedback_points .
                        "\n\nCurrent ({$ordinal}) Essay:\n" . $current_essay_data['answer_text'];
 
-        $data = [
-            'model' => 'gpt-4o',
-            'messages' => [
-                ['role' => 'system', 'content' => $system_prompt],
-                ['role' => 'user', 'content' => $user_content]
-            ],
-            'max_completion_tokens' => 3500
-        ];
-
-        // TIMEOUT FIX: Use new robust API call method inherited from parent
-        $result = $this->make_openai_api_call($data, 'generate_comparative_feedback');
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
+                ],
+                'max_tokens' => 3500
+            ];
+            $result = $this->make_anthropic_api_call($data, 'generate_comparative_feedback');
+        } else {
+            $data = [
+                'model' => 'gpt-4o',
+                'messages' => [
+                    ['role' => 'system', 'content' => $system_prompt],
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'max_completion_tokens' => 3500
+            ];
+            $result = $this->make_openai_api_call($data, 'generate_comparative_feedback');
+        }
         if (!$result['success']) {
             return $result;
-    }
-        return [
-            'success' => true,
-            'data' => ['feedback_html' => $result['response']]
-        ];
     }
         return [
             'success' => true,
@@ -452,6 +458,422 @@ Remember: When showing original and improved examples in Language Use and Mechan
         } catch (Exception $e) {
             error_log("Error uploading resubmission to Google Drive: " . $e->getMessage());
             return null;
+        }
     }
+
+    /**
+     * Main resubmission processing function
+     */
+    public function process_resubmission($attempt_id, $level = 'general') {
+        global $DB;
+
+        $original_time_limit = ini_get('max_execution_time');
+        ini_set('max_execution_time', 900);
+        error_log("DEBUG: [Resubmission] Increased PHP max_execution_time from {$original_time_limit} to 900 seconds");
+
+        try {
+            error_log("DEBUG: [Resubmission] Start processing attempt {$attempt_id}");
+
+            // 1) Validate this is a resubmission
+            $submission_number = $this->get_submission_number($attempt_id);
+            if ($submission_number < 2) {
+                return ['success' => false, 'message' => 'This is not a resubmission (submission #1).'];
+            }
+
+            // 2) Find previous submission and its grading
+            $previous_attempt_id = $this->find_immediate_previous_submission($attempt_id);
+            if (!$previous_attempt_id) {
+                return ['success' => false, 'message' => 'Cannot find previous submission.'];
+            }
+            $previous_grading = $this->get_grading_result($previous_attempt_id);
+            if (!$previous_grading || empty($previous_grading->feedback_html)) {
+                return ['success' => false, 'message' => 'Previous submission must be graded first.'];
+            }
+
+            // 3) Current essay data
+            $current_essay_data = $this->extract_essay_data($attempt_id);
+            if (!$current_essay_data) {
+                return ['success' => false, 'message' => 'Could not extract current essay data.'];
+            }
+
+            // 4) Previous scores for context
+            $previous_scores = $this->extract_previous_scores($previous_grading);
+
+            // 5) AI likelihood
+            $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
+
+            // 6) Copy detection vs previous revision
+            $similarity_check = $this->detect_revision_copying($current_essay_data, $previous_grading);
+            if ($similarity_check['is_copy']) {
+                return $this->handle_copy_penalty(
+                    $attempt_id,
+                    $previous_attempt_id,
+                    $previous_scores,
+                    $submission_number,
+                    $similarity_check['percentage']
+                );
+            }
+
+            // 7) Comparative feedback
+            $feedback_result = $this->generate_comparative_feedback(
+                $current_essay_data,
+                $previous_grading,
+                $previous_scores,
+                $level,
+                $submission_number
+            );
+            if (!$feedback_result['success']) {
+                return $feedback_result;
+            }
+
+            // Add strategic markers to improve later parsing
+            if (!empty($feedback_result['data']['feedback_html'])) {
+                $feedback_result['data']['feedback_html'] = $this->add_strategic_markers_to_feedback($feedback_result['data']['feedback_html']);
+            }
+
+            // 8) Revision of the current essay
+            $revision_html = $this->generate_essay_revision($current_essay_data['answer_text'], $level, $feedback_result['data']);
+
+            // 9) Build complete HTML (resubmission-flavoured)
+            $complete_html = $this->build_resubmission_feedback_html($current_essay_data, $feedback_result['data'], $revision_html, $previous_grading, $submission_number);
+
+            // 10) Extract current (NEW) subcategory scores from comparative feedback
+            $current_scores = $this->extract_resubmission_scores($feedback_result['data']['feedback_html'] ?? '');
+            $feedback_result['data']['scores'] = $current_scores;
+
+            // 11) Save grading record including scores and AI likelihood
+            $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '');
+
+            // 12) Save resubmission tracking
+            $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, false, null);
+
+            // 13) Save grade to Moodle
+            $this->save_grade_to_moodle($current_essay_data, $feedback_result['data']);
+
+            // 14) Optional Drive upload with submission suffix
+            $drive_link = null;
+            if ($this->is_google_drive_configured()) {
+                $drive_link = $this->upload_to_google_drive($complete_html, $current_essay_data, $submission_number);
+            }
+
+            return [
+                'success' => true,
+                'message' => "Resubmission #{$submission_number} graded successfully.",
+                'submission_number' => $submission_number,
+                'ai_likelihood' => $ai_likelihood,
+                'drive_link' => $drive_link
+            ];
+
+        } catch (\Exception $e) {
+            error_log('DEBUG: Exception in process_resubmission: ' . $e->getMessage());
+            error_log('DEBUG: Exception file: ' . $e->getFile() . ' line ' . $e->getLine());
+            return ['success' => false, 'message' => 'A critical error occurred: ' . $e->getMessage()];
+        } finally {
+            ini_set('max_execution_time', $original_time_limit);
+            error_log("DEBUG: [Resubmission] Restored PHP max_execution_time to {$original_time_limit} seconds");
+        }
     }
+
+    /**
+     * Get submission number in sequence for this user/quiz
+     */
+    private function get_submission_number($attempt_id) {
+        global $DB;
+
+        $current = $DB->get_record('quiz_attempts', ['id' => $attempt_id]);
+        if (!$current) return 1;
+
+        $count = $DB->count_records_select(
+            'quiz_attempts',
+            'userid = ? AND quiz = ? AND timestart <= ? AND state IN (?, ?)',
+            [$current->userid, $current->quiz, $current->timestart, 'finished', 'inprogress']
+        );
+
+        return max(1, (int)$count);
     }
+
+    /**
+     * Find the immediate previous submission (same user/quiz)
+     */
+    private function find_immediate_previous_submission($attempt_id) {
+        global $DB;
+
+        $current = $DB->get_record('quiz_attempts', ['id' => $attempt_id]);
+        if (!$current) return null;
+
+        $previous = $DB->get_record_sql(
+            "SELECT id FROM {quiz_attempts}
+             WHERE userid = ? AND quiz = ? AND timestart < ?
+             AND state IN ('finished','inprogress')
+             ORDER BY timestart DESC",
+            [$current->userid, $current->quiz, $current->timestart]
+        );
+
+        return $previous ? $previous->id : null;
+    }
+
+    /**
+     * Extract structured scores from previous feedback HTML (for context)
+     */
+    private function extract_previous_scores($previous_grading_record) {
+        $feedback_html = $previous_grading_record->feedback_html ?? '';
+        $scores = [];
+
+        // 1) Prefer DB-stored scores if present
+        $db_scores = [
+            'content_and_ideas' => ['value' => $previous_grading_record->score_content_ideas ?? null, 'max' => 25],
+            'structure_and_organization' => ['value' => $previous_grading_record->score_structure_organization ?? null, 'max' => 25],
+            'language_use' => ['value' => $previous_grading_record->score_language_use ?? null, 'max' => 20],
+            'creativity_and_originality' => ['value' => $previous_grading_record->score_creativity_originality ?? null, 'max' => 20],
+            'mechanics' => ['value' => $previous_grading_record->score_mechanics ?? null, 'max' => 10],
+        ];
+        $has_any_db = false;
+        foreach ($db_scores as $key => $info) {
+            if ($info['value'] !== null && $info['value'] !== '') {
+                $scores[$key] = ['score' => (int)$info['value'], 'max' => $info['max']];
+                $has_any_db = true;
+            }
+        }
+        if ($has_any_db) {
+            // Compute final_score from parts if available
+            $sum = 0; $count = 0;
+            foreach ($db_scores as $key => $info) {
+                if (isset($scores[$key])) { $sum += (int)$scores[$key]['score']; $count++; }
+            }
+            if ($count > 0) {
+                $scores['final_score'] = ['score' => $sum, 'max' => 100];
+                return $scores;
+            }
+        }
+
+        // 2) Fallback to parsing HTML if DB fields missing
+        $sections = [
+            'content_and_ideas' => ['marker' => 'CONTENT_IDEAS', 'max' => 25,
+                'patterns' => [
+                    '/Content and Ideas.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*25\\s*→\\s*(\\d+)\\s*\\/\\s*25/si',
+                    '/Content and Ideas.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
+                ]],
+            'structure_and_organization' => ['marker' => 'STRUCTURE_ORG', 'max' => 25,
+                'patterns' => [
+                    '/Structure and Organization.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*25\\s*→\\s*(\\d+)\\s*\\/\\s*25/si',
+                    '/Structure and Organization.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
+                ]],
+            'language_use' => ['marker' => 'LANGUAGE_USE', 'max' => 20,
+                'patterns' => [
+                    '/Language Use.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*20\\s*→\\s*(\\d+)\\s*\\/\\s*20/si',
+                    '/Language Use.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
+                ]],
+            'creativity_and_originality' => ['marker' => 'CREATIVITY_ORIG', 'max' => 20,
+                'patterns' => [
+                    '/Creativity and Originality.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*20\\s*→\\s*(\\d+)\\s*\\/\\s*20/si',
+                    '/Creativity and Originality.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
+                ]],
+            'mechanics' => ['marker' => 'MECHANICS', 'max' => 10,
+                'patterns' => [
+                    '/Mechanics.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*10\\s*→\\s*(\\d+)\\s*\\/\\s*10/si',
+                    '/Mechanics.*?Score:.*?(\\d+)\\s*\\/\\s*10/si'
+                ]],
+        ];
+
+        foreach ($sections as $key => $cfg) {
+            $max = (int)$cfg['max'];
+            $found = false;
+
+            $marker_pattern = "/<!-- EXTRACT_{$cfg['marker']}_START -->(.*?)<!-- EXTRACT_{$cfg['marker']}_END -->/si";
+            if (preg_match($marker_pattern, $feedback_html, $marker_matches)) {
+                if (preg_match('/Score:.*?(\\d+)\\s*\\/\\s*' . $max . '/si', $marker_matches[1], $m)) {
+                    $scores[$key] = ['score' => (int)$m[1], 'max' => $max];
+                    $found = true;
+                }
+            }
+
+            if (!$found) {
+                foreach ($cfg['patterns'] as $p) {
+                    if (preg_match($p, $feedback_html, $m)) {
+                        $scores[$key] = ['score' => (int)$m[1], 'max' => $max];
+                        $found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$found) {
+                $scores[$key] = ['score' => 0, 'max' => $max];
+            }
+        }
+
+        if (preg_match('/<!-- EXTRACT_FINAL_SCORE_START -->(.*?)<!-- EXTRACT_FINAL_SCORE_END -->/si', $feedback_html, $final_marker_matches)) {
+            $final = $final_marker_matches[1];
+            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*100\\s*→\\s*(\\d+)\\s*\\/\\s*100/si', $final, $m)) {
+                $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
+            } elseif (preg_match('/Final Score:.*?(\\d+)\\s*\\/\\s*100/si', $final, $m)) {
+                $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
+            }
+        }
+        if (!isset($scores['final_score'])) {
+            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*100\\s*→\\s*(\\d+)\\s*\\/\\s*100/si', $feedback_html, $m)) {
+                $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
+            } elseif (preg_match('/Final Score:.*?(\\d+)\\s*\\/\\s*100/si', $feedback_html, $m)) {
+                $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
+            } else {
+                // Sum parts as last resort
+                $parts_total = 0; foreach (['content_and_ideas','structure_and_organization','language_use','creativity_and_originality','mechanics'] as $k) { $parts_total += (int)($scores[$k]['score'] ?? 0); }
+                $scores['final_score'] = ['score' => $parts_total, 'max' => 100];
+            }
+        }
+
+        return $scores;
+    }
+
+    /**
+     * Extract current (NEW) scores from comparative feedback HTML
+     */
+    private function extract_resubmission_scores($feedback_html) {
+        $scores = [];
+        if (empty($feedback_html)) {
+            return $scores;
+        }
+
+        $sections = [
+            'content_and_ideas' => ['max' => 25, 'title' => 'Content and Ideas'],
+            'structure_and_organization' => ['max' => 25, 'title' => 'Structure and Organization'],
+            'language_use' => ['max' => 20, 'title' => 'Language Use'],
+            'creativity_and_originality' => ['max' => 20, 'title' => 'Creativity and Originality'],
+            'mechanics' => ['max' => 10, 'title' => 'Mechanics']
+        ];
+
+        foreach ($sections as $key => $cfg) {
+            $max = (int)$cfg['max'];
+            $title = preg_quote($cfg['title'], '/');
+            $patterns = [
+                "/{$title}.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*{$max}\\s*→\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                "/{$title}.*?Score:.*?(\\d+)\\s*\\/\\s*{$max}/si"
+            ];
+            $found = false;
+            foreach ($patterns as $p) {
+                if (preg_match($p, $feedback_html, $m)) {
+                    $scores[$key] = (int)$m[1];
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                $scores[$key] = null;
+            }
+        }
+
+        return $scores;
+    }
+
+    /**
+     * Detect if current submission is a copy of previous revision
+     */
+    private function detect_revision_copying($current_essay_data, $previous_grading) {
+        $previous_revision_text = $this->extract_revision_text_from_html($previous_grading->feedback_html);
+        $current_text = trim($current_essay_data['answer_text'] ?? '');
+
+        if (empty($previous_revision_text) || empty($current_text)) {
+            return ['is_copy' => false, 'percentage' => 0];
+        }
+
+        $normalized_current = preg_replace('/\s+/', ' ', $current_text);
+        $normalized_previous = preg_replace('/\s+/', ' ', $previous_revision_text);
+
+        similar_text($normalized_current, $normalized_previous, $similarity_percent);
+        return [
+            'is_copy' => $similarity_percent > 80.0,
+            'percentage' => round($similarity_percent, 2)
+        ];
+    }
+
+    /**
+     * Extract revision text from HTML feedback
+     */
+    private function extract_revision_text_from_html($feedback_html) {
+        if (preg_match('/<!-- EXTRACT_REVISION_START -->(.*?)<!-- EXTRACT_REVISION_END -->/s', $feedback_html, $matches)) {
+            $revision_html = $matches[1];
+            $revision_html = preg_replace('/<del[^>]*>.*?<\\/del>/si', '', $revision_html);
+            $revision_html = preg_replace('/\[\*(.*?)\*\]/s', '$1', $revision_html);
+            return trim(html_entity_decode(strip_tags($revision_html)));
+        }
+        if (preg_match('/<h2[^>]*>.*?Essay Revision.*?<\\/h2>(.*?)(?=<h2|$)/si', $feedback_html, $matches)) {
+            $revision_html = $matches[1];
+            $revision_html = preg_replace('/<del[^>]*>.*?<\\/del>/si', '', $revision_html);
+            $revision_html = preg_replace('/\[\*(.*?)\*\]/s', '$1', $revision_html);
+            return trim(html_entity_decode(strip_tags($revision_html)));
+        }
+        return '';
+    }
+
+    /**
+     * Generate penalty feedback for copied submissions
+     */
+    private function generate_penalty_feedback($previous_scores, $submission_number) {
+        $ordinal = $this->get_ordinal_string($submission_number);
+        $penalty_message = "This {$ordinal} submission was identified as a copy of the revision from the previous feedback. Submitting work that is not your own does not demonstrate learning or effort.";
+
+        $sections = [
+            'content_and_ideas' => ['title' => '1. Content and Ideas (25%)', 'max' => 25],
+            'structure_and_organization' => ['title' => '2. Structure and Organization (25%)', 'max' => 25],
+            'language_use' => ['title' => '3. Language Use (20%)', 'max' => 20],
+            'creativity_and_originality' => ['title' => '4. Creativity and Originality (20%)', 'max' => 20],
+            'mechanics' => ['title' => '5. Mechanics (10%)', 'max' => 10]
+        ];
+
+        $html = '';
+        $previous_total = 0;
+        foreach ($sections as $key => $cfg) {
+            $prev_score = (int)($previous_scores[$key]['score'] ?? 0);
+            $previous_total += $prev_score;
+            $html .= '<h2 style="font-size:18px;">' . $cfg['title'] . '</h2>';
+            $html .= '<p><strong>Score (Previous → New):</strong> ' . $prev_score . '/' . $cfg['max'] . ' → 0/' . $cfg['max'] . '</p>';
+            $html .= '<ul>';
+            $html .= '<li><strong>Analysis of Changes:</strong> ' . $penalty_message . '</li>';
+            $html .= '<li><strong>Areas for Improvement:</strong><ul><li>Please revise the essay using your own ideas and words, incorporating the feedback provided. Focus on genuine improvement rather than copying.</li></ul></li>';
+            $html .= '</ul>';
+        }
+
+        $html .= '<h2 style="font-size:18px;">Overall Comments</h2>';
+        $html .= '<div id="overall-comments"><p><strong>' . $penalty_message . ' We encourage you to try again with your own improvements.</strong></p></div>';
+        $html .= '<h2 style="font-size:16px;"><p><strong>Final Score (Previous → New): ' . $previous_total . '/100 → 0/100</strong></p></h2>';
+
+        return $html;
+    }
+
+    /**
+     * Handle copy penalty scenario
+     */
+    private function handle_copy_penalty($attempt_id, $previous_attempt_id, $previous_scores, $submission_number, $similarity_percentage) {
+        $current_essay_data = $this->extract_essay_data($attempt_id);
+        $ai_likelihood = null;
+        if ($current_essay_data && !empty($current_essay_data['answer_text'])) {
+            $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
+        }
+
+        $penalty_feedback_html = $this->generate_penalty_feedback($previous_scores, $submission_number);
+
+        $this->save_grading_result(
+            $attempt_id,
+            $penalty_feedback_html,
+            ['feedback_html' => $penalty_feedback_html, 'scores' => [
+                'content_and_ideas' => 0,
+                'structure_and_organization' => 0,
+                'language_use' => 0,
+                'creativity_and_originality' => 0,
+                'mechanics' => 0
+            ]],
+            $ai_likelihood,
+            ''
+        );
+
+        $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, true, $similarity_percentage);
+
+        return [
+            'success' => true,
+            'message' => "Copy detected and penalty applied for submission #{$submission_number}.",
+            'is_penalty' => true,
+            'similarity_percentage' => $similarity_percentage,
+            'ai_likelihood' => $ai_likelihood
+        ];
+    }
+}

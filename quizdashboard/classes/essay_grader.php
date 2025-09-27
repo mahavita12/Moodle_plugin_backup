@@ -34,6 +34,40 @@ class essay_grader {
     }
 
     /**
+     * Get current AI provider from Quiz Dashboard config.
+     */
+    protected function get_provider(): string {
+        $provider = get_config('local_quizdashboard', 'provider');
+        $provider = is_string($provider) ? strtolower(trim($provider)) : '';
+        return in_array($provider, ['anthropic', 'openai']) ? $provider : 'anthropic';
+    }
+
+    /**
+     * Get Anthropic API key from Quiz Dashboard config.
+     */
+    protected function get_anthropic_api_key(): string {
+        $key = get_config('local_quizdashboard', 'anthropic_apikey');
+        if (empty($key)) {
+            throw new \moodle_exception('Anthropic API key not configured. Set it in Quiz Dashboard configuration.');
+        }
+        $key = preg_replace('/\s+/', '', trim((string)$key));
+        return $key;
+    }
+
+    /**
+     * Get Anthropic model from Quiz Dashboard config.
+     */
+    protected function get_anthropic_model(): string {
+        $model = get_config('local_quizdashboard', 'anthropic_model');
+        $model = is_string($model) ? trim($model) : '';
+        // Map friendly aliases to official Claude 4 Sonnet model identifier
+        if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
+            return 'claude-sonnet-4-20250514';
+        }
+        return $model;
+    }
+
+    /**
      * Robustly gets the OpenAI API key from various Moodle configs.
      */
     protected function get_openai_api_key(): string {
@@ -686,17 +720,28 @@ class essay_grader {
         Remember: ONLY provide feedback. Do NOT include any revision or rewritten version of the essay. When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color (#3399cc).";
 
         $user_content = "Essay Question:\n" . $essay_data['question_text'] . "\n\nStudent Essay:\n" . $essay_data['answer_text'];
-        $data = [ 
-            'model' => 'gpt-4o', 
-            'messages' => [ 
-                ['role' => 'system', 'content' => $system_prompt], 
-                ['role' => 'user', 'content' => $user_content] 
-            ], 
-            'max_completion_tokens' => 16000 
-        ];
-
-        // TIMEOUT FIX: Use new robust API call method
-        $result = $this->make_openai_api_call($data, 'generate_essay_feedback');
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
+                ],
+                'max_tokens' => 16000
+            ];
+            $result = $this->make_anthropic_api_call($data, 'generate_essay_feedback');
+        } else {
+            $data = [ 
+                'model' => 'gpt-4o', 
+                'messages' => [ 
+                    ['role' => 'system', 'content' => $system_prompt], 
+                    ['role' => 'user', 'content' => $user_content] 
+                ], 
+                'max_completion_tokens' => 16000 
+            ];
+            $result = $this->make_openai_api_call($data, 'generate_essay_feedback');
+        }
         if (!$result['success']) {
             return $result;
         }
@@ -1148,6 +1193,17 @@ class essay_grader {
             $score_language_use = $scores['language_use'] ?? null;
             $score_creativity_originality = $scores['creativity_and_originality'] ?? null;
             $score_mechanics = $scores['mechanics'] ?? null;
+
+            // Fallback: if scores are not provided, parse them from feedback HTML
+            if ($score_content_ideas === null && $score_structure_organization === null && $score_language_use === null && $score_creativity_originality === null && $score_mechanics === null) {
+                $parsed_scores = $this->extract_subcategory_scores_from_html($feedback_data['feedback_html'] ?? $complete_html);
+                $score_content_ideas = $parsed_scores['content_and_ideas'] ?? $score_content_ideas;
+                $score_structure_organization = $parsed_scores['structure_and_organization'] ?? $score_structure_organization;
+                $score_language_use = $parsed_scores['language_use'] ?? $score_language_use;
+                $score_creativity_originality = $parsed_scores['creativity_and_originality'] ?? $score_creativity_originality;
+                $score_mechanics = $parsed_scores['mechanics'] ?? $score_mechanics;
+                error_log("DEBUG: Fallback parsed scores - Content: {" . ($score_content_ideas ?? 'null') . "}, Structure: {" . ($score_structure_organization ?? 'null') . "}, Language: {" . ($score_language_use ?? 'null') . "}, Creativity: {" . ($score_creativity_originality ?? 'null') . "}, Mechanics: {" . ($score_mechanics ?? 'null') . "}");
+            }
             
             error_log("DEBUG: Extracted scores - Content: {" . ($score_content_ideas ?? 'null') . "}, " .
                      "Structure: {" . ($score_structure_organization ?? 'null') . "}, " . 
@@ -1542,6 +1598,60 @@ class essay_grader {
         $feedback_html = preg_replace('/(<p><strong>Score \(Previous.*?<\/p>)/si', '<!-- SCORE_MARKER -->$1<!-- /SCORE_MARKER -->', $feedback_html);
         
         return $feedback_html;
+    }
+
+    /**
+     * Extract subcategory scores from feedback HTML (handles first submissions and resubmissions)
+     */
+    protected function extract_subcategory_scores_from_html($feedback_html) {
+        $scores = [];
+        if (empty($feedback_html)) {
+            return $scores;
+        }
+        $sections = [
+            'content_and_ideas' => ['title' => 'Content and Ideas', 'marker' => 'CONTENT_IDEAS', 'max' => 25],
+            'structure_and_organization' => ['title' => 'Structure and Organization', 'marker' => 'STRUCTURE_ORG', 'max' => 25],
+            'language_use' => ['title' => 'Language Use', 'marker' => 'LANGUAGE_USE', 'max' => 20],
+            'creativity_and_originality' => ['title' => 'Creativity and Originality', 'marker' => 'CREATIVITY_ORIG', 'max' => 20],
+            'mechanics' => ['title' => 'Mechanics', 'marker' => 'MECHANICS', 'max' => 10],
+        ];
+        foreach ($sections as $key => $cfg) {
+            $max = (int)$cfg['max'];
+            $found = false;
+
+            // Prefer extracting within strategic markers for the section
+            $marker_pattern = '/<!-- EXTRACT_' . $cfg['marker'] . '_START -->(.*?)<!-- EXTRACT_' . $cfg['marker'] . '_END -->/si';
+            if (preg_match($marker_pattern, $feedback_html, $msection)) {
+                $segment = $msection[1];
+                // Find the Score line content within the marked segment
+                if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $segment, $lineMatch)) {
+                    $line = $lineMatch[1];
+                    // Capture all occurrences of X/max and take the LAST as the NEW score
+                    if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
+                        $last = end($nums[1]);
+                        $scores[$key] = (int)$last; $found = true;
+                    }
+                }
+            }
+
+            // Fallback: search in the whole HTML by section title
+            if (!$found) {
+                $title = preg_quote($cfg['title'], '/');
+                if (preg_match('/<h2[^>]*>.*?' . $title . '.*?<\/h2>(.*?)(?=<h2|$)/si', $feedback_html, $sec)) {
+                    $segment = $sec[1];
+                    if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $segment, $lineMatch)) {
+                        $line = $lineMatch[1];
+                        if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
+                            $last = end($nums[1]);
+                            $scores[$key] = (int)$last; $found = true;
+                        }
+                    }
+                }
+            }
+
+            if (!$found) { $scores[$key] = null; }
+        }
+        return $scores;
     }
 
     /**
@@ -1983,17 +2093,28 @@ PROMPT;
         $user_content .= "FEEDBACK:\n" . $feedback_text . "\n\n";
         $user_content .= "LEVEL: " . $level;
 
-        $data = [
-            'model' => 'gpt-4o',  // FIXED: Use more reliable model
-            'messages' => [
-                ['role' => 'system', 'content' => $system_prompt],
-                ['role' => 'user', 'content' => $user_content]
-            ],
-            'max_completion_tokens' => 16000
-        ];
-
-        // FIXED: Use robust API call method
-        $result = $this->make_openai_api_call($data, 'homework generation');
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
+                ],
+                'max_tokens' => 16000
+            ];
+            $result = $this->make_anthropic_api_call($data, 'homework generation');
+        } else {
+            $data = [
+                'model' => 'gpt-4o',  // FIXED: Use more reliable model
+                'messages' => [
+                    ['role' => 'system', 'content' => $system_prompt],
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'max_completion_tokens' => 16000
+            ];
+            $result = $this->make_openai_api_call($data, 'homework generation');
+        }
         
         if (!$result['success']) {
             return $result; // Already has proper structure
@@ -2017,6 +2138,107 @@ PROMPT;
     protected function is_google_drive_configured() {
         // This function's logic remains the same.
         return !empty($this->google_folder_id) && file_exists($this->service_account_path);
+    }
+
+    /**
+     * Make robust Anthropic API call.
+     */
+    protected function make_anthropic_api_call($data, $operation_name = 'API call') {
+        $attempts = 0;
+        $last_error = '';
+
+        // Log the actual model being used
+        error_log("🤖 Quiz Dashboard (Anthropic): Using model: " . ($data['model'] ?? 'unknown'));
+
+        while ($attempts < self::MAX_RETRY_ATTEMPTS) {
+            $attempts++;
+            error_log("🤖 Quiz Dashboard (Anthropic): Attempting {$operation_name} - attempt {$attempts}/" . self::MAX_RETRY_ATTEMPTS);
+
+            try {
+                $apikey = $this->get_anthropic_api_key();
+
+                $curl = new \curl();
+                $curl->setHeader([
+                    'Content-Type: application/json',
+                    'x-api-key: ' . $apikey,
+                    'anthropic-version: 2023-06-01'
+                ]);
+
+                $curl->setopt([
+                    'CURLOPT_TIMEOUT' => self::API_TOTAL_TIMEOUT,
+                    'CURLOPT_CONNECTTIMEOUT' => self::API_CONNECT_TIMEOUT,
+                    'CURLOPT_NOSIGNAL' => 1,
+                    'CURLOPT_TCP_KEEPALIVE' => 1,
+                    'CURLOPT_TCP_KEEPIDLE' => 120,
+                    'CURLOPT_TCP_KEEPINTVL' => 60
+                ]);
+
+                $response = $curl->post('https://api.anthropic.com/v1/messages', json_encode($data));
+
+                if ($curl->get_errno() !== 0) {
+                    $curl_error = $curl->error;
+                    $last_error = "cURL error: {$curl_error}";
+                    error_log("🚨 Quiz Dashboard (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(2 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => "Request timeout after {$attempts} attempts: {$curl_error}"];
+                }
+
+                $body = json_decode($response, true);
+
+                if (isset($body['error'])) {
+                    $last_error = 'API error: ' . (is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : $body['error']);
+                    error_log("🚨 Quiz Dashboard (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(5 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                // Extract text content from Anthropic response
+                $text = '';
+                if (isset($body['content']) && is_array($body['content'])) {
+                    foreach ($body['content'] as $part) {
+                        if (isset($part['type']) && $part['type'] === 'text' && isset($part['text'])) {
+                            $text .= $part['text'];
+                        }
+                    }
+                }
+
+                if ($text === '') {
+                    $last_error = 'Invalid Anthropic API response structure';
+                    error_log("🚨 Quiz Dashboard (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        sleep(2 * $attempts);
+                        continue;
+                    }
+
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                error_log("✅ Quiz Dashboard (Anthropic): {$operation_name} succeeded on attempt {$attempts}");
+                return ['success' => true, 'response' => $text];
+
+            } catch (\Exception $e) {
+                $last_error = 'Exception: ' . $e->getMessage();
+                error_log("🚨 Quiz Dashboard (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
+
+                if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                    sleep(3 * $attempts);
+                    continue;
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
     }
 }
 
