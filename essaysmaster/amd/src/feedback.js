@@ -902,25 +902,6 @@ define([], function () {
         document.addEventListener('keydown', keyboardGuard, true);
         document.addEventListener('keyup', keyboardGuard, true);
 
-        // Mouse button guards (enhanced)
-        const mouseGuard = (e) => {
-            if (!isInsidePanel(e.target)) return;
-            
-            // Block right-click (button 2) and middle-click (button 1)
-            if (e.button === 1 || e.button === 2) {
-                console.log('🚫 Blocked mouse button:', e.button);
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                return false;
-            }
-        };
-        
-        document.addEventListener('mousedown', mouseGuard, true);
-        document.addEventListener('mouseup', mouseGuard, true);
-        document.addEventListener('auxclick', mouseGuard, true);
-        document.addEventListener('contextmenu', mouseGuard, true);
-
         // Touch event blocking for mobile
         const touchGuard = (e) => {
             if (!isInsidePanel(e.target)) return;
