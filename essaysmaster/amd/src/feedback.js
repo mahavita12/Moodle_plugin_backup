@@ -1156,9 +1156,11 @@ define([], function () {
         content += `</div>`;
         panel.innerHTML = content;
         panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        // Apply capture guards and rasterize content to canvas
+        // Apply capture guards; only rasterize for validation rounds so feedback keeps CSS styling
         installCaptureGuards(panel);
-        rasterizeFeedbackToCanvas(panel);
+        if (config.type === 'validation') {
+            rasterizeFeedbackToCanvas(panel);
+        }
     }
 
     // Parse AI validation response with scoring
