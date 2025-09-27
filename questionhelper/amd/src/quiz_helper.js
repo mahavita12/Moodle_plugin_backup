@@ -24,8 +24,9 @@
 define(['jquery', 'core/ajax', 'core/modal_factory', 'core/modal_events', 'core/str'],
 function($, Ajax, ModalFactory, ModalEvents, Str) {
 
-    var ATTEMPT_KEY_PREFIX = 'questionhelper_q';
-    var MAX_ATTEMPTS = 2;
+    var QUIZ_ATTEMPT_KEY = 'questionhelper_quiz_attempts';
+    var totalQuestionsInQuiz = 0;
+    var maxAttemptsAllowed = 0;
 
     function init() {
         console.log('QuestionHelper: Initializing plugin...');
@@ -35,6 +36,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             console.log('QuestionHelper: On quiz attempt page, loading plugin...');
             addCSSStyles();
             setTimeout(function() {
+                calculateQuizLimits();
                 scanAndAddHelpButtons();
             }, 1000);
         } else {
@@ -47,12 +49,27 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             return;
         }
 
-        var css = '.question-helper-btn{margin-left:10px;font-size:13px;transition:all 0.3s ease;background:#fff3cd;color:#856404;border:1px solid #ffeaa7}.question-helper-btn:hover{transform:translateY(-1px);background:#ffecb5;border-color:#ffdd57}.question-helper-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none;background:#f8f9fa;color:#6c757d}.question-helper-container{margin:10px 0;text-align:right}.question-helper-popup{max-width:700px;padding:20px}.question-helper-popup h3{color:#495057;font-size:1.2em;margin-bottom:15px;border-bottom:2px solid #e9ecef;padding-bottom:5px}.practice-question-section{background:#f8f9fa;padding:20px;border-radius:8px;margin-bottom:20px;border-left:4px solid #17a2b8}.practice-question-text{margin-bottom:15px;font-weight:500;font-size:1.1em;line-height:1.4}.practice-options{list-style-type:none;padding-left:0;margin:0}.practice-option{background:#fff;margin:8px 0;padding:12px 15px;border-radius:6px;border:2px solid #dee2e6;cursor:pointer;transition:all 0.2s ease;position:relative}.practice-option:hover{border-color:#007bff;background:#f0f8ff}.practice-option.selected{border-color:#007bff;background:#e7f3ff;box-shadow:0 2px 4px rgba(0,123,255,0.1)}.practice-option.correct{border-color:#28a745;background:#d4edda;color:#155724}.practice-option.incorrect{border-color:#dc3545;background:#f8d7da;color:#721c24}.practice-option.correct::after{content:"V";position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#28a745;font-weight:bold;font-size:1.2em}.practice-option.incorrect::after{content:"X";position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#dc3545;font-weight:bold;font-size:1.2em}.practice-option-letter{font-weight:bold;margin-right:10px;color:#6c757d}.submit-answer-btn{background:#007bff;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin:15px 0;transition:background 0.2s ease}.submit-answer-btn:hover{background:#0056b3}.submit-answer-btn:disabled{background:#6c757d;cursor:not-allowed}.answer-feedback{margin-top:20px;padding:15px;border-radius:8px;display:none}.answer-feedback.correct{background:#d4edda;border:1px solid #c3e6cb;color:#155724}.answer-feedback.incorrect{background:#f8d7da;border:1px solid #f5c6cb;color:#721c24}.answer-feedback h4{margin:0 0 10px 0;font-size:1.1em}.answer-feedback p{margin:0;line-height:1.4}.concept-explanation-section{background:#e7f3ff;padding:15px;border-radius:8px;border-left:4px solid #007bff;margin-top:20px}.concept-explanation-section p{margin-bottom:0;line-height:1.5;color:#495057}.popup-footer{border-top:1px solid #dee2e6;padding-top:15px;margin-top:20px;text-align:center}.try-again-btn{background:#28a745;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin-right:10px}.try-again-btn:hover{background:#218838}@media (max-width:768px){.question-helper-popup{padding:15px}.practice-question-section{padding:15px}.practice-option{padding:10px 12px}.question-helper-btn{font-size:12px;margin-left:5px}.question-helper-container{text-align:center}}';
+        var css = '.question-helper-btn{margin-left:10px;font-size:13px;transition:all 0.3s ease;background:#fff3cd;color:#856404;border:1px solid #ffeaa7}.question-helper-btn:hover{transform:translateY(-1px);background:#ffecb5;border-color:#ffdd57}.question-helper-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none;background:#f8f9fa;color:#6c757d}.question-helper-container{margin:10px 0;display:flex;align-items:center;justify-content:flex-start}.question-helper-container .prevpage{margin-right:10px}.question-helper-popup{max-width:700px;padding:20px}.question-helper-popup h3{color:#495057;font-size:1.2em;margin-bottom:15px;border-bottom:2px solid #e9ecef;padding-bottom:5px}.practice-question-section{background:#f8f9fa;padding:20px;border-radius:8px;margin-bottom:20px;border-left:4px solid #17a2b8}.practice-question-text{margin-bottom:15px;font-weight:500;font-size:1.1em;line-height:1.4}.practice-options{list-style-type:none;padding-left:0;margin:0}.practice-option{background:#fff;margin:8px 0;padding:12px 15px;border-radius:6px;border:2px solid #dee2e6;cursor:pointer;transition:all 0.2s ease;position:relative}.practice-option:hover{border-color:#007bff;background:#f0f8ff}.practice-option.selected{border-color:#007bff;background:#e7f3ff;box-shadow:0 2px 4px rgba(0,123,255,0.1)}.practice-option.correct{border-color:#28a745;background:#d4edda;color:#155724}.practice-option.incorrect{border-color:#dc3545;background:#f8d7da;color:#721c24}.practice-option.correct::after{content:"V";position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#28a745;font-weight:bold;font-size:1.2em}.practice-option.incorrect::after{content:"X";position:absolute;right:15px;top:50%;transform:translateY(-50%);color:#dc3545;font-weight:bold;font-size:1.2em}.practice-option-letter{font-weight:bold;margin-right:10px;color:#6c757d}.submit-answer-btn{background:#007bff;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin:15px 0;transition:background 0.2s ease}.submit-answer-btn:hover{background:#0056b3}.submit-answer-btn:disabled{background:#6c757d;cursor:not-allowed}.answer-feedback{margin-top:20px;padding:15px;border-radius:8px;display:none}.answer-feedback.correct{background:#d4edda;border:1px solid #c3e6cb;color:#155724}.answer-feedback.incorrect{background:#f8d7da;border:1px solid #f5c6cb;color:#721c24}.answer-feedback h4{margin:0 0 10px 0;font-size:1.1em}.answer-feedback p{margin:0;line-height:1.4}.concept-explanation-section{background:#e7f3ff;padding:15px;border-radius:8px;border-left:4px solid #007bff;margin-top:20px}.concept-explanation-section p{margin-bottom:0;line-height:1.5;color:#495057}.popup-footer{border-top:1px solid #dee2e6;padding-top:15px;margin-top:20px;text-align:center}.try-again-btn{background:#28a745;color:white;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin-right:10px}.try-again-btn:hover{background:#218838}.attempts-counter{font-size:12px;color:#6c757d;margin-left:10px}@media (max-width:768px){.question-helper-popup{padding:15px}.practice-question-section{padding:15px}.practice-option{padding:10px 12px}.question-helper-btn{font-size:12px;margin-left:5px}.question-helper-container{flex-direction:column;align-items:flex-start}.question-helper-container .prevpage{margin-right:0;margin-bottom:5px}}';
         $('<style id="questionhelper-styles">' + css + '</style>').appendTo('head');
     }
 
     function isQuizAttemptPage() {
         return window.location.pathname.includes('/mod/quiz/attempt.php');
+    }
+
+    function calculateQuizLimits() {
+        // Count total questions in the quiz by finding all question elements
+        var allQuestions = $('.que').length;
+        if (allQuestions === 0) {
+            // Fallback: try to get from navigation or other indicators
+            allQuestions = $('.qn_buttons .qnbutton').length;
+        }
+        
+        totalQuestionsInQuiz = allQuestions;
+        maxAttemptsAllowed = Math.floor(totalQuestionsInQuiz / 2);
+        
+        console.log('QuestionHelper: Total questions in quiz:', totalQuestionsInQuiz);
+        console.log('QuestionHelper: Max attempts allowed:', maxAttemptsAllowed);
     }
 
     function scanAndAddHelpButtons() {
@@ -67,6 +84,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         ];
 
         var questionsFound = 0;
+        var currentAttempts = getTotalAttemptCount();
 
         questionSelectors.forEach(function(selector) {
             $(selector).each(function(index) {
@@ -76,9 +94,8 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
                 }
 
                 var questionId = extractQuestionId(questionElement);
-                var attempts = getAttemptCount(questionId);
                 console.log('QuestionHelper: Found question with ID:', questionId);
-                addHelpButton(questionElement, questionId, attempts);
+                addHelpButton(questionElement, questionId, currentAttempts);
                 questionsFound++;
             });
         });
@@ -91,9 +108,8 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
                 var questionElement = $(this);
                 if (questionElement.find('input[type="radio"]').length > 0) {
                     var questionId = extractQuestionId(questionElement);
-                    var attempts = getAttemptCount(questionId);
                     console.log('QuestionHelper: Found radio question with ID:', questionId);
-                    addHelpButton(questionElement, questionId, attempts);
+                    addHelpButton(questionElement, questionId, currentAttempts);
                     questionsFound++;
                 }
             });
@@ -132,38 +148,27 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
     function addHelpButton(questionElement, questionId, attempts) {
         console.log('QuestionHelper: Adding button to question:', questionId);
 
-        // Find the question text area
-        var qtext = questionElement.find('.qtext').first();
-        if (qtext.length === 0) {
-            console.log('QuestionHelper: Could not find question text for question:', questionId);
+        // Find the answer section - this should be after question text and contains the choices
+        var answerSection = questionElement.find('.answer').first();
+        if (answerSection.length === 0) {
+            // Fallback to question text if no answer section found
+            answerSection = questionElement.find('.qtext').first();
+        }
+        
+        if (answerSection.length === 0) {
+            console.log('QuestionHelper: Could not find answer section for question:', questionId);
             return;
         }
 
-        // Create a container div below the question text
-        var containerDiv = $('<div class="question-helper-container" style="margin-top: 10px; text-align: left;"></div>');
+        // Create container for the button controls
+        var containerDiv = $('<div class="question-helper-container"></div>');
         
-        // Try to find the Previous page button in various locations
-        var prevButton = null;
-        var buttonSearchSelectors = [
-            '.submitbtns .prevpage',
-            '.mod_quiz-next-nav .prevpage', 
-            '.im-controls .prevpage',
-            '.prevpage'
-        ];
-        
-        for (var i = 0; i < buttonSearchSelectors.length; i++) {
-            var foundButton = $(buttonSearchSelectors[i]);
-            if (foundButton.length > 0) {
-                prevButton = foundButton.first();
-                console.log('QuestionHelper: Found Previous page button with selector:', buttonSearchSelectors[i]);
-                break;
-            }
-        }
-
+        // Find the Previous page button on the page (not cloning it)
+        var prevButton = findPreviousPageButton();
         var helpButton = createHelpButton(questionId, attempts);
         
         if (prevButton && prevButton.length > 0) {
-            // Clone the Previous page button to our container and add Help button next to it
+            // Clone the Previous page button and add it to our container
             var prevClone = prevButton.clone(true);
             containerDiv.append(prevClone);
             containerDiv.append(helpButton);
@@ -174,9 +179,32 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             console.log('QuestionHelper: Added button without Previous page button');
         }
 
-        // Insert the container below the question text
-        qtext.after(containerDiv);
-        console.log('QuestionHelper: Button positioned below question text');
+        // Add attempts counter
+        var attemptsDisplay = $('<span class="attempts-counter">(' + attempts + '/' + maxAttemptsAllowed + ' attempts used)</span>');
+        containerDiv.append(attemptsDisplay);
+
+        // Insert the container after the answer section (below question and answer choices)
+        answerSection.after(containerDiv);
+        console.log('QuestionHelper: Button positioned below answer choices');
+    }
+
+    function findPreviousPageButton() {
+        var buttonSearchSelectors = [
+            '.submitbtns .prevpage',
+            '.mod_quiz-next-nav .prevpage', 
+            '.im-controls .prevpage',
+            '.prevpage'
+        ];
+        
+        for (var i = 0; i < buttonSearchSelectors.length; i++) {
+            var foundButton = $(buttonSearchSelectors[i]);
+            if (foundButton.length > 0) {
+                console.log('QuestionHelper: Found Previous page button with selector:', buttonSearchSelectors[i]);
+                return foundButton.first();
+            }
+        }
+        
+        return null;
     }
 
     function createHelpButton(questionId, attempts) {
@@ -191,7 +219,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
     }
 
     function updateButtonState(button, attempts) {
-        if (attempts >= MAX_ATTEMPTS) {
+        if (attempts >= maxAttemptsAllowed) {
             button.text('Help exhausted')
                   .addClass('btn-secondary')
                   .removeClass('btn question-helper-btn')
@@ -206,9 +234,10 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
 
     function handleHelpClick(button) {
         var questionId = button.data('question-id');
-        var attempts = getAttemptCount(questionId);
+        var attempts = getTotalAttemptCount();
 
-        if (attempts >= MAX_ATTEMPTS) {
+        if (attempts >= maxAttemptsAllowed) {
+            showError('You have used all available help attempts for this quiz (' + maxAttemptsAllowed + '/' + maxAttemptsAllowed + ')');
             return;
         }
 
@@ -220,8 +249,12 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
             return;
         }
 
-        attempts = incrementAttempt(questionId);
-        updateButtonState(button, attempts);
+        // Increment the total attempts counter
+        attempts = incrementTotalAttempts();
+        
+        // Update all help buttons on the page with new attempt count
+        updateAllButtonStates(attempts);
+        
         button.html('Getting help...').prop('disabled', true);
 
         makeHelpRequest(questionData)
@@ -233,8 +266,17 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
                 console.error('Help request failed:', error);
             })
             .always(function() {
-                updateButtonState(button, attempts);
+                updateAllButtonStates(attempts);
             });
+    }
+
+    function updateAllButtonStates(attempts) {
+        $('.question-helper-btn, .btn-secondary').each(function() {
+            updateButtonState($(this), attempts);
+        });
+        
+        // Update attempt counters
+        $('.attempts-counter').text('(' + attempts + '/' + maxAttemptsAllowed + ' attempts used)');
     }
 
     function extractQuestionData(questionElement) {
@@ -352,7 +394,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         }
 
         html += '<div class="popup-footer">';
-        html += '<button type="button" class="btn btn-primary question-helper-close">Close</button>';
+        html += '<button type="button" class="btn btn-primary question-helper-close">Got it!</button>';
         html += '</div>';
         html += '</div>';
 
@@ -415,8 +457,11 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         });
     }
 
-    function getAttemptCount(questionId) {
-        var key = ATTEMPT_KEY_PREFIX + questionId;
+    function getTotalAttemptCount() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var attemptId = urlParams.get('attempt');
+        var key = QUIZ_ATTEMPT_KEY + '_' + attemptId;
+        
         var data = sessionStorage.getItem(key);
         if (data) {
             try {
@@ -428,12 +473,16 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         return 0;
     }
 
-    function incrementAttempt(questionId) {
-        var key = ATTEMPT_KEY_PREFIX + questionId;
-        var attempts = getAttemptCount(questionId) + 1;
+    function incrementTotalAttempts() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var attemptId = urlParams.get('attempt');
+        var key = QUIZ_ATTEMPT_KEY + '_' + attemptId;
+        
+        var attempts = getTotalAttemptCount() + 1;
         sessionStorage.setItem(key, JSON.stringify({
             attempts: attempts,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            quizId: attemptId
         }));
         return attempts;
     }
