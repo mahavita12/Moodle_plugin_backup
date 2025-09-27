@@ -189,6 +189,9 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
         ]
     ];
 
+    // Log the actual model being used
+    error_log("🤖 Question Helper (Anthropic): Using model: " . $model);
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://api.anthropic.com/v1/messages');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

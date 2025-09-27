@@ -545,6 +545,9 @@ DO NOT use section headers - just list improvements directly. DO NOT use emojis,
         $attempts = 0;
         $last_error = '';
 
+        // Log the actual model being used
+        error_log("🤖 Essays Master (Anthropic): Using model: " . ($data['model'] ?? 'unknown'));
+
         while ($attempts < self::MAX_RETRY_ATTEMPTS) {
             $attempts++;
             error_log("🤖 Helper (Anthropic): Attempting {$operation_name} - attempt {$attempts}/" . self::MAX_RETRY_ATTEMPTS);
