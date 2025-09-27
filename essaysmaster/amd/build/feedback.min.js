@@ -136,12 +136,111 @@ define([], function () {
             });
         });
 
-        // 2. TinyMCE - Enhanced with multiple approaches
+        // 2. TinyMCE - ULTRA AGGRESSIVE for student attempts
         const disableTinyMCE = () => {
+            // Method 1: Direct iframe targeting (student attempts use iframes)
+            const disableInIframes = () => {
+                const iframeSelectors = [
+                    'iframe',
+                    'iframe[id*="answer"]',
+                    'iframe[id*="essay"]',
+                    'iframe.tox-edit-area__iframe',
+                    '.editor_tinymce iframe',
+                    '.que.essay iframe',
+                    'div[id*="answer"] iframe',
+                    'div[id*="essay"] iframe'
+                ];
+                
+                iframeSelectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(iframe => {
+                        try {
+                            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                            if (iframeDoc && iframeDoc.body) {
+                                // Aggressive spellcheck disabling
+                                iframeDoc.body.setAttribute('spellcheck', 'false');
+                                iframeDoc.body.setAttribute('data-gramm', 'false');
+                                iframeDoc.body.setAttribute('data-enable-grammarly', 'false');
+                                iframeDoc.body.spellcheck = false;
+                                iframeDoc.body.style.spellcheck = 'false';
+                                
+                                // Add CSS to iframe to hide spellcheck underlines
+                                if (!iframeDoc.getElementById('em-no-spellcheck')) {
+                                    const style = iframeDoc.createElement('style');
+                                    style.id = 'em-no-spellcheck';
+                                    style.textContent = `
+                                        body {
+                                            -webkit-spellcheck: false !important;
+                                            -moz-spellcheck: false !important;
+                                            spellcheck: false !important;
+                                        }
+                                        body * {
+                                            -webkit-spellcheck: false !important;
+                                            -moz-spellcheck: false !important;
+                                            spellcheck: false !important;
+                                        }
+                                        /* Hide any red underlines */
+                                        body, body * {
+                                            text-decoration: none !important;
+                                            text-decoration-line: none !important;
+                                            text-decoration-color: transparent !important;
+                                        }
+                                    `;
+                                    iframeDoc.head.appendChild(style);
+                                }
+                                
+                                // Inject JavaScript into iframe to continuously disable spellcheck
+                                if (!iframeDoc.getElementById('em-no-spellcheck-script')) {
+                                    const script = iframeDoc.createElement('script');
+                                    script.id = 'em-no-spellcheck-script';
+                                    script.textContent = `
+                                        (function() {
+                                            // Override setAttribute to prevent re-enabling spellcheck
+                                            const originalSetAttribute = Element.prototype.setAttribute;
+                                            Element.prototype.setAttribute = function(name, value) {
+                                                if (name === 'spellcheck' && value !== 'false') {
+                                                    return originalSetAttribute.call(this, 'spellcheck', 'false');
+                                                }
+                                                return originalSetAttribute.call(this, name, value);
+                                            };
+                                            
+                                            // Continuously enforce spellcheck off
+                                            setInterval(() => {
+                                                document.body.setAttribute('spellcheck', 'false');
+                                                document.body.spellcheck = false;
+                                                document.querySelectorAll('*').forEach(el => {
+                                                    if (el.hasAttribute('spellcheck') && el.getAttribute('spellcheck') !== 'false') {
+                                                        el.setAttribute('spellcheck', 'false');
+                                                    }
+                                                });
+                                            }, 100);
+                                        })();
+                                    `;
+                                    iframeDoc.head.appendChild(script);
+                                }
+                                
+                                // Also disable on all paragraphs/divs in the iframe
+                                iframeDoc.querySelectorAll('p, div, span').forEach(el => {
+                                    el.setAttribute('spellcheck', 'false');
+                                    el.spellcheck = false;
+                                });
+                                
+                                console.log('✅ Aggressively disabled spellcheck in iframe:', iframe.id || 'unnamed');
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Cannot access iframe:', e);
+                        }
+                    });
+                });
+            };
+            
+            // Run immediately and repeatedly
+            disableInIframes();
+            
+            // Method 2: TinyMCE API (if available)
             if (window.tinyMCE || window.tinymce) {
                 const tmce = window.tinyMCE || window.tinymce;
                 try {
-                    // Method 1: Existing editors
+                    // Method 2a: Existing editors
                     tmce.editors?.forEach?.(ed => {
                         if (!ed) return;
                         
@@ -173,7 +272,7 @@ define([], function () {
                         }
                     });
                     
-                    // Method 2: Global TinyMCE settings for future editors
+                    // Method 2b: Global TinyMCE settings for future editors
                     if (tmce.settings) {
                         tmce.settings.browser_spellcheck = false;
                         tmce.settings.gecko_spellcheck = false;
@@ -190,6 +289,10 @@ define([], function () {
                         const enforce = () => {
                             attempts++;
                             try {
+                                // Re-run iframe disabling
+                                disableInIframes();
+                                
+                                // Also use TinyMCE API
                                 tmce.editors?.forEach?.(ed => {
                                     try {
                                         const body = typeof ed.getBody === 'function' ? ed.getBody() : null;
@@ -202,7 +305,7 @@ define([], function () {
                                     } catch (_) {}
                                 });
                             } catch (_) {}
-                            if (attempts >= 24) { // ~12 seconds at 500ms
+                            if (attempts >= 30) { // ~15 seconds at 500ms
                                 clearInterval(window.__EM_TINYMCE_ENFORCER__);
                                 window.__EM_TINYMCE_ENFORCER__ = null;
                             }
@@ -210,6 +313,20 @@ define([], function () {
                         window.__EM_TINYMCE_ENFORCER__ = setInterval(enforce, 500);
                     }
                 } catch (_) {}
+            } else {
+                // Even if TinyMCE API not available, still run iframe targeting
+                if (!window.__EM_IFRAME_ENFORCER__) {
+                    let attempts = 0;
+                    const enforceIframes = () => {
+                        attempts++;
+                        disableInIframes();
+                        if (attempts >= 30) {
+                            clearInterval(window.__EM_IFRAME_ENFORCER__);
+                            window.__EM_IFRAME_ENFORCER__ = null;
+                        }
+                    };
+                    window.__EM_IFRAME_ENFORCER__ = setInterval(enforceIframes, 500);
+                }
             }
         };
         
