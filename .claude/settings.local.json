@@ -26,7 +26,8 @@
       "Bash(git commit:*)",
       "Read(//c/MoodleWindowsInstaller-latest-404/server/moodle/**)",
       "Bash(mkdir:*)",
-      "mcp__moodle-server__make_http_request"
+      "mcp__moodle-server__make_http_request",
+      "Read(//c/MoodleWindowsInstaller-latest-404/**)"
     ],
     "deny": [],
     "ask": []
