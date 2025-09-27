@@ -10,6 +10,19 @@ define([], function () {
         return location.pathname.indexOf('/mod/quiz/attempt.php') !== -1;
     }
 
+    // Provide titles/focus per round
+    function getRoundConfig(round) {
+        const map = {
+            1: { type: 'feedback', title: 'Round 1: Grammar, Spelling & Punctuation', focus: 'Grammar & Spelling' },
+            2: { type: 'validation', title: 'Round 2: Proofreading Validation', focus: 'Proofreading' },
+            3: { type: 'feedback', title: 'Round 3: Language Enhancement', focus: 'Language Enhancement' },
+            4: { type: 'validation', title: 'Round 4: Improvement Validation', focus: 'Improvements' },
+            5: { type: 'feedback', title: 'Round 5: Relevance & Structure', focus: 'Relevance & Structure' },
+            6: { type: 'validation', title: 'Round 6: Final Validation', focus: 'Final validation' }
+        };
+        return map[round] || { type: 'feedback', title: `Round ${round}`, focus: 'Essay feedback' };
+    }
+
     // Find the "Finish/Submit" button Moodle uses on the attempt page
     function findSubmitButton() {
         // Common id
@@ -833,11 +846,15 @@ define([], function () {
 
         const blockIfInside = (e) => {
             if (isInsidePanel(e.target)) {
-                console.log('🚫 Blocked action:', e.type, 'on', e.target.tagName);
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                return false;
+                // Allow harmless events; block only copy-related and contextmenu
+                const t = e.type;
+                if (t === 'copy' || t === 'cut' || t === 'paste' || t === 'contextmenu' || t === 'dragstart' || t === 'selectstart') {
+                    console.log('🚫 Blocked action:', e.type, 'on', e.target.tagName);
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    return false;
+                }
             }
         };
 
