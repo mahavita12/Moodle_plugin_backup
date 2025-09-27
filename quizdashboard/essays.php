@@ -38,6 +38,9 @@ $PAGE->set_heading('Essay Dashboard');
 $PAGE->set_pagelayout('admin');
 
 $PAGE->requires->css('/local/quizdashboard/styles.css');
+$PAGE->requires->jquery();
+$PAGE->requires->jquery_plugin('ui');
+$PAGE->requires->jquery_plugin('ui-css');
 
 // Add blocks toggle functionality directly
 $PAGE->requires->js_init_code('
@@ -219,6 +222,11 @@ foreach ($records as $r) {
         'attemptno'     => $r->attemptnumber,
         'status'        => $r->status,
         'timefinish'    => $r->timefinish,
+        'score_content_ideas' => $r->score_content_ideas ?? null,
+        'score_structure_organization' => $r->score_structure_organization ?? null,
+        'score_language_use' => $r->score_language_use ?? null,
+        'score_creativity_originality' => $r->score_creativity_originality ?? null,
+        'score_mechanics' => $r->score_mechanics ?? null,
         'score'         => $r->score,
         'maxscore'      => $r->maxscore,
         'comment_count' => $comment_count,
@@ -404,6 +412,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="sortable-column" data-sort="coursename">Course</th>
                     <th class="sortable-column" data-sort="timefinish">Finished</th>
                     <th class="sortable-column" data-sort="time_taken">Duration</th>
+                    <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)">C&I</th>
+                    <th class="sortable-column" data-sort="score_structure_organization" title="Structure & Organization (25)">Structure</th>
+                    <th class="sortable-column" data-sort="score_language_use" title="Language Use (20)">Language</th>
+                    <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)">Creativity</th>
+                    <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)">Mechanics</th>
                     <th class="sortable-column" data-sort="score">Score</th>
                     <th>Comment</th>
                     <!-- Grade column removed - keeping only Score column -->
@@ -414,7 +427,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="17" class="no-data<?php echo $status === 'abandoned' ? ' trash-mode' : ''; ?>">
+                    <tr><td colspan="21" class="no-data<?php echo $status === 'abandoned' ? ' trash-mode' : ''; ?>">
                         <?php if ($status === 'abandoned'): ?>
                             No items in trash
                         <?php else: ?>
@@ -453,6 +466,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td><a href="<?php echo $row->course_url; ?>" class="course-link" target="_blank"><?php echo htmlspecialchars($row->coursename); ?></a></td>
                             <td><?php echo !empty($row->timefinish) ? date('Y-m-d H:i', $row->timefinish) : '-'; ?></td>
                             <td><?php echo $row->time_taken ?: '-'; ?></td>
+                            <td><?php echo $row->score_content_ideas !== null ? ((int)$row->score_content_ideas) . ' / 25' : '-'; ?></td>
+                            <td><?php echo $row->score_structure_organization !== null ? ((int)$row->score_structure_organization) . ' / 25' : '-'; ?></td>
+                            <td><?php echo $row->score_language_use !== null ? ((int)$row->score_language_use) . ' / 20' : '-'; ?></td>
+                            <td><?php echo $row->score_creativity_originality !== null ? ((int)$row->score_creativity_originality) . ' / 20' : '-'; ?></td>
+                            <td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
                             <td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
                             <td class="comment-cell-count"><a href="<?php echo $row->reviewurl; ?>" class="comment-link" title="View/Add comments"><span class="comment-icon">💬</span><span class="comment-count"><?php echo $row->comment_count; ?></span></a></td>
                             <!-- Grade cell removed - keeping only Score column -->
@@ -501,13 +519,13 @@ require_once(__DIR__ . '/navigation_fallback.php');
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="feedbackModalLabel">Essay Feedback</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="close" onclick="closeFeedbackModal()" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body" id="feedbackContent"></div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" onclick="closeFeedbackModal()">Close</button>
             </div>
         </div>
     </div>
@@ -616,7 +634,15 @@ function executeBulkAction() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: params.toString()
-            }).then(res => res.json()).catch(err => {
+            }).then(async res => {
+                const text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error('Invalid JSON for attempt', attemptId, 'raw:', text);
+                    return { success: false, message: 'Server returned invalid JSON. Response: ' + text.substring(0, 500) };
+                }
+            }).catch(err => {
                 console.error('Request failed for attempt', attemptId, ':', err);
                 return {success: false, message: err.message};
             });
@@ -787,6 +813,19 @@ function checkAILikelihood(attemptId, button) {
     });
 }
 
+function closeFeedbackModal() {
+    const modal = document.getElementById('feedbackModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+        document.body.classList.remove('modal-open');
+        const backdrop = document.getElementById('modal-backdrop');
+        if (backdrop) {
+            backdrop.remove();
+        }
+    }
+}
+
 function viewFeedback(attemptId) {
     const params = new URLSearchParams({
         action: 'view_feedback',
@@ -808,7 +847,18 @@ function viewFeedback(attemptId) {
         }
       } catch (_) { /* not an error, it's HTML */ }
       document.getElementById('feedbackContent').innerHTML = text;
-      $('#feedbackModal').modal('show');
+      // Use vanilla JS instead of jQuery
+      const modal = document.getElementById('feedbackModal');
+      if (modal) {
+        modal.style.display = 'block';
+        modal.classList.add('show');
+        document.body.classList.add('modal-open');
+        // Create backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        backdrop.id = 'modal-backdrop';
+        document.body.appendChild(backdrop);
+      }
     })
     .catch(err => {
       console.error(err);

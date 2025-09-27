@@ -97,7 +97,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         ];
 
         var questionsFound = 0;
-        var currentAttempts = getTotalAttemptCount();
+        var currentAttempts = getHelpAttemptCount();
 
         questionSelectors.forEach(function(selector) {
             $(selector).each(function(index) {
@@ -282,7 +282,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
     }
 
     function updateButtonState(button, attempts) {
-        if (attempts >= maxAttemptsAllowed) {
+        if (attempts >= maxHelpAttempts) {
             button.text('Help exhausted')
                   .addClass('btn-secondary')
                   .removeClass('question-helper-btn')

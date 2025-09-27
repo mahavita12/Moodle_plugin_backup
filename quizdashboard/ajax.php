@@ -392,117 +392,106 @@ try {
 
         // Individual attempt actions (require attemptid parameter)
         case 'get_ai_likelihood':
-        case 'auto_grade':
-        case 'view_feedback':
-        case 'generate_homework':
-        case 'grade_resubmission':
             $attemptid = required_param('attemptid', PARAM_INT);
-            
-            if ($action === 'get_ai_likelihood') {
-                $require_for($attemptid, 'mod/quiz:grade');
-                
-                if (!class_exists('\\local_quizdashboard\\essay_grader')) {
-                    require_once(__DIR__ . '/classes/essay_grader.php');
-                }
-                $grader = new \local_quizdashboard\essay_grader();
-                
-                $likelihood = $grader->get_or_detect_ai_likelihood($attemptid);
-                while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode(['success' => true, 'likelihood' => $likelihood], JSON_UNESCAPED_UNICODE);
-                exit;
+            $require_for($attemptid, 'mod/quiz:grade');
+            if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                require_once(__DIR__ . '/classes/essay_grader.php');
             }
+            $grader = new \local_quizdashboard\essay_grader();
+            $likelihood = $grader->get_or_detect_ai_likelihood($attemptid);
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            echo json_encode(['success' => true, 'likelihood' => $likelihood], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
 
-            if ($action === 'auto_grade') {
-                $level = optional_param('level', 'general', PARAM_ALPHA);
-                $require_for($attemptid, 'mod/quiz:grade');
-                
-                if (!class_exists('\\local_quizdashboard\\essay_grader')) {
-                    require_once(__DIR__ . '/classes/essay_grader.php');
-                }
-                $grader = new \local_quizdashboard\essay_grader();
-                
+        case 'auto_grade':
+            $attemptid = required_param('attemptid', PARAM_INT);
+            $level = optional_param('level', 'general', PARAM_ALPHA);
+            $require_for($attemptid, 'mod/quiz:grade');
+            if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                require_once(__DIR__ . '/classes/essay_grader.php');
+            }
+            $grader = new \local_quizdashboard\essay_grader();
+            error_log('[quizdashboard ajax] enter auto_grade attemptid=' . $attemptid . ' level=' . $level);
+            try {
                 $result = $grader->auto_grade_attempt($attemptid, $level);
                 while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode($result, JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-
-            if ($action === 'view_feedback') {
-                $require_for($attemptid, 'mod/quiz:viewreports');
-                
-                if (!class_exists('\\local_quizdashboard\\essay_grader')) {
-                    require_once(__DIR__ . '/classes/essay_grader.php');
-                }
-                $grader = new \local_quizdashboard\essay_grader();
-                
-                $grading = $grader->get_grading_result($attemptid);
-                
+                $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                error_log('[quizdashboard ajax] auto_grade result bytes=' . strlen((string)$json));
+                echo $json;
+            } catch (Throwable $ex) {
+                error_log('[quizdashboard ajax] auto_grade exception: ' . $ex->getMessage());
                 while (ob_get_level() > 0) { @ob_end_clean(); }
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'exception', 'message' => $ex->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            }
+            exit;
+
+        case 'view_feedback':
+            $attemptid = required_param('attemptid', PARAM_INT);
+            $require_for($attemptid, 'mod/quiz:viewreports');
+            if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                require_once(__DIR__ . '/classes/essay_grader.php');
+            }
+            $grader = new \local_quizdashboard\essay_grader();
+            $grading = $grader->get_grading_result($attemptid);
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            if (!empty($grading) && !empty($grading->feedback_html)) {
                 header('Content-Type: text/html; charset=utf-8');
-                
-                if (!empty($grading) && !empty($grading->feedback_html)) {
-                    echo $grading->feedback_html;
-                } else {
-                    header('Content-Type: application/json; charset=utf-8');
-                    echo json_encode(['success' => false, 'message' => 'No feedback found'], JSON_UNESCAPED_UNICODE);
-                }
-                exit;
+                echo $grading->feedback_html;
+            } else {
+                echo json_encode(['success' => false, 'message' => 'No feedback found'], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
+            exit;
 
-            if ($action === 'generate_homework') {
-                $level = optional_param('level', 'general', PARAM_ALPHA);
-                $require_for($attemptid, 'mod/quiz:grade');
-                
-                if (!class_exists('\\local_quizdashboard\\essay_grader')) {
-                    require_once(__DIR__ . '/classes/essay_grader.php');
-                }
-                $grader = new \local_quizdashboard\essay_grader();
-                
-                $result = $grader->generate_homework_for_attempt($attemptid, $level);
-                while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode($result, JSON_UNESCAPED_UNICODE);
-                exit;
+        case 'generate_homework':
+            $attemptid = required_param('attemptid', PARAM_INT);
+            $level = optional_param('level', 'general', PARAM_ALPHA);
+            $require_for($attemptid, 'mod/quiz:grade');
+            if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                require_once(__DIR__ . '/classes/essay_grader.php');
             }
-
-            if ($action === 'grade_resubmission') {
-                $level = optional_param('level', 'general', PARAM_ALPHA);
-                $require_for($attemptid, 'mod/quiz:grade');
-                
-                // Use the resubmission grader instead of regular grader
-                if (!class_exists('\\local_quizdashboard\\resubmission_grader')) {
-                    require_once(__DIR__ . '/classes/resubmission_grader.php');
-                }
-                $grader = new \local_quizdashboard\resubmission_grader();
-                
-                // Use the resubmission-specific processing method
+            $grader = new \local_quizdashboard\essay_grader();
+            $result = $grader->generate_homework_for_attempt($attemptid, $level);
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+            $level = optional_param('level', 'general', PARAM_ALPHA);
+            $require_for($attemptid, 'mod/quiz:grade');
+            if (!class_exists('\\local_quizdashboard\\resubmission_grader')) {
+                require_once(__DIR__ . '/classes/resubmission_grader.php');
+            }
+            $grader = new \local_quizdashboard\resubmission_grader();
+            error_log('[quizdashboard ajax] enter grade_resubmission attemptid=' . $attemptid . ' level=' . $level);
+            try {
                 $result = $grader->process_resubmission($attemptid, $level);
-                
-                // Mark as resubmission in response
-                if ($result['success']) {
-                    $result['message'] = isset($result['is_penalty']) ? 
-                        'Copy penalty applied for resubmission.' : 
-                        'Resubmission graded successfully using comparative feedback.';
+                if (is_array($result) && !empty($result['success'])) {
+                    $result['message'] = isset($result['is_penalty']) ? 'Copy penalty applied for resubmission.' : 'Resubmission graded successfully using comparing feedback.';
                     $result['is_resubmission'] = true;
                 }
-                
                 while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode($result, JSON_UNESCAPED_UNICODE);
-                exit;
+                $json = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                error_log('[quizdashboard ajax] grade_resubmission result bytes=' . strlen((string)$json));
+                echo $json;
+            } catch (Throwable $ex) {
+                error_log('[quizdashboard ajax] grade_resubmission exception: ' . $ex->getMessage());
+                while (ob_get_level() > 0) { @ob_end_clean(); }
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'exception', 'message' => $ex->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
-            break;
+            exit;
 
         default:
             throw new moodle_exception('invalidparameter', 'error', '', 'Unknown action: ' . $action);
     }
-
 } catch (Throwable $e) {
     error_log('[quizdashboard ajax] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     while (ob_get_level() > 0) { @ob_end_clean(); }
     http_response_code(400);
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false,
         'error'   => 'bad_request',
         'message' => $e->getMessage()
-    ], JSON_UNESCAPED_UNICODE);
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }

@@ -717,7 +717,13 @@ class essay_grader {
 
         <h2 style=\"font-size:16px;\"><p><strong>Final Score: X/100</strong></p></h2> 
 
-        Remember: ONLY provide feedback. Do NOT include any revision or rewritten version of the essay. When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color (#3399cc).";
+        <!-- SCORES_JSON_START -->
+        {\"content_and_ideas\": X, \"structure_and_organization\": X, \"language_use\": X, \"creativity_and_originality\": X, \"mechanics\": X, \"final_score\": X}
+        <!-- SCORES_JSON_END -->
+
+        Remember: ONLY provide feedback. Do NOT include any revision or rewritten version of the essay. When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color (#3399cc). 
+
+        CRITICAL: After the Final Score section, you MUST include the JSON scores block exactly as shown above, replacing each X with the actual numeric score (no /25, /20, /10 - just the number). This JSON will be used for database storage.";
 
         $user_content = "Essay Question:\n" . $essay_data['question_text'] . "\n\nStudent Essay:\n" . $essay_data['answer_text'];
         $provider = $this->get_provider();
@@ -733,7 +739,7 @@ class essay_grader {
             $result = $this->make_anthropic_api_call($data, 'generate_essay_feedback');
         } else {
             $data = [ 
-                'model' => 'gpt-4o', 
+                'model' => $this->get_openai_model(), 
                 'messages' => [ 
                     ['role' => 'system', 'content' => $system_prompt], 
                     ['role' => 'user', 'content' => $user_content] 
@@ -819,18 +825,29 @@ class essay_grader {
             $system_prompt = $general_prompt;
         }
         
-        $data = [ 
-            'model' => 'gpt-4o', 
-            'messages' => [ 
-                ['role' => 'system', 'content' => $system_prompt], 
-                ['role' => 'user', 'content' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text] 
-            ], 
- 
-            'max_completion_tokens' => 8000 
-        ];
-        
-        // TIMEOUT FIX: Use new robust API call method
-        $result = $this->make_openai_api_call($data, 'get_clean_revision');
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [ 
+                'model' => $this->get_anthropic_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text ] ]]
+                ],
+                'max_tokens' => 8000
+            ];
+            $result = $this->make_anthropic_api_call($data, 'get_clean_revision');
+        } else {
+            $data = [ 
+                'model' => $this->get_openai_model(), 
+                'messages' => [ 
+                    ['role' => 'system', 'content' => $system_prompt], 
+                    ['role' => 'user', 'content' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text] 
+                ], 
+                'max_completion_tokens' => 8000 
+            ];
+            // TIMEOUT FIX: Use new robust API call method
+            $result = $this->make_openai_api_call($data, 'get_clean_revision');
+        }
         if (!$result['success']) {
             return 'Error: ' . $result['message'];
         }
@@ -887,17 +904,30 @@ class essay_grader {
 
             $user_content = "Please compare the following texts sentence by sentence and apply the formatting rules for a student revision.\\n\\n---\\n[Original Text]:\\n{$original_text}\\n\\n---\\n[Revised Text]:\\n{$revised_text}\\n---";
             
-            $data = [ 
-                'model' => 'gpt-4o', 
-                'messages' => [
-                    ['role' => 'system', 'content' => $system_prompt], 
-                    ['role' => 'user', 'content' => $user_content]
-                ], 
-                'max_completion_tokens' => 10000 
-            ];
-            
-            // TIMEOUT FIX: Use new robust API call method
-            $api_result = $this->make_openai_api_call($data, 'get_formatted_diff');
+            $provider = $this->get_provider();
+            if ($provider === 'anthropic') {
+                $data = [
+                    'model' => $this->get_anthropic_model(),
+                    'system' => $system_prompt,
+                    'messages' => [
+                        ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content ] ]]
+                    ],
+                    'max_tokens' => 10000
+                ];
+                $api_result = $this->make_anthropic_api_call($data, 'get_formatted_diff');
+            } else {
+                $data = [ 
+                    'model' => $this->get_openai_model(), 
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system_prompt], 
+                        ['role' => 'user', 'content' => $user_content]
+                    ], 
+                    'max_completion_tokens' => 10000 
+                ];
+                
+                // TIMEOUT FIX: Use new robust API call method
+                $api_result = $this->make_openai_api_call($data, 'get_formatted_diff');
+            }
             if (!$api_result['success']) {
                 return 'Error: Formatting - ' . $api_result['message'];
             }
@@ -1194,15 +1224,26 @@ class essay_grader {
             $score_creativity_originality = $scores['creativity_and_originality'] ?? null;
             $score_mechanics = $scores['mechanics'] ?? null;
 
-            // Fallback: if scores are not provided, parse them from feedback HTML
-            if ($score_content_ideas === null && $score_structure_organization === null && $score_language_use === null && $score_creativity_originality === null && $score_mechanics === null) {
+            // Fallback: if ANY score is missing, parse from HTML and fill only missing ones
+            $need_parse = ($score_content_ideas === null || $score_structure_organization === null || $score_language_use === null || $score_creativity_originality === null || $score_mechanics === null);
+            if ($need_parse) {
                 $parsed_scores = $this->extract_subcategory_scores_from_html($feedback_data['feedback_html'] ?? $complete_html);
-                $score_content_ideas = $parsed_scores['content_and_ideas'] ?? $score_content_ideas;
-                $score_structure_organization = $parsed_scores['structure_and_organization'] ?? $score_structure_organization;
-                $score_language_use = $parsed_scores['language_use'] ?? $score_language_use;
-                $score_creativity_originality = $parsed_scores['creativity_and_originality'] ?? $score_creativity_originality;
-                $score_mechanics = $parsed_scores['mechanics'] ?? $score_mechanics;
-                error_log("DEBUG: Fallback parsed scores - Content: {" . ($score_content_ideas ?? 'null') . "}, Structure: {" . ($score_structure_organization ?? 'null') . "}, Language: {" . ($score_language_use ?? 'null') . "}, Creativity: {" . ($score_creativity_originality ?? 'null') . "}, Mechanics: {" . ($score_mechanics ?? 'null') . "}");
+                if ($score_content_ideas === null) {
+                    $score_content_ideas = $parsed_scores['content_and_ideas'] ?? $score_content_ideas;
+                }
+                if ($score_structure_organization === null) {
+                    $score_structure_organization = $parsed_scores['structure_and_organization'] ?? $score_structure_organization;
+                }
+                if ($score_language_use === null) {
+                    $score_language_use = $parsed_scores['language_use'] ?? $score_language_use;
+                }
+                if ($score_creativity_originality === null) {
+                    $score_creativity_originality = $parsed_scores['creativity_and_originality'] ?? $score_creativity_originality;
+                }
+                if ($score_mechanics === null) {
+                    $score_mechanics = $parsed_scores['mechanics'] ?? $score_mechanics;
+                }
+                error_log("DEBUG: Fallback parsed scores (filled missing) - Content: {" . ($score_content_ideas ?? 'null') . "}, Structure: {" . ($score_structure_organization ?? 'null') . "}, Language: {" . ($score_language_use ?? 'null') . "}, Creativity: {" . ($score_creativity_originality ?? 'null') . "}, Mechanics: {" . ($score_mechanics ?? 'null') . "}");
             }
             
             error_log("DEBUG: Extracted scores - Content: {" . ($score_content_ideas ?? 'null') . "}, " .
@@ -1577,7 +1618,8 @@ class essay_grader {
         // Add markers around each grading section for reliable extraction by resubmission grader
         $sections = [
             'content_and_ideas' => ['CONTENT_IDEAS', '/(<h2[^>]*>.*?Content and Ideas.*?<\/h2>.*?)(?=<h2|$)/si'],
-            'structure_and_organization' => ['STRUCTURE_ORG', '/(<h2[^>]*>.*?Structure and Organization.*?<\/h2>.*?)(?=<h2|$)/si'],
+            // Accept both Organization (US) and Organisation (AU)
+            'structure_and_organization' => ['STRUCTURE_ORG', '/(<h2[^>]*>.*?Structure\s+and\s+Organi[sz]ation.*?<\/h2>.*?)(?=<h2|$)/si'],
             'language_use' => ['LANGUAGE_USE', '/(<h2[^>]*>.*?Language Use.*?<\/h2>.*?)(?=<h2|$)/si'],
             'creativity_and_originality' => ['CREATIVITY_ORIG', '/(<h2[^>]*>.*?Creativity and Originality.*?<\/h2>.*?)(?=<h2|$)/si'],
             'mechanics' => ['MECHANICS', '/(<h2[^>]*>.*?Mechanics.*?<\/h2>.*?)(?=<h2|$)/si'],
@@ -1597,7 +1639,53 @@ class essay_grader {
         $feedback_html = preg_replace('/(<p><strong>Score:.*?<\/p>)/si', '<!-- SCORE_MARKER -->$1<!-- /SCORE_MARKER -->', $feedback_html);
         $feedback_html = preg_replace('/(<p><strong>Score \(Previous.*?<\/p>)/si', '<!-- SCORE_MARKER -->$1<!-- /SCORE_MARKER -->', $feedback_html);
         
+        // Normalise arrows so extraction regexes match consistently
+        $feedback_html = str_replace(
+            array('&rarr;', '&#8594;', '-&gt;', '->'),
+            array('→', '→', '→', '→'),
+            $feedback_html
+        );
+
         return $feedback_html;
+    }
+
+    /**
+     * Extract scores from JSON block in feedback HTML (preferred method)
+     */
+    protected function extract_scores_from_json($feedback_html) {
+        if (preg_match('/<!-- SCORES_JSON_START -->(.*?)<!-- SCORES_JSON_END -->/s', $feedback_html, $matches)) {
+            $json_string = trim($matches[1]);
+            $scores = json_decode($json_string, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($scores)) {
+                error_log("DEBUG: Successfully extracted scores from JSON: " . json_encode($scores));
+                return $scores;
+            } else {
+                error_log("DEBUG: JSON decode failed: " . json_last_error_msg());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extract the last score (assumed NEW score) from a section segment.
+     */
+    protected function extract_last_score_from_segment($segment, $max) {
+        if (empty($segment)) {
+            return null;
+        }
+
+        if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $segment, $lineMatch)) {
+            $line = $lineMatch[1];
+            if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
+                return (int) end($nums[1]);
+            }
+        }
+
+        if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $segment, $allNums) && !empty($allNums[1])) {
+            return (int) end($allNums[1]);
+        }
+
+        return null;
     }
 
     /**
@@ -1608,6 +1696,23 @@ class essay_grader {
         if (empty($feedback_html)) {
             return $scores;
         }
+
+        // Try JSON extraction first (preferred method)
+        $json_scores = $this->extract_scores_from_json($feedback_html);
+        if ($json_scores !== null) {
+            error_log("DEBUG: Using JSON scores for subcategory extraction");
+            return [
+                'content_and_ideas' => $json_scores['content_and_ideas'] ?? null,
+                'structure_and_organization' => $json_scores['structure_and_organization'] ?? null,
+                'language_use' => $json_scores['language_use'] ?? null,
+                'creativity_and_originality' => $json_scores['creativity_and_originality'] ?? null,
+                'mechanics' => $json_scores['mechanics'] ?? null
+            ];
+        }
+
+        error_log("DEBUG: JSON extraction failed, falling back to regex parsing");
+
+        // Fallback to regex parsing
         $sections = [
             'content_and_ideas' => ['title' => 'Content and Ideas', 'marker' => 'CONTENT_IDEAS', 'max' => 25],
             'structure_and_organization' => ['title' => 'Structure and Organization', 'marker' => 'STRUCTURE_ORG', 'max' => 25],
@@ -1617,39 +1722,34 @@ class essay_grader {
         ];
         foreach ($sections as $key => $cfg) {
             $max = (int)$cfg['max'];
-            $found = false;
+            $value = null;
 
-            // Prefer extracting within strategic markers for the section
+            // Marker-based extraction
             $marker_pattern = '/<!-- EXTRACT_' . $cfg['marker'] . '_START -->(.*?)<!-- EXTRACT_' . $cfg['marker'] . '_END -->/si';
             if (preg_match($marker_pattern, $feedback_html, $msection)) {
-                $segment = $msection[1];
-                // Find the Score line content within the marked segment
-                if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $segment, $lineMatch)) {
-                    $line = $lineMatch[1];
-                    // Capture all occurrences of X/max and take the LAST as the NEW score
-                    if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
-                        $last = end($nums[1]);
-                        $scores[$key] = (int)$last; $found = true;
-                    }
+                $value = $this->extract_last_score_from_segment($msection[1], $max);
+            }
+
+            if ($value === null) {
+                $titlePattern = ($key === 'structure_and_organization')
+                    ? 'Structure\\s+and\\s+Organi[sz]ation'
+                    : preg_quote($cfg['title'], '/');
+                if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $feedback_html, $sec)) {
+                    $value = $this->extract_last_score_from_segment($sec[1], $max);
                 }
             }
 
-            // Fallback: search in the whole HTML by section title
-            if (!$found) {
-                $title = preg_quote($cfg['title'], '/');
-                if (preg_match('/<h2[^>]*>.*?' . $title . '.*?<\/h2>(.*?)(?=<h2|$)/si', $feedback_html, $sec)) {
-                    $segment = $sec[1];
-                    if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $segment, $lineMatch)) {
-                        $line = $lineMatch[1];
-                        if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
-                            $last = end($nums[1]);
-                            $scores[$key] = (int)$last; $found = true;
-                        }
-                    }
+            if ($value === null) {
+                // Absolute fallback: look for any X/max occurrences following the title
+                $fallbackPattern = ($key === 'structure_and_organization')
+                    ? '/Structure\\s+and\\s+Organi[sz]ation.*?(\d+)\s*\/\s*' . $max . '/si'
+                    : '/' . preg_quote($cfg['title'], '/') . '.*?(\d+)\s*\/\s*' . $max . '/si';
+                if (preg_match_all($fallbackPattern, $feedback_html, $matches) && !empty($matches[1])) {
+                    $value = (int) end($matches[1]);
                 }
             }
 
-            if (!$found) { $scores[$key] = null; }
+            $scores[$key] = $value !== null ? (int)$value : null;
         }
         return $scores;
     }

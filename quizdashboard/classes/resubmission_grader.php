@@ -39,10 +39,14 @@ This student previously submitted this essay and received feedback. You are now 
 Previous scores from {$prev_ordinal} submission:
 " . $this->format_previous_scores_for_prompt($previous_scores) . "
 
-- Show improvement as: Previous Score  New Score  
+- Show improvement as: Previous Score → New Score  
 - Only increase scores where there is genuine, measurable improvement
 - Maintain or decrease scores where improvement is minimal or absent
 - Use Australian English for all feedback
+
+**FINAL SCORE RULE**:
+- The Final Score (Previous → New) MUST equal the sum of the five NEW subcategory scores.
+- Use exact integer arithmetic. Do not invent totals; compute them from your NEW subcategory scores.
 
 **CRITICAL FORMATTING RULES FOR EXAMPLES:**
 - When showing original and improved versions in Language Use and Mechanics sections, ALWAYS put them on completely separate lines
@@ -56,7 +60,7 @@ Improved: [corrected text]
 **OUTPUT STRUCTURE**: You must follow this exact HTML format:
 
 <h2 style=\"font-size:18px;\">1. Content and Ideas (25%)</h2>
-<p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/25 ? [NEW_SCORE]/25</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -64,7 +68,7 @@ Improved: [corrected text]
 </ul>
 
 <h2 style=\"font-size:18px;\">2. Structure and Organization (25%)</h2>
-<p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/25  [NEW_SCORE]/25</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -72,7 +76,7 @@ Improved: [corrected text]
 </ul>
 
 <h2 style=\"font-size:18px;\">3. Language Use (20%)</h2>
-<p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/20  [NEW_SCORE]/20</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/20 → [NEW_SCORE]/20</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -93,7 +97,7 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 </ul>
 
 <h2 style=\"font-size:18px;\">5. Mechanics (10%)</h2>
-<p><strong>Score (Previous ? New):</strong> [PREVIOUS_SCORE]/10 ? [NEW_SCORE]/10</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/10 → [NEW_SCORE]/10</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -108,9 +112,15 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 <h2 style=\"font-size:18px;\">Overall Comments</h2>
 <div id=\"overall-comments\"><p>[Summary of progress and encouragement]</p></div>
 
-<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous  New): [PREVIOUS_TOTAL]/100  [NEW_TOTAL]/100</strong></p></h2>
+<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous → New): [PREVIOUS_TOTAL]/100 → [NEW_TOTAL]/100</strong></p></h2>
 
-Remember: When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color.";
+<!-- SCORES_JSON_START -->
+{\"content_and_ideas\": [NEW_SCORE], \"structure_and_organization\": [NEW_SCORE], \"language_use\": [NEW_SCORE], \"creativity_and_originality\": [NEW_SCORE], \"mechanics\": [NEW_SCORE], \"final_score\": [NEW_TOTAL]}
+<!-- SCORES_JSON_END -->
+
+Remember: When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color.
+
+CRITICAL: After the Final Score section, you MUST include the JSON scores block exactly as shown above, replacing each [NEW_SCORE] and [NEW_TOTAL] with the actual numeric NEW scores (no /25, /20, /10 - just the number). This JSON will be used for database storage.";
 
         // Extract previous essay text and feedback using strategic markers
         $previous_essay_text = $this->extract_original_essay_from_feedback($previous_grading->feedback_html);
@@ -145,7 +155,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
             $result = $this->make_anthropic_api_call($data, 'generate_comparative_feedback');
         } else {
             $data = [
-                'model' => 'gpt-4o',
+                'model' => $this->get_openai_model(),
                 'messages' => [
                     ['role' => 'system', 'content' => $system_prompt],
                     ['role' => 'user', 'content' => $user_content]
@@ -461,6 +471,56 @@ Remember: When showing original and improved examples in Language Use and Mechan
         }
     }
 
+    // Helper: deterministically set the Final Score (Previous → New) line to avoid AI hallucination
+    private function enforce_final_score($html, $prev_total, $new_total) {
+        $replacement = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
+        // Replace common pattern where the whole strong tag is on one line
+        $html2 = preg_replace('/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:\s*.*?<\/strong>/si', $replacement, $html);
+        if ($html2 !== null && $html2 !== $html) {
+            return $html2;
+        }
+        // Fallback: try to replace just the numeric part inside the existing strong tag
+        $html2 = preg_replace('/(Final\s+Score\s*\(Previous.*?New\)\s*:\s*).*?(?=<\/strong>)/si', '$1' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100', $html);
+        if ($html2 !== null) {
+            return $html2;
+        }
+        return $html;
+    }
+
+    /**
+     * Extract the last X/max pair from a feedback segment (treating it as the NEW score).
+     */
+    private function extract_last_score_from_segment($segment, $max) {
+        if (empty($segment)) {
+            return null;
+        }
+
+        // Normalise entities so → or &rarr; are comparable
+        $normalized = html_entity_decode($segment, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Prefer explicit Previous → New pattern and capture the NEW score (second number)
+        if (preg_match('/(\d+)\s*\/\s*' . $max . '\s*(?:→|->)\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $arrowMatch)) {
+            return (int)$arrowMatch[2];
+        }
+        if (preg_match('/→\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $justArrow)) {
+            return (int)$justArrow[1];
+        }
+
+        // Try to narrow to the Score line first for higher accuracy.
+        if (preg_match('/<p>\s*<strong>\s*Score[^:]*:\s*<\/strong>\s*(.*?)<\/p>/si', $normalized, $lineMatch)) {
+            $line = $lineMatch[1];
+            if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $line, $nums) && !empty($nums[1])) {
+                return (int) end($nums[1]);
+            }
+        }
+
+        if (preg_match_all('/(\d+)\s*\/\s*' . $max . '/si', $normalized, $allNums) && !empty($allNums[1])) {
+            return (int) end($allNums[1]);
+        }
+
+        return null;
+    }
+
     /**
      * Main resubmission processing function
      */
@@ -541,6 +601,28 @@ Remember: When showing original and improved examples in Language Use and Mechan
             $current_scores = $this->extract_resubmission_scores($feedback_result['data']['feedback_html'] ?? '');
             $feedback_result['data']['scores'] = $current_scores;
 
+            // 10a) Enforce FINAL score line using deterministic values to avoid AI hallucination
+            $prev_total = isset($previous_scores['final_score']['score']) ? (int)$previous_scores['final_score']['score'] : (
+                (int)($previous_scores['content_and_ideas']['score'] ?? 0)
+                + (int)($previous_scores['structure_and_organization']['score'] ?? 0)
+                + (int)($previous_scores['language_use']['score'] ?? 0)
+                + (int)($previous_scores['creativity_and_originality']['score'] ?? 0)
+                + (int)($previous_scores['mechanics']['score'] ?? 0)
+            );
+            $new_total = (int)($current_scores['content_and_ideas'] ?? 0)
+                        + (int)($current_scores['structure_and_organization'] ?? 0)
+                        + (int)($current_scores['language_use'] ?? 0)
+                        + (int)($current_scores['creativity_and_originality'] ?? 0)
+                        + (int)($current_scores['mechanics'] ?? 0);
+
+            // Patch the comparative feedback block and the already-built complete HTML
+            if (!empty($feedback_result['data']['feedback_html'])) {
+                $feedback_result['data']['feedback_html'] = $this->enforce_final_score($feedback_result['data']['feedback_html'], $prev_total, $new_total);
+            }
+            if (!empty($complete_html)) {
+                $complete_html = $this->enforce_final_score($complete_html, $prev_total, $new_total);
+            }
+
             // 11) Save grading record including scores and AI likelihood
             $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '');
 
@@ -619,7 +701,7 @@ Remember: When showing original and improved examples in Language Use and Mechan
         $feedback_html = $previous_grading_record->feedback_html ?? '';
         $scores = [];
 
-        // 1) Prefer DB-stored scores if present
+        // 1) Prefer DB-stored scores if present, but do NOT return early
         $db_scores = [
             'content_and_ideas' => ['value' => $previous_grading_record->score_content_ideas ?? null, 'max' => 25],
             'structure_and_organization' => ['value' => $previous_grading_record->score_structure_organization ?? null, 'max' => 25],
@@ -634,89 +716,110 @@ Remember: When showing original and improved examples in Language Use and Mechan
                 $has_any_db = true;
             }
         }
-        if ($has_any_db) {
-            // Compute final_score from parts if available
-            $sum = 0; $count = 0;
-            foreach ($db_scores as $key => $info) {
-                if (isset($scores[$key])) { $sum += (int)$scores[$key]['score']; $count++; }
-            }
-            if ($count > 0) {
-                $scores['final_score'] = ['score' => $sum, 'max' => 100];
-                return $scores;
-            }
-        }
 
         // 2) Fallback to parsing HTML if DB fields missing
         $sections = [
-            'content_and_ideas' => ['marker' => 'CONTENT_IDEAS', 'max' => 25,
+            'content_and_ideas' => [
+                'marker' => 'CONTENT_IDEAS',
+                'max' => 25,
+                'title_pattern' => 'Content\s+and\s+Ideas',
                 'patterns' => [
-                    '/Content and Ideas.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*25\\s*→\\s*(\\d+)\\s*\\/\\s*25/si',
-                    '/Content and Ideas.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
-                ]],
-            'structure_and_organization' => ['marker' => 'STRUCTURE_ORG', 'max' => 25,
+                    '/Content\s+and\s+Ideas.*?Score[^:]*:\s*(?:<[^>]+>\s*)*(\d+)\s*\/\s*25/si'
+                ]
+            ],
+            'structure_and_organization' => [
+                'marker' => 'STRUCTURE_ORG',
+                'max' => 25,
+                'title_pattern' => 'Structure\s+and\s+Organi[sz]ation',
                 'patterns' => [
-                    '/Structure and Organization.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*25\\s*→\\s*(\\d+)\\s*\\/\\s*25/si',
-                    '/Structure and Organization.*?Score:.*?(\\d+)\\s*\\/\\s*25/si'
-                ]],
-            'language_use' => ['marker' => 'LANGUAGE_USE', 'max' => 20,
+                    '/Structure\s+and\s+Organi[sz]ation.*?Score[^:]*:\s*(?:<[^>]+>\s*)*(\d+)\s*\/\s*25/si'
+                ]
+            ],
+            'language_use' => [
+                'marker' => 'LANGUAGE_USE',
+                'max' => 20,
+                'title_pattern' => 'Language\s+Use',
                 'patterns' => [
-                    '/Language Use.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*20\\s*→\\s*(\\d+)\\s*\\/\\s*20/si',
-                    '/Language Use.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
-                ]],
-            'creativity_and_originality' => ['marker' => 'CREATIVITY_ORIG', 'max' => 20,
+                    '/Language\s+Use.*?Score[^:]*:\s*(?:<[^>]+>\s*)*(\d+)\s*\/\s*20/si'
+                ]
+            ],
+            'creativity_and_originality' => [
+                'marker' => 'CREATIVITY_ORIG',
+                'max' => 20,
+                'title_pattern' => 'Creativity\s+and\s+Originality',
                 'patterns' => [
-                    '/Creativity and Originality.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*20\\s*→\\s*(\\d+)\\s*\\/\\s*20/si',
-                    '/Creativity and Originality.*?Score:.*?(\\d+)\\s*\\/\\s*20/si'
-                ]],
-            'mechanics' => ['marker' => 'MECHANICS', 'max' => 10,
+                    '/Creativity\s+and\s+Originality.*?Score[^:]*:\s*(?:<[^>]+>\s*)*(\d+)\s*\/\s*20/si'
+                ]
+            ],
+            'mechanics' => [
+                'marker' => 'MECHANICS',
+                'max' => 10,
+                'title_pattern' => 'Mechanics',
                 'patterns' => [
-                    '/Mechanics.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*10\\s*→\\s*(\\d+)\\s*\\/\\s*10/si',
-                    '/Mechanics.*?Score:.*?(\\d+)\\s*\\/\\s*10/si'
-                ]],
+                    '/Mechanics.*?Score[^:]*:\s*(?:<[^>]+>\s*)*(\d+)\s*\/\s*10/si'
+                ]
+            ],
         ];
 
         foreach ($sections as $key => $cfg) {
-            $max = (int)$cfg['max'];
-            $found = false;
+            $max = (int) $cfg['max'];
 
-            $marker_pattern = "/<!-- EXTRACT_{$cfg['marker']}_START -->(.*?)<!-- EXTRACT_{$cfg['marker']}_END -->/si";
-            if (preg_match($marker_pattern, $feedback_html, $marker_matches)) {
-                if (preg_match('/Score:.*?(\\d+)\\s*\\/\\s*' . $max . '/si', $marker_matches[1], $m)) {
-                    $scores[$key] = ['score' => (int)$m[1], 'max' => $max];
-                    $found = true;
+            // If we already have a DB score, keep it.
+            if (isset($scores[$key])) {
+                if (!isset($scores[$key]['max'])) {
+                    $scores[$key]['max'] = $max;
+                }
+                continue;
+            }
+
+            $value = null;
+
+            if (!empty($cfg['marker'])) {
+                $marker_pattern = "/<!-- EXTRACT_{$cfg['marker']}_START -->(.*?)<!-- EXTRACT_{$cfg['marker']}_END -->/si";
+                if (preg_match($marker_pattern, $feedback_html, $marker_matches)) {
+                    $segment = trim($marker_matches[1]);
+                    $value = $this->extract_last_score_from_segment($segment, $max);
                 }
             }
 
-            if (!$found) {
-                foreach ($cfg['patterns'] as $p) {
-                    if (preg_match($p, $feedback_html, $m)) {
-                        $scores[$key] = ['score' => (int)$m[1], 'max' => $max];
-                        $found = true;
+            if ($value === null && !empty($cfg['title_pattern'])) {
+                if (preg_match('/<h2[^>]*>.*?' . $cfg['title_pattern'] . '.*?<\/h2>(.*?)(?=<h2|$)/si', $feedback_html, $sec)) {
+                    $value = $this->extract_last_score_from_segment($sec[1], $max);
+                }
+            }
+
+            if ($value === null && !empty($cfg['patterns'])) {
+                foreach ($cfg['patterns'] as $pattern) {
+                    if (preg_match($pattern, $feedback_html, $m)) {
+                        $value = (int) $m[1];
                         break;
                     }
                 }
             }
 
-            if (!$found) {
-                $scores[$key] = ['score' => 0, 'max' => $max];
+            if ($value === null) {
+                $value = 0;
             }
+
+            $scores[$key] = ['score' => (int) $value, 'max' => $max];
         }
 
+        // Determine final score (prefer HTML explicit value)
         if (preg_match('/<!-- EXTRACT_FINAL_SCORE_START -->(.*?)<!-- EXTRACT_FINAL_SCORE_END -->/si', $feedback_html, $final_marker_matches)) {
             $final = $final_marker_matches[1];
-            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*100\\s*→\\s*(\\d+)\\s*\\/\\s*100/si', $final, $m)) {
+            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\d+\s*\/\s*100\s*→\s*(\d+)\s*\/\s*100/si', $final, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
-            } elseif (preg_match('/Final Score:.*?(\\d+)\\s*\\/\\s*100/si', $final, $m)) {
+            } elseif (preg_match('/Final Score:.*?(\d+)\s*\/\s*100/si', $final, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
             }
         }
         if (!isset($scores['final_score'])) {
-            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*100\\s*→\\s*(\\d+)\\s*\\/\\s*100/si', $feedback_html, $m)) {
+            if (preg_match('/Final Score \(Previous.*?→.*?New\):.*?\d+\s*\/\s*100\s*→\s*(\d+)\s*\/\s*100/si', $feedback_html, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
-            } elseif (preg_match('/Final Score:.*?(\\d+)\\s*\\/\\s*100/si', $feedback_html, $m)) {
+            } elseif (preg_match('/Final Score:.*?(\d+)\s*\/\s*100/si', $feedback_html, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
             } else {
-                // Sum parts as last resort
+                // Sum parts as last resort (after HTML parsing above)
                 $parts_total = 0; foreach (['content_and_ideas','structure_and_organization','language_use','creativity_and_originality','mechanics'] as $k) { $parts_total += (int)($scores[$k]['score'] ?? 0); }
                 $scores['final_score'] = ['score' => $parts_total, 'max' => 100];
             }
@@ -734,9 +837,25 @@ Remember: When showing original and improved examples in Language Use and Mechan
             return $scores;
         }
 
+        // Try JSON extraction first (preferred method)
+        $json_scores = $this->extract_scores_from_json($feedback_html);
+        if ($json_scores !== null) {
+            error_log("DEBUG: Using JSON scores for resubmission extraction");
+            return [
+                'content_and_ideas' => $json_scores['content_and_ideas'] ?? null,
+                'structure_and_organization' => $json_scores['structure_and_organization'] ?? null,
+                'language_use' => $json_scores['language_use'] ?? null,
+                'creativity_and_originality' => $json_scores['creativity_and_originality'] ?? null,
+                'mechanics' => $json_scores['mechanics'] ?? null
+            ];
+        }
+
+        error_log("DEBUG: JSON extraction failed for resubmission, falling back to regex parsing");
+
+        // Fallback to regex parsing
         $sections = [
             'content_and_ideas' => ['max' => 25, 'title' => 'Content and Ideas'],
-            'structure_and_organization' => ['max' => 25, 'title' => 'Structure and Organization'],
+            'structure_and_organization' => ['max' => 25, 'title' => 'Structure\\s+and\\s+Organi[sz]ation'],
             'language_use' => ['max' => 20, 'title' => 'Language Use'],
             'creativity_and_originality' => ['max' => 20, 'title' => 'Creativity and Originality'],
             'mechanics' => ['max' => 10, 'title' => 'Mechanics']
@@ -744,7 +863,8 @@ Remember: When showing original and improved examples in Language Use and Mechan
 
         foreach ($sections as $key => $cfg) {
             $max = (int)$cfg['max'];
-            $title = preg_quote($cfg['title'], '/');
+            // Title may already contain regex (for Organisation/Organization)
+            $title = $cfg['title'];
             $patterns = [
                 "/{$title}.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*{$max}\\s*→\\s*(\\d+)\\s*\\/\\s*{$max}/si",
                 "/{$title}.*?Score:.*?(\\d+)\\s*\\/\\s*{$max}/si"

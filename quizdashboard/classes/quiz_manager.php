@@ -67,7 +67,12 @@ class quiz_manager {
                 ) THEN 1
                 ELSE 0 
             END AS isgraded,
-            gr.ai_likelihood
+            gr.ai_likelihood,
+            gr.score_content_ideas,
+            gr.score_structure_organization,
+            gr.score_language_use,
+            gr.score_creativity_originality,
+            gr.score_mechanics
         FROM {quiz_attempts} qa
         LEFT JOIN {local_quizdashboard_gradings} gr ON gr.attempt_id = qa.id
         JOIN {quiz} q ON qa.quiz = q.id
@@ -154,7 +159,12 @@ class quiz_manager {
             'score'        => 'qa.sumgrades',
             'percentage'   => 'percentage',
             'grade'        => 'qa.sumgrades',
-            'status'       => 'qa.state'
+            'status'       => 'qa.state',
+            'score_content_ideas' => 'gr.score_content_ideas',
+            'score_structure_organization' => 'gr.score_structure_organization',
+            'score_language_use' => 'gr.score_language_use',
+            'score_creativity_originality' => 'gr.score_creativity_originality',
+            'score_mechanics' => 'gr.score_mechanics'
         ];
         if (array_key_exists($sort, $allowed_sorts)) {
             $sql .= " ORDER BY {$allowed_sorts[$sort]} ".(strtoupper($dir)==='DESC'?'DESC':'ASC');
