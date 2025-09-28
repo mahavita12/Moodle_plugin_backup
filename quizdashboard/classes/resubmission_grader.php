@@ -401,8 +401,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             
             error_log("DEBUG: Using calculated score for resubmission: {$score}/{$max_score}");
             
-            // Save comment with the calculated score
-            $comment = "<div class='ai-grading-feedback'>" . ($feedback_data['feedback_html'] ?? '') . "</div>";
+            // Save concise student-facing comment (same as first submission)
+            $comment = $this->create_student_feedback($feedback_data['feedback_html'] ?? '', $essay_data['attempt_id']);
             $fraction = $score / $max_score;
             
             // Use parent's quiz_manager to save the grade
