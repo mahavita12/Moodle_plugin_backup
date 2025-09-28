@@ -248,10 +248,16 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '<h2 class="section-header" style="color: #17a2b8;">Current Essay - ' . $ordinal . ' Submission</h2>';
         $html .= '<hr>';
         $html .= '<div style="background: #e8f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #17a2b8; margin: 10px 0;">';
-        $paragraphs = preg_split("/\r\n|\n|\r/", trim($current_essay_data['answer_text']));
-        foreach ($paragraphs as $p) {
-            if (!empty(trim($p))) {
-                $html .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
+        $answer_text = trim($current_essay_data['answer_text']);
+        // If the LLM returned block HTML, keep it as-is to avoid escaping tags like <p>.
+        if (preg_match('/<p[^>]*>/i', $answer_text)) {
+            $html .= $answer_text;
+        } else {
+            $paragraphs = preg_split("/\r\n|\n|\r/", $answer_text);
+            foreach ($paragraphs as $p) {
+                if (!empty(trim($p))) {
+                    $html .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
+                }
             }
         }
         $html .= '</div>';
@@ -276,9 +282,15 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '<hr>';
         // Hide JSON score summary from the visible comparative feedback
         if (method_exists($this, 'hide_scores_json_for_display')) {
-            $html .= $this->hide_scores_json_for_display($feedback_data['feedback_html']);
+            $segment = $this->hide_scores_json_for_display($feedback_data['feedback_html']);
+            if (method_exists($this, 'normalize_example_labels_for_display')) {
+                $segment = $this->normalize_example_labels_for_display($segment);
+            }
+            $html .= $segment;
         } else {
-            $html .= preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $feedback_data['feedback_html']);
+            $segment = preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $feedback_data['feedback_html']);
+            $segment = preg_replace('/(<li[^>]*>\s*)(?:&bull;|•)\s*(Original:|Improved:)/iu', '$1$2', $segment);
+            $html .= $segment;
         }
         $html .= '<hr>';
         $html .= '</div>';
@@ -298,6 +310,9 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 if (preg_match('/<!--\s*EXTRACT_FEEDBACK_START\s*-->(.*?)<!--\s*EXTRACT_FEEDBACK_END\s*-->/si', $prev, $m2)) {
                     // Hide JSON if present
                     $fb = method_exists($this, 'hide_scores_json_for_display') ? $this->hide_scores_json_for_display($m2[1]) : preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $m2[1]);
+                    if (method_exists($this, 'normalize_example_labels_for_display')) {
+                        $fb = $this->normalize_example_labels_for_display($fb);
+                    }
                     $extract .= '<div class="feedback-section page-break-before">'
                              . '<h2 style="font-size:16px; color:#003366;">First Submission Feedback</h2><hr>'
                              . $fb . '<hr></div>';
@@ -313,13 +328,14 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         return $html;
     }
     /**
-     * Save resubmission tracking record
+     * Save resubmission tracking record with scores
      */
-    private function save_resubmission_record($current_id, $previous_id, $submission_number, $is_copy, $similarity_percentage) {
+    private function save_resubmission_record($current_id, $previous_id, $submission_number, $is_copy, $similarity_percentage, $previous_total = null, $current_total = null) {
         global $DB;
 
         try {
             error_log("DEBUG: Saving resubmission record - current_id: {$current_id}, previous_id: {$previous_id}, submission_number: {$submission_number}");
+            error_log("DEBUG: Scores - previous_total: {$previous_total}, current_total: {$current_total}");
 
             // Check if record already exists
             $existing = $DB->get_record('local_quizdashboard_resubmissions', ['current_attempt_id' => $current_id]);
@@ -330,6 +346,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 $existing->submission_number = $submission_number;
                 $existing->is_copy_detected = $is_copy ? 1 : 0;
                 $existing->similarity_percentage = $similarity_percentage;
+                $existing->previous_total_score = $previous_total;
+                $existing->current_total_score = $current_total;
                 $existing->timecreated = time(); // Update time
 
                 $result = $DB->update_record('local_quizdashboard_resubmissions', $existing);
@@ -342,11 +360,13 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 $record->submission_number = $submission_number;
                 $record->is_copy_detected = $is_copy ? 1 : 0;
                 $record->similarity_percentage = $similarity_percentage;
+                $record->previous_total_score = $previous_total;
+                $record->current_total_score = $current_total;
                 $record->timecreated = time();
 
                 $new_id = $DB->insert_record('local_quizdashboard_resubmissions', $record);
                 error_log("DEBUG: Resubmission record insert result - new ID: " . ($new_id ?: 'FAILED'));
-    }
+            }
             error_log("DEBUG: Resubmission record saved successfully");
             return true;
 
@@ -355,8 +375,58 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             error_log("DEBUG: Error code: " . $e->getCode());
             error_log("DEBUG: Error file: " . $e->getFile() . " line " . $e->getLine());
             throw $e; // Re-throw the exception so we can see the exact error
+        }
     }
+    
+    /**
+     * Save resubmission grade to Moodle with calculated total score
+     * This method ensures the correct total score is saved instead of trying to extract it from HTML
+     */
+    protected function save_resubmission_grade_to_moodle(array $essay_data, array $feedback_data, int $calculated_total, int $max_score = 100): void {
+        global $DB;
+        
+        try {
+            error_log("DEBUG: save_resubmission_grade_to_moodle called with calculated_total: {$calculated_total}/{$max_score}");
+            
+            // Use the calculated total score directly
+            $score = $calculated_total;
+            $max_score = $max_score ?: 100;
+            
+            // Handle scores array if present
+            if (isset($feedback_data['scores']) && is_array($feedback_data['scores'])) {
+                $scores_array = $feedback_data['scores'];
+            } else {
+                $scores_array = [];
+            }
+            
+            error_log("DEBUG: Using calculated score for resubmission: {$score}/{$max_score}");
+            
+            // Save comment with the calculated score
+            $comment = "<div class='ai-grading-feedback'>" . ($feedback_data['feedback_html'] ?? '') . "</div>";
+            $fraction = $score / $max_score;
+            
+            // Use parent's quiz_manager to save the grade
+            if (property_exists($this, 'quiz_manager') && $this->quiz_manager) {
+                $success = $this->quiz_manager->save_comment_and_grade(
+                    $essay_data['attempt_id'],
+                    $comment,
+                    $fraction
+                );
+                
+                if ($success) {
+                    error_log("DEBUG: Successfully saved resubmission grade: {$score}/{$max_score} (fraction: {$fraction})");
+                    $this->ensure_sumgrades_updated($essay_data['attempt_id'], $score);
+                } else {
+                    error_log("ERROR: Failed to save resubmission grade for attempt {$essay_data['attempt_id']}");
+                }
+            }
+            
+        } catch (\Exception $e) {
+            error_log("ERROR: Exception in save_resubmission_grade_to_moodle: " . $e->getMessage());
+            throw $e;
+        }
     }
+    
     // Helper methods
     private function get_ordinal_string($number) {
         $ordinals = [1 => 'first', 2 => 'second', 3 => 'third', 4 => 'fourth', 5 => 'fifth'];
@@ -494,18 +564,60 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
     // Helper: deterministically set the Final Score (Previous → New) line to avoid AI hallucination
     private function enforce_final_score($html, $prev_total, $new_total) {
-        $replacement = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
-        // Replace common pattern where the whole strong tag is on one line
-        $html2 = preg_replace('/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:\s*.*?<\/strong>/si', $replacement, $html);
-        if ($html2 !== null && $html2 !== $html) {
+        // Debug logging
+        error_log("DEBUG: enforce_final_score called with prev_total=$prev_total, new_total=$new_total");
+
+        // Build replacement strong line and wrapped block
+        $strong = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
+        $wrapped = '<h2 style="font-size:16px;"><p>' . $strong . '</p></h2>';
+
+        // Normalise common arrow entities to a single form to ease matching
+        $normalized = str_replace(['&rarr;', '&#8594;', '-&gt;'], '→', $html);
+
+        // Remove any bare numeric Final Score lines (various wrappers)
+        $patternsToStrip = [
+            // <h2><p><strong>X/100 → Y/100</strong></p></h2>
+            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
+            // <p><strong>X/100 → Y/100</strong></p>
+            '/<p[^>]*>\s*<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>\s*<\/p>/siu',
+            // <strong>X/100 → Y/100</strong>
+            '/<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>/siu',
+            // Any existing "Final Score (Previous → New): ..." line
+            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
+            '/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>/siu',
+        ];
+        foreach ($patternsToStrip as $pat) {
+            $normalized = preg_replace($pat, '', $normalized);
+        }
+
+        // Inject our deterministic line right after the comparative Overall Comments block
+        // Only inject after the FIRST occurrence to avoid touching the attached first submission
+        $injected = preg_replace(
+            '/(<div[^>]+id=["\']overall-comments["\'][^>]*>.*?<\/div>)/si',
+            '$1' . $wrapped,
+            $normalized,
+            1
+        );
+        if ($injected !== null && $injected !== $normalized) {
+            error_log('DEBUG: enforce_final_score injected after overall-comments');
+            return $injected;
+        }
+
+        // Fallbacks: try replacing any remaining simple patterns (legacy)
+        $html2 = preg_replace('/<p><strong>\s*\d+\/100\s*→\s*\d+\/100\s*<\/strong><\/p>/si', '<p>' . $strong . '</p>', $normalized);
+        if ($html2 !== null && $html2 !== $normalized) {
+            error_log('DEBUG: enforce_final_score replaced bare score paragraph');
             return $html2;
         }
-        // Fallback: try to replace just the numeric part inside the existing strong tag
-        $html2 = preg_replace('/(Final\s+Score\s*\(Previous.*?New\)\s*:\s*).*?(?=<\/strong>)/si', '$1' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100', $html);
-        if ($html2 !== null) {
+        $html2 = preg_replace('/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:\s*.*?<\/strong>/si', $strong, $normalized);
+        if ($html2 !== null && $html2 !== $normalized) {
+            error_log('DEBUG: enforce_final_score replaced existing Final Score line');
             return $html2;
         }
-        return $html;
+
+        // Last resort: append at end of block
+        error_log('DEBUG: enforce_final_score appended at end');
+        return $normalized . $wrapped;
     }
 
     /**
@@ -577,8 +689,23 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 return ['success' => false, 'message' => 'Could not extract current essay data.'];
             }
 
-            // 4) Previous scores for context
+            // 4) Previous scores for context - this will use DB scores when available
             $previous_scores = $this->extract_previous_scores($previous_grading);
+
+            // 4a) Verify we have valid previous scores
+            if (!isset($previous_scores['final_score']) || !isset($previous_scores['final_score']['score'])) {
+                error_log("ERROR: Could not extract previous scores properly");
+                error_log("DEBUG: Previous grading record: " . json_encode([
+                    'attempt_id' => $previous_grading->attempt_id ?? 'unknown',
+                    'has_feedback' => !empty($previous_grading->feedback_html),
+                    'score_content_ideas' => $previous_grading->score_content_ideas ?? 'null',
+                    'score_structure_organization' => $previous_grading->score_structure_organization ?? 'null',
+                    'score_language_use' => $previous_grading->score_language_use ?? 'null',
+                    'score_creativity_originality' => $previous_grading->score_creativity_originality ?? 'null',
+                    'score_mechanics' => $previous_grading->score_mechanics ?? 'null'
+                ]));
+                return ['success' => false, 'message' => 'Could not extract scores from previous submission. Please check if previous submission was graded properly.'];
+            }
 
             // 5) AI likelihood
             $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
@@ -622,19 +749,35 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $current_scores = $this->extract_resubmission_scores($feedback_result['data']['feedback_html'] ?? '');
             $feedback_result['data']['scores'] = $current_scores;
 
-            // 10a) Enforce FINAL score line using deterministic values to avoid AI hallucination
-            $prev_total = isset($previous_scores['final_score']['score']) ? (int)$previous_scores['final_score']['score'] : (
-                (int)($previous_scores['content_and_ideas']['score'] ?? 0)
-                + (int)($previous_scores['structure_and_organization']['score'] ?? 0)
-                + (int)($previous_scores['language_use']['score'] ?? 0)
-                + (int)($previous_scores['creativity_and_originality']['score'] ?? 0)
-                + (int)($previous_scores['mechanics']['score'] ?? 0)
-            );
+            // Log current scores for debugging
+            error_log("DEBUG: Current (new) scores extracted: " . json_encode($current_scores));
+
+            // 10a) Calculate previous total from DB scores (most reliable)
+            // The extract_previous_scores already calculates this correctly from DB
+            $prev_total = isset($previous_scores['final_score']['score']) ? (int)$previous_scores['final_score']['score'] : 0;
+
+            // Double-check with direct DB query as fallback
+            if ($prev_total === 0) {
+                $db_total = $this->get_db_total_score($previous_attempt_id);
+                if ($db_total !== null) {
+                    $prev_total = $db_total;
+                    error_log("DEBUG: Used direct DB query for previous total: {$prev_total}");
+                }
+            }
+
+            // Debug logging to verify we're getting the correct previous total
+            error_log("DEBUG: Previous scores breakdown: " . json_encode($previous_scores));
+            error_log("DEBUG: Previous total score being used: {$prev_total}/100");
+            // Calculate new total from individual scores
             $new_total = (int)($current_scores['content_and_ideas'] ?? 0)
                         + (int)($current_scores['structure_and_organization'] ?? 0)
                         + (int)($current_scores['language_use'] ?? 0)
                         + (int)($current_scores['creativity_and_originality'] ?? 0)
                         + (int)($current_scores['mechanics'] ?? 0);
+
+            error_log("DEBUG: New scores breakdown: Content={$current_scores['content_and_ideas']}, Structure={$current_scores['structure_and_organization']}, Language={$current_scores['language_use']}, Creativity={$current_scores['creativity_and_originality']}, Mechanics={$current_scores['mechanics']}");
+            error_log("DEBUG: New total calculated: {$new_total}/100");
+            error_log("DEBUG: Score comparison: Previous={$prev_total}/100 → New={$new_total}/100");
 
             // Patch the comparative feedback block and the already-built complete HTML
             if (!empty($feedback_result['data']['feedback_html'])) {
@@ -647,11 +790,12 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // 11) Save grading record including scores and AI likelihood
             $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '');
 
-            // 12) Save resubmission tracking
-            $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, false, null);
+            // 12) Save resubmission tracking with scores
+            $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, false, null, $prev_total, $new_total);
 
-            // 13) Save grade to Moodle
-            $this->save_grade_to_moodle($current_essay_data, $feedback_result['data']);
+            // 13) Save grade to Moodle using the calculated new_total
+            // Use the specialized resubmission method that takes the calculated total
+            $this->save_resubmission_grade_to_moodle($current_essay_data, $feedback_result['data'], $new_total, 100);
 
             // 14) Optional Drive upload with submission suffix
             $drive_link = null;
@@ -675,6 +819,34 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             ini_set('max_execution_time', $original_time_limit);
             error_log("DEBUG: [Resubmission] Restored PHP max_execution_time to {$original_time_limit} seconds");
         }
+    }
+
+    /**
+     * Get total score directly from DB for an attempt
+     */
+    private function get_db_total_score($attempt_id) {
+        global $DB;
+
+        $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt_id]);
+        if (!$grading) {
+            return null;
+        }
+
+        $total = 0;
+        $fields = ['score_content_ideas', 'score_structure_organization', 'score_language_use',
+                   'score_creativity_originality', 'score_mechanics'];
+
+        foreach ($fields as $field) {
+            if (isset($grading->$field) && $grading->$field !== null) {
+                $total += (int)$grading->$field;
+            } else {
+                // If any score is missing, return null
+                return null;
+            }
+        }
+
+        error_log("DEBUG: Retrieved DB total score for attempt {$attempt_id}: {$total}/100");
+        return $total;
     }
 
     /**
@@ -717,12 +889,13 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
     /**
      * Extract structured scores from previous feedback HTML (for context)
+     * This method prioritizes DB-stored scores which are most reliable
      */
     private function extract_previous_scores($previous_grading_record) {
         $feedback_html = $previous_grading_record->feedback_html ?? '';
         $scores = [];
 
-        // 1) Prefer DB-stored scores if present, but do NOT return early
+        // 1) ALWAYS prefer DB-stored scores if present - these are authoritative
         $db_scores = [
             'content_and_ideas' => ['value' => $previous_grading_record->score_content_ideas ?? null, 'max' => 25],
             'structure_and_organization' => ['value' => $previous_grading_record->score_structure_organization ?? null, 'max' => 25],
@@ -730,13 +903,33 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             'creativity_and_originality' => ['value' => $previous_grading_record->score_creativity_originality ?? null, 'max' => 20],
             'mechanics' => ['value' => $previous_grading_record->score_mechanics ?? null, 'max' => 10],
         ];
-        $has_any_db = false;
+
+        // Check what we have from DB
+        $has_all_db = true;
+        $db_score_count = 0;
         foreach ($db_scores as $key => $info) {
             if ($info['value'] !== null && $info['value'] !== '') {
                 $scores[$key] = ['score' => (int)$info['value'], 'max' => $info['max']];
-                $has_any_db = true;
+                $db_score_count++;
+            } else {
+                $has_all_db = false;
             }
         }
+
+        // If we have all scores from DB, calculate total and return immediately
+        if ($has_all_db) {
+            $total = 0;
+            foreach ($scores as $score_data) {
+                $total += $score_data['score'];
+            }
+            $scores['final_score'] = ['score' => $total, 'max' => 100];
+            error_log("DEBUG: Successfully extracted all scores from DB for previous submission");
+            error_log("DEBUG: Previous DB scores breakdown: Content={$scores['content_and_ideas']['score']}, Structure={$scores['structure_and_organization']['score']}, Language={$scores['language_use']['score']}, Creativity={$scores['creativity_and_originality']['score']}, Mechanics={$scores['mechanics']['score']}");
+            error_log("DEBUG: Previous total from DB: {$total}/100");
+            return $scores;
+        }
+
+        error_log("DEBUG: Only {$db_score_count}/5 scores found in DB, falling back to HTML parsing");
 
         // 2) Fallback to parsing HTML if DB fields missing
         $sections = [
@@ -884,22 +1077,53 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
         foreach ($sections as $key => $cfg) {
             $max = (int)$cfg['max'];
-            // Title may already contain regex (for Organisation/Organization)
             $title = $cfg['title'];
+
+            // Try multiple patterns to extract the NEW score (after the arrow)
+            // We need to handle various arrow encodings and formats
             $patterns = [
-                "/{$title}.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*{$max}\\s*→\\s*(\\d+)\\s*\\/\\s*{$max}/si",
-                "/{$title}.*?Score:.*?(\\d+)\\s*\\/\\s*{$max}/si"
+                // Pattern 1: Look for "X/max → Y/max" and capture Y
+                "/{$title}.*?Score.*?\\d+\\s*\\/\\s*{$max}\\s*(?:→|->|➔|►|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                // Pattern 2: Look for just "→ Y/max" and capture Y
+                "/{$title}.*?Score.*?(?:→|->|➔|►|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                // Pattern 3: If no arrow found, look for the LAST score in the section (which should be the NEW score)
+                "/{$title}.*?Score.*?(\\d+)\\s*\\/\\s*{$max}(?!.*\\d+\\s*\\/\\s*{$max})/si",
+                // Pattern 4: Simple fallback - just find any score for this section
+                "/{$title}.*?Score.*?(\\d+)\\s*\\/\\s*{$max}/si"
             ];
+
             $found = false;
-            foreach ($patterns as $p) {
-                if (preg_match($p, $feedback_html, $m)) {
-                    $scores[$key] = (int)$m[1];
-                    $found = true;
-                    break;
+            $value = null;
+
+            // Try each pattern
+            foreach ($patterns as $pattern_idx => $pattern) {
+                if (preg_match($pattern, $feedback_html, $matches)) {
+                    // For patterns looking for the last occurrence, we need to find all matches
+                    if ($pattern_idx == 2 || $pattern_idx == 3) {
+                        if (preg_match_all("/\\d+\\s*\\/\\s*{$max}/", $matches[0], $all_scores)) {
+                            // Get the last score
+                            $last_score = end($all_scores[0]);
+                            if (preg_match('/(\\d+)/', $last_score, $score_match)) {
+                                $value = (int)$score_match[1];
+                                error_log("DEBUG: Extracted {$key} NEW score using pattern {$pattern_idx}: {$value}/{$max}");
+                                $found = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        $value = (int)$matches[1];
+                        error_log("DEBUG: Extracted {$key} NEW score using pattern {$pattern_idx}: {$value}/{$max}");
+                        $found = true;
+                        break;
+                    }
                 }
             }
-            if (!$found) {
-                $scores[$key] = null;
+
+            if ($found && $value !== null) {
+                $scores[$key] = $value;
+            } else {
+                error_log("WARNING: Could not extract NEW score for {$key}");
+                $scores[$key] = 0;
             }
         }
 
