@@ -402,21 +402,20 @@ require_once(__DIR__ . '/navigation_fallback.php');
             <thead>
                 <tr>
                     <th class="bulk-select-header"><input type="checkbox" id="select-all" onchange="toggleAllCheckboxes(this)"></th>
-                    <th class="sortable-column" data-sort="quizname">Quiz</th>
-                    <th class="sortable-column" data-sort="questionname">Question</th>
-                    <th class="sortable-column" data-sort="attemptno">Attempt #</th>
-                    <th class="sortable-column" data-sort="submission_number">Sub #</th>
+                    <th class="sortable-column" data-sort="quizname" style="width: 22%;">Quiz</th>
+                    <th class="sortable-column" data-sort="questionname" style="width: 30%;">Question</th>
+                    <th class="sortable-column" data-sort="attemptno" style="width: 7%;">Attempt #</th>
                     <th class="sortable-column" data-sort="status">Status</th>
                     <th class="sortable-column" data-sort="userid">ID</th>
                     <th class="sortable-column" data-sort="studentname">Name</th>
                     <th class="sortable-column" data-sort="coursename">Course</th>
                     <th class="sortable-column" data-sort="timefinish">Finished</th>
                     <th class="sortable-column" data-sort="time_taken">Duration</th>
-                    <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)">C&I</th>
-                    <th class="sortable-column" data-sort="score_structure_organization" title="Structure & Organization (25)">Structure</th>
-                    <th class="sortable-column" data-sort="score_language_use" title="Language Use (20)">Language</th>
-                    <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)">Creativity</th>
-                    <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)">Mechanics</th>
+                    <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)" style="width: 4%;">C&I</th>
+                    <th class="sortable-column" data-sort="score_structure_organization" title="Structure & Organization (25)" style="width: 4%;">Structure</th>
+                    <th class="sortable-column" data-sort="score_language_use" title="Language Use (20)" style="width: 4%;">Language</th>
+                    <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)" style="width: 4%;">Creativity</th>
+                    <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)" style="width: 4%;">Mechanics</th>
                     <th class="sortable-column" data-sort="score">Score</th>
                     <th>Comment</th>
                     <!-- Grade column removed - keeping only Score column -->
@@ -448,18 +447,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 <?php endif; ?>
                             </td>
                             <td><a href="<?php echo $row->reviewurl; ?>" class="attempt-link" target="_blank"><?php echo $row->attemptno; ?></a></td>
-                            <td class="submission-chain-cell">
-                                <?php 
-                                $chain = $quizmanager->get_submission_chain($row->attemptid);
-                                $resubmission_info = null;
-                                try {
-                                    $resubmission_info = $quizmanager->get_resubmission_info($row->attemptid);
-                                } catch (\Exception $e) {
-                                    // Table doesn't exist or other error - ignore
-                                }
-                                echo render_submission_chain($chain, $resubmission_info);
-                                ?>
-                            </td>
+                            <!-- Removed Sub # column to widen key columns -->
                             <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
                             <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
                             <td><a href="<?php echo $row->user_activity_url; ?>" class="user-name-link" target="_blank"><?php echo htmlspecialchars($row->studentname); ?></a></td>

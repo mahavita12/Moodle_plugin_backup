@@ -241,7 +241,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '<div class="feedback-section">';
             $html .= '<h2 class="section-header" style="color: #6f42c1;">' . htmlspecialchars($current_essay_data['quiz_name']) . ' - ' . $ordinal . ' Submission</h2>';
             $html .= '</div>';
-    }
+        }
+
         // Current essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
         $html .= '<div class="feedback-section">';
         $html .= '<h2 class="section-header" style="color: #17a2b8;">Current Essay - ' . $ordinal . ' Submission</h2>';
@@ -251,8 +252,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         foreach ($paragraphs as $p) {
             if (!empty(trim($p))) {
                 $html .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
-    }
-    }
+            }
+        }
         $html .= '</div>';
         $html .= '<hr>';
         $html .= '</div>';
@@ -273,21 +274,41 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '<div class="feedback-section page-break-before">';
         $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Comparative Feedback - ' . $ordinal . ' Submission</h2>';
         $html .= '<hr>';
-        $html .= $feedback_data['feedback_html'];
+        // Hide JSON score summary from the visible comparative feedback
+        if (method_exists($this, 'hide_scores_json_for_display')) {
+            $html .= $this->hide_scores_json_for_display($feedback_data['feedback_html']);
+        } else {
+            $html .= preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $feedback_data['feedback_html']);
+        }
         $html .= '<hr>';
         $html .= '</div>';
 
-        // Previous feedback (for reference, but filter out homework)
+        // Previous feedback (for reference) - include ONLY the first submission's
+        // Revision and Feedback sections. Strip student header, question and original essay.
         if (!empty($previous_grading->feedback_html)) {
-            $filtered_previous_feedback = $this->remove_homework_from_html($previous_grading->feedback_html);
-            if (!empty($filtered_previous_feedback)) {
-                $html .= '<hr style="border:0;border-top:3px double #ccc;margin:40px 0;" />';
-                $html .= '<h2>Previous Submission Feedback & Revision</h2>';
-                $html .= '<div style="background:#f9f9f9;border:1px solid #ddd;padding:20px;margin-top:1em;">';
-                $html .= $filtered_previous_feedback;
-                $html .= '</div>';
-    }
-    }
+            $prev = $this->remove_homework_from_html($previous_grading->feedback_html);
+            if (!empty($prev)) {
+                // Extract only the revision and feedback sections using markers
+                $extract = '';
+                if (preg_match('/<!--\s*EXTRACT_REVISION_START\s*-->(.*?)<!--\s*EXTRACT_REVISION_END\s*-->/si', $prev, $m1)) {
+                    $extract .= '<div class="feedback-section page-break-before">'
+                             . '<h2 style="font-size:16px; color:#003366;">First Submission Revision</h2><hr>'
+                             . $m1[1] . '<hr></div>';
+                }
+                if (preg_match('/<!--\s*EXTRACT_FEEDBACK_START\s*-->(.*?)<!--\s*EXTRACT_FEEDBACK_END\s*-->/si', $prev, $m2)) {
+                    // Hide JSON if present
+                    $fb = method_exists($this, 'hide_scores_json_for_display') ? $this->hide_scores_json_for_display($m2[1]) : preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $m2[1]);
+                    $extract .= '<div class="feedback-section page-break-before">'
+                             . '<h2 style="font-size:16px; color:#003366;">First Submission Feedback</h2><hr>'
+                             . $fb . '<hr></div>';
+                }
+                if (!empty($extract)) {
+                    $html .= '<hr style="border:0;border-top:3px double #ccc;margin:40px 0;" />';
+                    $html .= '<h2>Previous Submission Feedback & Revision</h2>';
+                    $html .= '<div style="background:#f9f9f9;border:1px solid #ddd;padding:20px;margin-top:1em;">' . $extract . '</div>';
+                }
+            }
+        }
         $html .= '</div>';
         return $html;
     }
@@ -490,7 +511,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
     /**
      * Extract the last X/max pair from a feedback segment (treating it as the NEW score).
      */
-    private function extract_last_score_from_segment($segment, $max) {
+    protected function extract_last_score_from_segment($segment, $max) {
         if (empty($segment)) {
             return null;
         }

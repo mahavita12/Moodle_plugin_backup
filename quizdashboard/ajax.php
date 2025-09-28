@@ -29,6 +29,23 @@ set_exception_handler(function(Throwable $e) {
     exit;
 });
 
+// Convert fatal errors into JSON so the browser never sees a connection abort
+register_shutdown_function(function() {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+        while (ob_get_level() > 0) { @ob_end_clean(); }
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'error' => 'fatal_error',
+            'message' => $err['message'] ?? 'Fatal error',
+            'file' => $err['file'] ?? null,
+            'line' => $err['line'] ?? null,
+        ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+});
+
 // Route
 $action = required_param('action', PARAM_ALPHAEXT);
 
@@ -455,6 +472,8 @@ try {
             while (ob_get_level() > 0) { @ob_end_clean(); }
             echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
+        case 'grade_resubmission':
+            $attemptid = required_param('attemptid', PARAM_INT);
             $level = optional_param('level', 'general', PARAM_ALPHA);
             $require_for($attemptid, 'mod/quiz:grade');
             if (!class_exists('\\local_quizdashboard\\resubmission_grader')) {
@@ -465,7 +484,7 @@ try {
             try {
                 $result = $grader->process_resubmission($attemptid, $level);
                 if (is_array($result) && !empty($result['success'])) {
-                    $result['message'] = isset($result['is_penalty']) ? 'Copy penalty applied for resubmission.' : 'Resubmission graded successfully using comparing feedback.';
+                    $result['message'] = isset($result['is_penalty']) ? 'Copy penalty applied for resubmission.' : 'Resubmission graded successfully using comparative feedback.';
                     $result['is_resubmission'] = true;
                 }
                 while (ob_get_level() > 0) { @ob_end_clean(); }
@@ -479,7 +498,7 @@ try {
                 echo json_encode(['success' => false, 'error' => 'exception', 'message' => $ex->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             }
             exit;
-
+        
         default:
             throw new moodle_exception('invalidparameter', 'error', '', 'Unknown action: ' . $action);
     }

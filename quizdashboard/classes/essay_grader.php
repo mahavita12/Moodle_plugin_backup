@@ -747,12 +747,31 @@ class essay_grader {
                 'max_completion_tokens' => 16000 
             ];
             $result = $this->make_openai_api_call($data, 'generate_essay_feedback');
+            if (!$result['success']) {
+                error_log('ERROR: OpenAI generate_essay_feedback failed: ' . ($result['message'] ?? 'unknown'));
+            }
         }
         if (!$result['success']) {
             return $result;
         }
 
         $feedback_html = $result['response'];
+        // Normalize and sanitize AI output to prevent parsing issues
+        // 1) Strip accidental markdown code fences around JSON or entire blocks
+        $feedback_html = preg_replace('/```+\s*json\s*(.*?)```+/is', '$1', $feedback_html);
+        $feedback_html = preg_replace('/```+(.*?)```+/is', '$1', $feedback_html);
+        // 2) Ensure an Overall Comments section exists so downstream extraction succeeds
+        if (stripos($feedback_html, 'id="overall-comments"') === false) {
+            $feedback_html .= "\n<h2 style=\"font-size:18px;\">Overall Comments</h2>\n" .
+                              '<div id="overall-comments"><p>Please see the detailed feedback above for strengths and next steps.</p></div>';
+        }
+        // 3) Ensure a JSON scores block exists (guards against LLM omissions)
+        if (!preg_match('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', $feedback_html)) {
+            $feedback_html .= "\n<!-- SCORES_JSON_START -->\n{" .
+                '"content_and_ideas": null, "structure_and_organization": null, "language_use": null, '
+                . '"creativity_and_originality": null, "mechanics": null, "final_score": null' .
+            "}\n<!-- SCORES_JSON_END -->";
+        }
         
         // Add strategic markers for resubmission grader extraction
         $feedback_html = $this->add_strategic_markers_to_feedback($feedback_html);
@@ -847,6 +866,9 @@ class essay_grader {
             ];
             // TIMEOUT FIX: Use new robust API call method
             $result = $this->make_openai_api_call($data, 'get_clean_revision');
+            if (!$result['success']) {
+                error_log('ERROR: OpenAI get_clean_revision failed: ' . ($result['message'] ?? 'unknown'));
+            }
         }
         if (!$result['success']) {
             return 'Error: ' . $result['message'];
@@ -915,6 +937,9 @@ class essay_grader {
                     'max_tokens' => 10000
                 ];
                 $api_result = $this->make_anthropic_api_call($data, 'get_formatted_diff');
+                if (!$api_result['success']) {
+                    error_log('ERROR: Anthropic get_formatted_diff failed: ' . ($api_result['message'] ?? 'unknown'));
+                }
             } else {
                 $data = [ 
                     'model' => $this->get_openai_model(), 
@@ -986,6 +1011,15 @@ class essay_grader {
                 border-bottom: 2px solid #e9ecef;
                 padding-bottom: 10px;
             }
+            /* Align example labels and prevent double bullets */
+            .example-label {
+                display: inline-block;
+                min-width: 90px;
+                font-weight: 600;
+                vertical-align: top;
+            }
+            .example-original { color: #808080; }
+            .example-improved { color: #3399cc; }
             
             /* Print-specific styles */
             @media print {
@@ -1171,7 +1205,10 @@ class essay_grader {
         $html_output .= '<hr>';
         // START MARKER for feedback extraction
         $html_output .= '<!-- EXTRACT_FEEDBACK_START -->';
-        $html_output .= $feedback_result['feedback_html'];
+        // Hide JSON score summary at display time
+        $display_feedback = $feedback_result['feedback_html'];
+        $display_feedback = $this->hide_scores_json_for_display($display_feedback);
+        $html_output .= $display_feedback;
         // END MARKER for feedback extraction  
         $html_output .= '<!-- EXTRACT_FEEDBACK_END -->';
         $html_output .= '<hr>';
@@ -1639,14 +1676,28 @@ class essay_grader {
         $feedback_html = preg_replace('/(<p><strong>Score:.*?<\/p>)/si', '<!-- SCORE_MARKER -->$1<!-- /SCORE_MARKER -->', $feedback_html);
         $feedback_html = preg_replace('/(<p><strong>Score \(Previous.*?<\/p>)/si', '<!-- SCORE_MARKER -->$1<!-- /SCORE_MARKER -->', $feedback_html);
         
-        // Normalise arrows so extraction regexes match consistently
-        $feedback_html = str_replace(
-            array('&rarr;', '&#8594;', '-&gt;', '->'),
-            array('→', '→', '→', '→'),
-            $feedback_html
-        );
+        // Normalise arrows so extraction regexes match consistently,
+        // without breaking HTML comment closers (-->). Avoid replacing
+        // the '->' sequence when it is immediately preceded by '-'.
+        $feedback_html = str_replace(['&rarr;', '&#8594;', '-&gt;'], '→', $feedback_html);
+        $feedback_html = preg_replace('/(?<!-)\->/u', '→', (string)$feedback_html);
+
+        // Standardise example labels so they align nicely via CSS
+        $feedback_html = preg_replace('/\bOriginal:\s*/i', '<span class="example-label example-original">Original:</span> ', $feedback_html);
+        $feedback_html = preg_replace('/\bImproved:\s*/i', '<span class="example-label example-improved">Improved:</span> ', $feedback_html);
+        // Remove stray bullet characters placed before labels to avoid double bullets
+        $feedback_html = preg_replace('/(<li[^>]*>\s*)(?:&bull;|•)\s*(<span class=\"example-label\s+example-(?:original|improved)\">)/iu', '$1$2', $feedback_html);
+        $feedback_html = preg_replace('/([>\s])(?:&bull;|•)\s*(<span class=\"example-label\s+example-(?:original|improved)\">)/iu', '$1$2', $feedback_html);
 
         return $feedback_html;
+    }
+
+    /**
+     * Remove the machine-readable JSON scores block from visible HTML, while
+     * keeping it available in the raw feedback (passed separately for parsing).
+     */
+    protected function hide_scores_json_for_display(string $html): string {
+        return preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $html) ?? $html;
     }
 
     /**
@@ -1835,6 +1886,8 @@ class essay_grader {
 
             try {
                 $apikey = $this->get_openai_api_key();
+                // Ensure Moodle curl class is available in all environments
+                global $CFG; require_once($CFG->libdir . '/filelib.php');
                 
                 $curl = new \curl();
                 $curl->setHeader(['Content-Type: application/json', 'Authorization: Bearer ' . $apikey]);
