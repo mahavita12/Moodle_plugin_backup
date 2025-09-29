@@ -133,30 +133,49 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
     }
 
     function extractQuestionId(questionElement) {
-        // First try to get the question slot ID from data attributes or input names
+        // Method 1: Extract from hidden input with question ID (most reliable)
+        var hiddenQuestionId = questionElement.find('input[name*="questionid"]').val();
+        if (hiddenQuestionId && hiddenQuestionId > 0) {
+            return parseInt(hiddenQuestionId, 10);
+        }
+
+        // Method 2: Extract from question attempt step data
+        var stepInputs = questionElement.find('input[name*="qa_"]');
+        if (stepInputs.length > 0) {
+            var stepName = stepInputs.first().attr('name');
+            if (stepName) {
+                // Pattern: qa_123_456_sequencecheck where 456 is the question attempt ID
+                var match = stepName.match(/qa_(\d+)_(\d+)_/);
+                if (match) {
+                    // We need to get the actual question ID from this question attempt
+                    // For now, use the question attempt ID as a fallback
+                    return parseInt(match[2], 10);
+                }
+            }
+        }
+
+        // Method 3: Look for data attributes on the question container
+        var dataQuestionId = questionElement.attr('data-questionid') ||
+                            questionElement.attr('data-qid') ||
+                            questionElement.find('[data-questionid]').attr('data-questionid');
+        if (dataQuestionId && dataQuestionId > 0) {
+            return parseInt(dataQuestionId, 10);
+        }
+
+        // Method 4: Extract from question slot and map to question ID via AJAX
         var questionSlot = questionElement.find('input[name*="q"][name*=":"]').first().attr('name');
         if (questionSlot) {
             var match = questionSlot.match(/q(\d+):/);
             if (match) {
-                return 'question_' + match[1];
+                var slotNumber = parseInt(match[1], 10);
+                // Store slot number to fetch real question ID later
+                return 'slot_' + slotNumber;
             }
         }
-        
-        // Fallback: try to get from question classes
-        var classes = questionElement.attr('class').split(/\s+/);
-        for (var i = 0; i < classes.length; i++) {
-            if (classes[i].startsWith('que-')) {
-                return classes[i];
-            }
-        }
-        
-        // Last resort: use a unique identifier based on question text
-        var questionText = questionElement.find('.qtext').text().trim();
-        if (questionText) {
-            return 'q_' + questionText.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-        }
-        
-        return 'q' + questionElement.index();
+
+        // Fallback: generate a temporary ID and log warning
+        console.warn('QuestionHelper: Could not extract real question ID, using fallback');
+        return 'fallback_' + questionElement.index();
     }
 
     function addHelpButton(questionElement, questionId, attempts) {
@@ -322,12 +341,9 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
 
         makeHelpRequest(questionData, 'help')
             .then(function(response) {
-                // Save generated help for this user+question so it can be viewed later
+                // Note: Saving is now handled in PHP, no need for additional save call
                 if (response && response.success) {
-                    saveHelpForQuestion(questionId, 'help', response)
-                        .always(function() {
-                            revealViewButton(questionId, 'help');
-                        });
+                    revealViewButton(questionId, 'help');
                 }
                 showInteractiveHelpModal(response);
             })
@@ -422,8 +438,7 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         makeHelpRequest(questionData, 'challenge')
             .then(function(response) {
                 if (response && response.success) {
-                    saveHelpForQuestion(questionId, 'challenge', response)
-                        .always(function() { revealViewButton(questionId, 'challenge'); });
+                    revealViewButton(questionId, 'challenge');
                 }
                 showInteractiveHelpModal(response);
             })
@@ -491,6 +506,62 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         var urlParams = new URLSearchParams(window.location.search);
         var attemptId = urlParams.get('attempt');
 
+        // Check if we need to resolve a slot number to question ID
+        if (typeof questionData.id === 'string' && questionData.id.startsWith('slot_')) {
+            var slotNumber = parseInt(questionData.id.replace('slot_', ''), 10);
+
+            // First resolve the slot to question ID, then make the help request
+            return $.ajax({
+                url: M.cfg.wwwroot + '/local/questionhelper/get_help.php',
+                method: 'POST',
+                data: {
+                    action: 'resolve_question_id',
+                    slot: slotNumber,
+                    attemptid: attemptId,
+                    sesskey: M.cfg.sesskey
+                },
+                dataType: 'json',
+                timeout: 15000
+            }).then(function(resolveResponse) {
+                if (resolveResponse.success && resolveResponse.questionid > 0) {
+                    // Now make the actual help request with the real question ID
+                    return $.ajax({
+                        url: M.cfg.wwwroot + '/local/questionhelper/get_help.php',
+                        method: 'POST',
+                        data: {
+                            questiontext: questionData.text,
+                            options: questionData.options,
+                            attemptid: attemptId,
+                            questionid: resolveResponse.questionid,
+                            sesskey: M.cfg.sesskey,
+                            mode: mode || 'help'
+                        },
+                        dataType: 'json',
+                        timeout: 45000
+                    });
+                } else {
+                    // Fallback to request without question ID
+                    return $.ajax({
+                        url: M.cfg.wwwroot + '/local/questionhelper/get_help.php',
+                        method: 'POST',
+                        data: {
+                            questiontext: questionData.text,
+                            options: questionData.options,
+                            attemptid: attemptId,
+                            questionid: 0,
+                            sesskey: M.cfg.sesskey,
+                            mode: mode || 'help'
+                        },
+                        dataType: 'json',
+                        timeout: 45000
+                    });
+                }
+            });
+        }
+
+        // Direct request with real question ID or fallback
+        var questionIdToUse = questionIdNumeric(questionData.id);
+
         return $.ajax({
             url: M.cfg.wwwroot + '/local/questionhelper/get_help.php',
             method: 'POST',
@@ -498,11 +569,12 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
                 questiontext: questionData.text,
                 options: questionData.options,
                 attemptid: attemptId,
+                questionid: questionIdToUse,
                 sesskey: M.cfg.sesskey,
                 mode: mode || 'help'
             },
             dataType: 'json',
-            timeout: 15000
+            timeout: 45000
         });
     }
 

@@ -30,23 +30,61 @@ class get_help_saved extends external_api {
         self::validate_context($context);
         require_login();
 
-        $record = $DB->get_record('local_qh_saved_help', [
+        // Load both personal and global records
+        $personal = $DB->get_record('local_qh_saved_help', [
             'userid' => $USER->id,
             'questionid' => $params['questionid'],
-            'variant' => $params['variant']
+            'variant' => $params['variant'],
+            'is_global' => 0
         ]);
 
-        if (!$record) {
+        $global = $DB->get_record('local_qh_saved_help', [
+            'questionid' => $params['questionid'],
+            'variant' => $params['variant'],
+            'is_global' => 1
+        ]);
+
+        if (!$personal && !$global) {
             return ['exists' => false];
+        }
+
+        // If personal missing but global exists, create personal from global
+        if (!$personal && $global) {
+            $now = time();
+            $personal = (object) [
+                'userid' => $USER->id,
+                'questionid' => $params['questionid'],
+                'variant' => $params['variant'],
+                'practice_question' => $global->practice_question,
+                'optionsjson' => $global->optionsjson,
+                'correct_answer' => $global->correct_answer,
+                'explanation' => $global->explanation,
+                'concept_explanation' => $global->concept_explanation,
+                'is_global' => 0,
+                'timecreated' => $now,
+                'timemodified' => $global->timemodified ?? $now
+            ];
+            $personal->id = $DB->insert_record('local_qh_saved_help', $personal);
+        }
+
+        // If both exist and global is newer, sync personal
+        if ($personal && $global && (int)$global->timemodified > (int)$personal->timemodified) {
+            $personal->practice_question = $global->practice_question;
+            $personal->optionsjson = $global->optionsjson;
+            $personal->correct_answer = $global->correct_answer;
+            $personal->explanation = $global->explanation;
+            $personal->concept_explanation = $global->concept_explanation;
+            $personal->timemodified = $global->timemodified;
+            $DB->update_record('local_qh_saved_help', $personal);
         }
 
         return [
             'exists' => true,
-            'practice_question' => (string)$record->practice_question,
-            'optionsjson' => (string)$record->optionsjson,
-            'correct_answer' => (string)$record->correct_answer,
-            'explanation' => (string)$record->explanation,
-            'concept_explanation' => (string)$record->concept_explanation,
+            'practice_question' => (string)$personal->practice_question,
+            'optionsjson' => (string)$personal->optionsjson,
+            'correct_answer' => (string)$personal->correct_answer,
+            'explanation' => (string)$personal->explanation,
+            'concept_explanation' => (string)$personal->concept_explanation,
         ];
     }
 

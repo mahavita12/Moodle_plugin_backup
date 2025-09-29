@@ -24,14 +24,43 @@
 
 require_once('../../config.php');
 require_once('lib.php');
+require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+require_once($CFG->dirroot . '/mod/quiz/attemptlib.php');
+
+// Allow longer execution for upstream AI calls
+@set_time_limit(60);
 
 require_login();
+
+// Check for special action to resolve slot to question ID
+$action = optional_param('action', '', PARAM_ALPHA);
+if ($action === 'resolve_question_id') {
+    $slot = required_param('slot', PARAM_INT);
+    $attemptid = required_param('attemptid', PARAM_INT);
+
+    // Get the real question ID for this slot
+    $questionid = get_question_id_from_slot($attemptid, $slot);
+
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => true,
+        'questionid' => $questionid,
+        'slot' => $slot
+    ]);
+    exit;
+}
 
 // Get parameters
 $questiontext = required_param('questiontext', PARAM_RAW);
 $options = required_param('options', PARAM_RAW);
 $attemptid = required_param('attemptid', PARAM_INT);
 $mode = optional_param('mode', 'help', PARAM_ALPHA);
+$questionid = optional_param('questionid', 0, PARAM_INT); // Add question ID for caching
+
+// Debug: Log all challenge requests
+if ($mode === 'challenge') {
+    error_log("CHALLENGE DEBUG - Request received: mode=$mode, questionid=$questionid, attemptid=$attemptid");
+}
 
 // Validate user has access to the quiz attempt
 try {
@@ -56,11 +85,144 @@ if (!get_config('local_questionhelper', 'enabled') || !local_questionhelper_is_c
 }
 
 try {
+    // ROLLING GLOBAL STRATEGY: Prefer the newest between personal and global; sync personal to newer global
+    if ($questionid > 0) {
+        global $DB, $USER;
+
+        // Load existing personal and global records
+        $personal_record = $DB->get_record('local_qh_saved_help', [
+            'userid' => $USER->id,
+            'questionid' => $questionid,
+            'variant' => $mode,
+            'is_global' => 0
+        ]);
+
+        $global_record = $DB->get_record('local_qh_saved_help', [
+            'questionid' => $questionid,
+            'variant' => $mode,
+            'is_global' => 1
+        ]);
+
+        if ($personal_record) {
+            $personal_ts = (int)($personal_record->timemodified ?? 0);
+            $global_ts = (int)($global_record->timemodified ?? 0);
+
+            // If global exists and is newer, sync personal to global and return global
+            if ($global_record && $global_ts > $personal_ts) {
+                $personal_record->practice_question = $global_record->practice_question;
+                $personal_record->optionsjson = $global_record->optionsjson;
+                $personal_record->correct_answer = $global_record->correct_answer;
+                $personal_record->explanation = $global_record->explanation;
+                $personal_record->concept_explanation = $global_record->concept_explanation;
+                $personal_record->timemodified = $global_ts;
+                $DB->update_record('local_qh_saved_help', $personal_record);
+
+                $response = [
+                    'success' => true,
+                    'practice_question' => (string)$global_record->practice_question,
+                    'options' => json_decode((string)$global_record->optionsjson, true),
+                    'correct_answer' => (string)$global_record->correct_answer,
+                    'explanation' => (string)$global_record->explanation,
+                    'concept_explanation' => (string)$global_record->concept_explanation,
+                    'is_cached' => true,
+                    'is_global' => true,
+                    'user_type' => 'returning-synced'
+                ];
+
+                header('Content-Type: application/json');
+                header('X-AI-Provider: cached-global');
+                header('X-User-Type: returning-synced');
+                $response['provider'] = 'cached-global';
+                echo json_encode($response);
+                exit;
+            }
+
+            // Otherwise return user's personal copy
+            $response = [
+                'success' => true,
+                'practice_question' => (string)$personal_record->practice_question,
+                'options' => json_decode((string)$personal_record->optionsjson, true),
+                'correct_answer' => (string)$personal_record->correct_answer,
+                'explanation' => (string)$personal_record->explanation,
+                'concept_explanation' => (string)$personal_record->concept_explanation,
+                'is_cached' => true,
+                'is_global' => false,
+                'user_type' => 'returning'
+            ];
+
+            header('Content-Type: application/json');
+            header('X-AI-Provider: cached-personal');
+            header('X-User-Type: returning');
+            $response['provider'] = 'cached-personal';
+            echo json_encode($response);
+            exit;
+        }
+    }
+
+    // This is a new user for this question - make API call and update global
     $provider = get_config('local_questionhelper', 'provider');
     if ($provider === 'anthropic') {
         $response = call_anthropic($questiontext, $options, $mode);
     } else {
         $response = call_openai($questiontext, $options, $mode);
+    }
+
+    // Save/update the global record and create personal copy
+    if ($questionid > 0 && isset($response['success']) && $response['success']) {
+        global $DB, $USER;
+
+        $now = time();
+
+        // Create record object
+        $record_data = [
+            'questionid' => $questionid,
+            'variant' => $mode,
+            'practice_question' => $response['practice_question'] ?? '',
+            'optionsjson' => json_encode($response['options'] ?? []),
+            'correct_answer' => $response['correct_answer'] ?? '',
+            'explanation' => $response['explanation'] ?? '',
+            'concept_explanation' => $response['concept_explanation'] ?? '',
+            'timemodified' => $now
+        ];
+
+        // Update or create global record
+        $global_record = $DB->get_record('local_qh_saved_help', [
+            'questionid' => $questionid,
+            'variant' => $mode,
+            'is_global' => 1
+        ]);
+
+        if ($global_record) {
+            // Update existing global record
+            foreach ($record_data as $field => $value) {
+                $global_record->$field = $value;
+            }
+            $DB->update_record('local_qh_saved_help', $global_record);
+        } else {
+            // Create new global record
+            $global_record = new stdClass();
+            foreach ($record_data as $field => $value) {
+                $global_record->$field = $value;
+            }
+            $global_record->userid = null;
+            $global_record->is_global = 1;
+            $global_record->timecreated = $now;
+            $DB->insert_record('local_qh_saved_help', $global_record);
+        }
+
+        // Create personal copy for this user
+        $personal_record = new stdClass();
+        foreach ($record_data as $field => $value) {
+            $personal_record->$field = $value;
+        }
+        $personal_record->userid = $USER->id;
+        $personal_record->is_global = 0;
+        $personal_record->timecreated = $now;
+        $DB->insert_record('local_qh_saved_help', $personal_record);
+
+        $response['is_global'] = false;
+        $response['user_type'] = 'new';
+        header('X-User-Type: new');
     }
     header('Content-Type: application/json');
     header('X-AI-Provider: ' . ($provider ?: 'openai'));
@@ -116,7 +278,7 @@ function call_openai($questiontext, $options, $mode = 'help') {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'Authorization: Bearer ' . $apikey
@@ -153,6 +315,12 @@ function call_openai($questiontext, $options, $mode = 'help') {
     }
 
     // If not properly formatted JSON, return error
+    // Debug: Log parsing failure for challenge questions
+    if ($mode === 'challenge') {
+        error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
+        error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
+    }
+
     return [
         'success' => false,
         'error' => 'AI response was not in the expected format. Please try again.',
@@ -195,7 +363,7 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://api.anthropic.com/v1/messages');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'content-type: application/json',
         'accept: application/json',
@@ -226,6 +394,11 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
         throw new Exception('Invalid Anthropic response');
     }
 
+    // Debug: Log the raw response content for challenge questions
+    if ($mode === 'challenge') {
+        error_log("CHALLENGE DEBUG - Raw AI Response: " . substr($content, 0, 500));
+    }
+
     $parsed = json_decode($content, true);
     if ($parsed && isset($parsed['practice_question']) && isset($parsed['options']) && isset($parsed['correct_answer'])) {
         return [
@@ -236,6 +409,12 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
             'explanation' => $parsed['explanation'] ?? 'Answer explanation not provided.',
             'concept_explanation' => $parsed['concept'] ?? 'Concept explanation not provided.'
         ];
+    }
+
+    // Debug: Log parsing failure for challenge questions
+    if ($mode === 'challenge') {
+        error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
+        error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
     }
 
     return [
@@ -311,4 +490,35 @@ function build_challenge_prompt($questiontext, $options) {
     $prompt .= "}\n";
 
     return $prompt;
+}
+
+/**
+ * Get the real question ID from slot number and attempt ID
+ * This matches the logic used in quiz_manager.php
+ */
+function get_question_id_from_slot($attemptid, $slot) {
+    global $DB;
+
+    try {
+        // Get the quiz attempt to find the question usage ID
+        $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid], 'uniqueid');
+        if (!$attempt) {
+            return 0;
+        }
+
+        // Get the question ID for this slot using the same logic as quiz_manager.php
+        $sql = "SELECT qn.id
+                FROM {question_attempts} qa_inner
+                JOIN {question} qn ON qn.id = qa_inner.questionid
+                WHERE qa_inner.questionusageid = ? AND qa_inner.slot = ?
+                LIMIT 1";
+
+        $questionid = $DB->get_field_sql($sql, [$attempt->uniqueid, $slot]);
+
+        return $questionid ? (int)$questionid : 0;
+
+    } catch (Exception $e) {
+        error_log('Error getting question ID from slot: ' . $e->getMessage());
+        return 0;
+    }
 }

@@ -34,7 +34,8 @@
       "Bash(findstr:*)",
       "Bash(sc query:*)",
       "Bash(dir:*)",
-      "Bash(C:MoodleWindowsInstaller-latest-404serverphpphp.exe clear_opcache.php)"
+      "Bash(C:MoodleWindowsInstaller-latest-404serverphpphp.exe clear_opcache.php)",
+      "Bash(copy \"C:\\MCP_servers\\moodle_backups\\get_help.php.backup_20250929_170046\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\questionhelper\\get_help.php\")"
     ],
     "deny": [],
     "ask": []
