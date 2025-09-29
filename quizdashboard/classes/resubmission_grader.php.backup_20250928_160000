@@ -32,7 +32,7 @@ This student previously submitted this essay and received feedback. You are now 
 **GRADING PHILOSOPHY**: 
 - Compare the current submission directly against the previous submission and its feedback
 - Assess how well the student incorporated the feedback from their {$prev_ordinal} submission
-- Be fair - genuine improvement should be rewarded, minimal changes should not
+- Be stringent but fair - genuine improvement should be rewarded, minimal changes should not
 - If they simply copied the revision from the previous feedback, this should result in zero scores
 
 **SCORING APPROACH**:
@@ -41,7 +41,7 @@ Previous scores from {$prev_ordinal} submission:
 
 - Show improvement as: Previous Score → New Score  
 - Only increase scores where there is genuine, measurable improvement
-- Maintain or even decrease scores where improvement is minimal or absent
+- Maintain or decrease scores where improvement is minimal or absent
 - Use Australian English for all feedback
 
 **FINAL SCORE RULE**:
@@ -150,8 +150,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
                 ],
-                'max_tokens' => 5000,
-                'temperature' => 0.3
+                'max_tokens' => 3500
             ];
             $result = $this->make_anthropic_api_call($data, 'generate_comparative_feedback');
         } else {
@@ -161,8 +160,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                     ['role' => 'system', 'content' => $system_prompt],
                     ['role' => 'user', 'content' => $user_content]
                 ],
-                'max_completion_tokens' => 5000,
-                'temperature' => 0.3
+                'max_completion_tokens' => 3500
             ];
             $result = $this->make_openai_api_call($data, 'generate_comparative_feedback');
         }
@@ -403,8 +401,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             
             error_log("DEBUG: Using calculated score for resubmission: {$score}/{$max_score}");
             
-            // Save concise student-facing comment (same as first submission)
-            $comment = $this->create_student_feedback($feedback_data['feedback_html'] ?? '', $essay_data['attempt_id']);
+            // Save comment with the calculated score
+            $comment = "<div class='ai-grading-feedback'>" . ($feedback_data['feedback_html'] ?? '') . "</div>";
             $fraction = $score / $max_score;
             
             // Use parent's quiz_manager to save the grade
@@ -568,58 +566,39 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
     private function enforce_final_score($html, $prev_total, $new_total) {
         // Debug logging
         error_log("DEBUG: enforce_final_score called with prev_total=$prev_total, new_total=$new_total");
-
-        // Build replacement strong line and wrapped block
-        $strong = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
-        $wrapped = '<h2 style="font-size:16px;"><p>' . $strong . '</p></h2>';
-
-        // Normalise common arrow entities to a single form to ease matching
-        $normalized = str_replace(['&rarr;', '&#8594;', '-&gt;'], '→', $html);
-
-        // Remove any bare numeric Final Score lines (various wrappers)
-        $patternsToStrip = [
-            // <h2><p><strong>X/100 → Y/100</strong></p></h2>
-            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
-            // <p><strong>X/100 → Y/100</strong></p>
-            '/<p[^>]*>\s*<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>\s*<\/p>/siu',
-            // <strong>X/100 → Y/100</strong>
-            '/<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|➡|➔|►)\s*\d+\s*\/\s*100\s*<\/strong>/siu',
-            // Any existing "Final Score (Previous → New): ..." line
-            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
-            '/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>/siu',
+        
+        $replacement = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
+        
+        // First try to replace patterns like: <strong>X/100 → Y/100</strong> (without "Final Score" text)
+        // Also handle cases wrapped in <p> tags
+        $patterns = [
+            '/<p><strong>\s*\d+\/100\s*→\s*\d+\/100\s*<\/strong><\/p>/si',
+            '/<strong>\s*\d+\/100\s*→\s*\d+\/100\s*<\/strong>/si'
         ];
-        foreach ($patternsToStrip as $pat) {
-            $normalized = preg_replace($pat, '', $normalized);
+        foreach ($patterns as $pattern) {
+            $html2 = preg_replace($pattern, '<p>' . $replacement . '</p>', $html);
+            if ($html2 !== null && $html2 !== $html) {
+                error_log("DEBUG: Replaced bare score pattern with pattern: $pattern");
+                return $html2;
+            }
         }
-
-        // Inject our deterministic line right after the comparative Overall Comments block
-        // Only inject after the FIRST occurrence to avoid touching the attached first submission
-        $injected = preg_replace(
-            '/(<div[^>]+id=["\']overall-comments["\'][^>]*>.*?<\/div>)/si',
-            '$1' . $wrapped,
-            $normalized,
-            1
-        );
-        if ($injected !== null && $injected !== $normalized) {
-            error_log('DEBUG: enforce_final_score injected after overall-comments');
-            return $injected;
-        }
-
-        // Fallbacks: try replacing any remaining simple patterns (legacy)
-        $html2 = preg_replace('/<p><strong>\s*\d+\/100\s*→\s*\d+\/100\s*<\/strong><\/p>/si', '<p>' . $strong . '</p>', $normalized);
-        if ($html2 !== null && $html2 !== $normalized) {
-            error_log('DEBUG: enforce_final_score replaced bare score paragraph');
+        
+        // Replace common pattern where the whole strong tag is on one line
+        $html2 = preg_replace('/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:\s*.*?<\/strong>/si', $replacement, $html);
+        if ($html2 !== null && $html2 !== $html) {
+            error_log("DEBUG: Replaced full Final Score pattern");
             return $html2;
         }
-        $html2 = preg_replace('/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:\s*.*?<\/strong>/si', $strong, $normalized);
-        if ($html2 !== null && $html2 !== $normalized) {
-            error_log('DEBUG: enforce_final_score replaced existing Final Score line');
+        
+        // Fallback: try to replace just the numeric part inside the existing strong tag
+        $html2 = preg_replace('/(Final\s+Score\s*\(Previous.*?New\)\s*:\s*).*?(?=<\/strong>)/si', '$1' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100', $html);
+        if ($html2 !== null && $html2 !== $html) {
+            error_log("DEBUG: Replaced numeric part only");
             return $html2;
         }
-
-        // Last resort: append at end of block
-        error_log('DEBUG: enforce_final_score appended at end');
-        return $normalized . $wrapped;
+        
+        error_log("DEBUG: No replacement made - pattern not found");
+        return $html;
     }
 
     /**
@@ -751,9 +730,6 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $current_scores = $this->extract_resubmission_scores($feedback_result['data']['feedback_html'] ?? '');
             $feedback_result['data']['scores'] = $current_scores;
 
-            // Log current scores for debugging
-            error_log("DEBUG: Current (new) scores extracted: " . json_encode($current_scores));
-
             // 10a) Calculate previous total from DB scores (most reliable)
             // The extract_previous_scores already calculates this correctly from DB
             $prev_total = isset($previous_scores['final_score']['score']) ? (int)$previous_scores['final_score']['score'] : 0;
@@ -770,16 +746,11 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // Debug logging to verify we're getting the correct previous total
             error_log("DEBUG: Previous scores breakdown: " . json_encode($previous_scores));
             error_log("DEBUG: Previous total score being used: {$prev_total}/100");
-            // Calculate new total from individual scores
             $new_total = (int)($current_scores['content_and_ideas'] ?? 0)
                         + (int)($current_scores['structure_and_organization'] ?? 0)
                         + (int)($current_scores['language_use'] ?? 0)
                         + (int)($current_scores['creativity_and_originality'] ?? 0)
                         + (int)($current_scores['mechanics'] ?? 0);
-
-            error_log("DEBUG: New scores breakdown: Content={$current_scores['content_and_ideas']}, Structure={$current_scores['structure_and_organization']}, Language={$current_scores['language_use']}, Creativity={$current_scores['creativity_and_originality']}, Mechanics={$current_scores['mechanics']}");
-            error_log("DEBUG: New total calculated: {$new_total}/100");
-            error_log("DEBUG: Score comparison: Previous={$prev_total}/100 → New={$new_total}/100");
 
             // Patch the comparative feedback block and the already-built complete HTML
             if (!empty($feedback_result['data']['feedback_html'])) {
@@ -1079,53 +1050,22 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
         foreach ($sections as $key => $cfg) {
             $max = (int)$cfg['max'];
+            // Title may already contain regex (for Organisation/Organization)
             $title = $cfg['title'];
-
-            // Try multiple patterns to extract the NEW score (after the arrow)
-            // We need to handle various arrow encodings and formats
             $patterns = [
-                // Pattern 1: Look for "X/max → Y/max" and capture Y
-                "/{$title}.*?Score.*?\\d+\\s*\\/\\s*{$max}\\s*(?:→|->|➔|►|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
-                // Pattern 2: Look for just "→ Y/max" and capture Y
-                "/{$title}.*?Score.*?(?:→|->|➔|►|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
-                // Pattern 3: If no arrow found, look for the LAST score in the section (which should be the NEW score)
-                "/{$title}.*?Score.*?(\\d+)\\s*\\/\\s*{$max}(?!.*\\d+\\s*\\/\\s*{$max})/si",
-                // Pattern 4: Simple fallback - just find any score for this section
-                "/{$title}.*?Score.*?(\\d+)\\s*\\/\\s*{$max}/si"
+                "/{$title}.*?Score \(Previous.*?→.*?New\):.*?\\d+\\s*\\/\\s*{$max}\\s*→\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                "/{$title}.*?Score:.*?(\\d+)\\s*\\/\\s*{$max}/si"
             ];
-
             $found = false;
-            $value = null;
-
-            // Try each pattern
-            foreach ($patterns as $pattern_idx => $pattern) {
-                if (preg_match($pattern, $feedback_html, $matches)) {
-                    // For patterns looking for the last occurrence, we need to find all matches
-                    if ($pattern_idx == 2 || $pattern_idx == 3) {
-                        if (preg_match_all("/\\d+\\s*\\/\\s*{$max}/", $matches[0], $all_scores)) {
-                            // Get the last score
-                            $last_score = end($all_scores[0]);
-                            if (preg_match('/(\\d+)/', $last_score, $score_match)) {
-                                $value = (int)$score_match[1];
-                                error_log("DEBUG: Extracted {$key} NEW score using pattern {$pattern_idx}: {$value}/{$max}");
-                                $found = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        $value = (int)$matches[1];
-                        error_log("DEBUG: Extracted {$key} NEW score using pattern {$pattern_idx}: {$value}/{$max}");
-                        $found = true;
-                        break;
-                    }
+            foreach ($patterns as $p) {
+                if (preg_match($p, $feedback_html, $m)) {
+                    $scores[$key] = (int)$m[1];
+                    $found = true;
+                    break;
                 }
             }
-
-            if ($found && $value !== null) {
-                $scores[$key] = $value;
-            } else {
-                error_log("WARNING: Could not extract NEW score for {$key}");
-                $scores[$key] = 0;
+            if (!$found) {
+                $scores[$key] = null;
             }
         }
 

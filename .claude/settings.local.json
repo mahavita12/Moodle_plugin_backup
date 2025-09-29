@@ -27,7 +27,13 @@
       "Read(//c/MoodleWindowsInstaller-latest-404/server/moodle/**)",
       "Bash(mkdir:*)",
       "mcp__moodle-server__make_http_request",
-      "Read(//c/MoodleWindowsInstaller-latest-404/**)"
+      "Read(//c/MoodleWindowsInstaller-latest-404/**)",
+      "Bash(dir clear_opcache.php)",
+      "Bash(dir \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quizdashboard\\clear_opcache.php\")",
+      "Bash(net start:*)",
+      "Bash(findstr:*)",
+      "Bash(sc query:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

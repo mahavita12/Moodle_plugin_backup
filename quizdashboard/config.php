@@ -16,6 +16,7 @@ $PAGE->set_pagelayout('admin');
 if (data_submitted() && confirm_sesskey()) {
     $provider = optional_param('provider', 'anthropic', PARAM_TEXT);
     $openai_key = optional_param('openai_api_key', '', PARAM_TEXT);
+    $openai_model = optional_param('openai_model', 'gpt-5', PARAM_TEXT);
     $anthropic_key = optional_param('anthropic_apikey', '', PARAM_TEXT);
     $anthropic_model = optional_param('anthropic_model', 'sonnet-4', PARAM_TEXT);
     $google_folder_id = optional_param('google_folder_id', '', PARAM_TEXT);
@@ -73,6 +74,11 @@ if (data_submitted() && confirm_sesskey()) {
     }
     
     // Save service account JSON
+    // Save OpenAI model
+    if (!empty($openai_model)) {
+        set_config('openai_model', trim($openai_model), 'local_quizdashboard');
+        \core\notification::success('OpenAI model saved successfully.');
+    }
     if (!empty($service_account_json)) {
         $dataroot = $CFG->dataroot;
         $plugin_dir = $dataroot . '/local_quizdashboard';
@@ -97,6 +103,7 @@ $current_openai_key = get_config('local_quizdashboard', 'openai_api_key');
 $current_anthropic_key = get_config('local_quizdashboard', 'anthropic_apikey');
 $current_anthropic_model = get_config('local_quizdashboard', 'anthropic_model') ?: 'sonnet-4';
 $current_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
+$current_openai_model = get_config('local_quizdashboard', 'openai_model') ?: 'gpt-5';
 
 echo $OUTPUT->header();
 ?>
@@ -161,6 +168,15 @@ echo $OUTPUT->header();
                 </div>
             </div>
             
+            <div class="form-group row">
+                <label for="openai_model" class="col-sm-3 col-form-label">OpenAI Model:</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="openai_model" name="openai_model" 
+                           value="<?php echo htmlspecialchars($current_openai_model); ?>">
+                    <small class="form-text text-muted">Default: gpt-5. Override if needed (e.g., gpt-4o).</small>
+                </div>
+            </div>
+
             <div class="form-group row">
                 <label for="google_folder_id" class="col-sm-3 col-form-label">Google Drive Folder ID:</label>
                 <div class="col-sm-9">

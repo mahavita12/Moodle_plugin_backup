@@ -24,9 +24,9 @@ class essay_grader {
     private $service_account_path;
     
     // ADDED: Timeout configuration constants
-    private const API_CONNECT_TIMEOUT = 45;  // Allow slower initial connection
-    private const API_TOTAL_TIMEOUT = 240;   // 4 minutes total to accommodate GPT-5
-    private const MAX_RETRY_ATTEMPTS = 3;    // One extra retry for slow model
+    private const API_CONNECT_TIMEOUT = 30;  // 30 seconds to connect
+    private const API_TOTAL_TIMEOUT = 180;   // 3 minutes total (reduced from 4 minutes)
+    private const MAX_RETRY_ATTEMPTS = 2;    // Retry failed API calls
 
     public function __construct() {
         $this->google_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
@@ -63,18 +63,6 @@ class essay_grader {
         // Map friendly aliases to official Claude 4 Sonnet model identifier
         if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
             return 'claude-sonnet-4-20250514';
-        }
-        return $model;
-    }
-
-    /**
-     * Get OpenAI model from config with sensible default (GPT-5)
-     */
-    protected function get_openai_model(): string {
-        $model = get_config('local_quizdashboard', 'openai_model');
-        $model = is_string($model) ? trim($model) : '';
-        if ($model === '') {
-            return 'gpt-5';
         }
         return $model;
     }
@@ -421,8 +409,6 @@ class essay_grader {
         $student_comment = $this->create_student_feedback($feedback_data['feedback_html'], $essay_data['attempt_id']);
         
         $fraction = 0.0;
-        $score = 0.0;  // Initialize to prevent undefined variable error
-        $max_score = 100.0;  // Default max score
         // Try first submission format: "Final Score: 82/100"
         if (preg_match('/<strong>Final Score:\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)<\/strong>/i', $feedback_data['feedback_html'], $matches)) {
             $score = (float) $matches[1];
@@ -434,30 +420,13 @@ class essay_grader {
             }
         } 
         // Try resubmission format: "Final Score (Previous → New): 75/100 → 82/100"
-        else if (preg_match('/<strong>Final Score \(Previous.*?(?:â†’|&rarr;|->|âž”|â–º).*?New\):\s*\d+\/\d+\s*(?:â†’|&rarr;|->|âž”|â–º)\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)<\/strong>/iu', $feedback_data['feedback_html'], $matches)) {
+        else if (preg_match('/<strong>Final Score \\(Previous.*?→.*?New\\):.*?→\\s*(\\d+(?:\\.\\d+)?)\\s*\\/\\s*(\\d+(?:\\.\\d+)?)<\\/strong>/i', $feedback_data['feedback_html'], $matches)) {
             $score = (float) $matches[1];  // Gets the NEW score after the arrow
             $max_score = (float) $matches[2];
             error_log("DEBUG: Grade extraction SUCCESS (resubmission) - Found score: {$score}, max_score: {$max_score}");
             if ($max_score > 0) {
                 $fraction = max(0.0, min(1.0, $score / $max_score)); // Clamp between 0.0 and 1.0.
                 error_log("DEBUG: Calculated fraction: {$fraction} for attempt {$essay_data['attempt_id']}");
-            }
-        }
-        // Fallback: Try extracting from scores data if available
-        else if (empty($fraction) && isset($feedback_data['scores']) && is_array($feedback_data['scores'])) {
-            // Calculate total from individual scores
-            $total = 0;
-            $total += isset($feedback_data['scores']['content_and_ideas']) ? (int)$feedback_data['scores']['content_and_ideas'] : 0;
-            $total += isset($feedback_data['scores']['structure_and_organization']) ? (int)$feedback_data['scores']['structure_and_organization'] : 0;
-            $total += isset($feedback_data['scores']['language_use']) ? (int)$feedback_data['scores']['language_use'] : 0;
-            $total += isset($feedback_data['scores']['creativity_and_originality']) ? (int)$feedback_data['scores']['creativity_and_originality'] : 0;
-            $total += isset($feedback_data['scores']['mechanics']) ? (int)$feedback_data['scores']['mechanics'] : 0;
-            
-            if ($total > 0) {
-                $score = (float) $total;
-                $max_score = 100.0;
-                $fraction = max(0.0, min(1.0, $score / $max_score));
-                error_log("DEBUG: Grade extraction from scores array - Total score: {$score}, fraction: {$fraction}");
             }
         } else {
             error_log("DEBUG: Grade extraction FAILED - neither regex matched for attempt {$essay_data['attempt_id']}");
@@ -467,9 +436,7 @@ class essay_grader {
         // ADDED: Validation and debugging
         if (!is_numeric($fraction) || $fraction < 0.0 || $fraction > 1.0) {
             error_log("Invalid fraction calculated: $fraction for attempt {$essay_data['attempt_id']}");
-            $fraction = 0.0;
-        $score = 0.0;  // Initialize to prevent undefined variable error
-        $max_score = 100.0;  // Default max score // Default to 0 if invalid
+            $fraction = 0.0; // Default to 0 if invalid
         }
         
         if (empty($student_comment) || !is_string($student_comment)) {
@@ -488,7 +455,7 @@ class essay_grader {
             );
             
             // CRITICAL FIX: Add direct sumgrades update to ensure grades are properly saved
-            if (isset($score) && $score > 0 && isset($max_score) && $max_score > 0) {
+            if ($score > 0 && $max_score > 0) {
                 $this->ensure_sumgrades_updated($essay_data['attempt_id'], $score);
             }
         } catch (\Throwable $e) {
@@ -674,7 +641,7 @@ class essay_grader {
     protected function generate_essay_feedback($essay_data, $level) {
         $apikey = $this->get_openai_api_key();
 
-        $system_prompt = "You are an expert essay grader for students aged 11 to 16. You will ONLY provide structured feedback. When giving scores for each criteria, first, assess whether the student's essay directly responds to the given question and specific points asked. If not, detail what has not been addressed clearly and reflect in the marking. Use Australian English for feedback.
+        $system_prompt = "You are an expert essay grader for students aged 11 to 16. You will ONLY provide structured feedback. When giving scores for each criteria, be critical but fair. First, assess whether the student's essay directly responds to the given question and specific points asked. If not, detail what has not been addressed clearly and reflect in the marking. Use Australian English for feedback.
 
         **CRITICAL FORMATTING RULES FOR EXAMPLES:**
         - When showing original and improved versions in Language Use and Mechanics sections, ALWAYS put them on completely separate lines
@@ -767,8 +734,7 @@ class essay_grader {
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
                 ],
-                'max_tokens' => 6000,
-                'temperature' => 0.3
+                'max_tokens' => 16000
             ];
             $result = $this->make_anthropic_api_call($data, 'generate_essay_feedback');
         } else {
@@ -778,8 +744,7 @@ class essay_grader {
                     ['role' => 'system', 'content' => $system_prompt], 
                     ['role' => 'user', 'content' => $user_content] 
                 ], 
-                'max_completion_tokens' => 6000,
-                'temperature' => 0.3
+                'max_completion_tokens' => 16000 
             ];
             $result = $this->make_openai_api_call($data, 'generate_essay_feedback');
             if (!$result['success']) {
@@ -887,8 +852,7 @@ class essay_grader {
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text ] ]]
                 ],
-                'max_tokens' => 4000,
-                'temperature' => 0.25
+                'max_tokens' => 8000
             ];
             $result = $this->make_anthropic_api_call($data, 'get_clean_revision');
         } else {
@@ -898,8 +862,7 @@ class essay_grader {
                     ['role' => 'system', 'content' => $system_prompt], 
                     ['role' => 'user', 'content' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text] 
                 ], 
-                'max_completion_tokens' => 4000,
-                'temperature' => 0.25
+                'max_completion_tokens' => 8000 
             ];
             // TIMEOUT FIX: Use new robust API call method
             $result = $this->make_openai_api_call($data, 'get_clean_revision');
@@ -971,8 +934,7 @@ class essay_grader {
                     'messages' => [
                         ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content ] ]]
                     ],
-                    'max_tokens' => 3000,
-                    'temperature' => 0.2
+                    'max_tokens' => 10000
                 ];
                 $api_result = $this->make_anthropic_api_call($data, 'get_formatted_diff');
                 if (!$api_result['success']) {
@@ -985,8 +947,7 @@ class essay_grader {
                         ['role' => 'system', 'content' => $system_prompt], 
                         ['role' => 'user', 'content' => $user_content]
                     ], 
-                    'max_completion_tokens' => 3000,
-                    'temperature' => 0.2
+                    'max_completion_tokens' => 10000 
                 ];
                 
                 // TIMEOUT FIX: Use new robust API call method
@@ -1212,9 +1173,7 @@ class essay_grader {
         // START MARKER for original essay text extraction
         $html_output .= '<!-- EXTRACT_ORIGINAL_START -->';
         $html_output .= '<div style="background: #e8f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #17a2b8; margin: 10px 0;">';
-        // CLEANUP: sanitize pasted HTML/markdown artifacts (e.g., <p spellcheck="false">)
-        $clean_original_text = $this->sanitize_original_essay_text($essay_data['answer_text']);
-        $paragraphs = preg_split("/\r\n|\n|\r/", trim($clean_original_text));
+        $paragraphs = preg_split("/\r\n|\n|\r/", trim($essay_data['answer_text']));
         foreach ($paragraphs as $p) {
             if (!empty(trim($p))) {
                 $html_output .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
@@ -1557,32 +1516,22 @@ class essay_grader {
     }
 
     public function detect_ai_assistance($essay_text) {
+        $apikey = $this->get_openai_api_key();
         $truncated_essay = mb_strimwidth($essay_text, 0, 8000, "...");
         $system_prompt = "You are an AI detection tool. Analyse the following text and determine the likelihood that it was written or heavily assisted by an AI. Consider factors like vocabulary choice, sentence structure complexity, tone, and the presence of common AI-generated phrases. Your response MUST be a JSON object with a single key 'likelihood', containing an integer value from 0 to 100. For example: {\"likelihood\": 85}. Do not provide any other text, explanation, or markdown.";
-
-        $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
-            $data = [
-                'model' => $this->get_anthropic_model(),
-                'system' => $system_prompt,
-                'messages' => [
-                    ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $truncated_essay ] ]]
-                ],
-                'max_tokens' => 400
-            ];
-            $result = $this->make_anthropic_api_call($data, 'detect_ai_assistance');
-        } else {
-            $data = [
-                'model' => $this->get_openai_model(), 
-                'messages' => [
-                    ['role' => 'system', 'content' => $system_prompt], 
-                    ['role' => 'user', 'content' => $truncated_essay]
-                ], 
-                'response_format' => ['type' => 'json_object'], 
-                'max_completion_tokens' => 800
-            ];
-            $result = $this->make_openai_api_call($data, 'detect_ai_assistance');
-        }
+        
+        $data = [
+            'model' => 'gpt-4o', 
+            'messages' => [
+                ['role' => 'system', 'content' => $system_prompt], 
+                ['role' => 'user', 'content' => $truncated_essay]
+            ], 
+            'response_format' => ['type' => 'json_object'], 
+            'max_completion_tokens' => 1000
+        ];
+        
+        // TIMEOUT FIX: Use new robust API call method
+        $result = $this->make_openai_api_call($data, 'detect_ai_assistance');
         if (!$result['success']) {
             return 'Timeout';
         }
@@ -2051,7 +2000,7 @@ class essay_grader {
                 
                 // FIXED: Optimized timeout settings
                 $curl->setopt([
-                    'CURLOPT_TIMEOUT' => max(180, (int) (self::API_TOTAL_TIMEOUT * 0.9)),
+                    'CURLOPT_TIMEOUT' => self::API_TOTAL_TIMEOUT,
                     'CURLOPT_CONNECTTIMEOUT' => self::API_CONNECT_TIMEOUT,
                     'CURLOPT_NOSIGNAL' => 1,  // Prevent timeout issues on some systems
                     'CURLOPT_TCP_KEEPALIVE' => 1,
@@ -2061,36 +2010,6 @@ class essay_grader {
                 
                 error_log("DEBUG: Set curl timeouts for {$operation_name} - connect: " . self::API_CONNECT_TIMEOUT . "s, total: " . self::API_TOTAL_TIMEOUT . "s");
                 
-                // NORMALIZE OpenAI payload for Chat Completions
-                $modelName = isset($data['model']) ? strtolower((string)$data['model']) : '';
-                $isGpt5 = ($modelName !== '' && strpos($modelName, 'gpt-5') !== false);
-
-                if ($isGpt5) {
-                    // GPT-5 chat completions expects max_completion_tokens
-                    if (isset($data['temperature'])) {
-                        unset($data['temperature']);
-                    }
-                    if (isset($data['max_tokens']) && !isset($data['max_completion_tokens'])) {
-                        $data['max_completion_tokens'] = $data['max_tokens'];
-                        unset($data['max_tokens']);
-                    }
-                    if (isset($data['max_output_tokens'])) {
-                        $data['max_completion_tokens'] = $data['max_output_tokens'];
-                        unset($data['max_output_tokens']);
-                    }
-                } else {
-                    // Non-GPT-5 models expect max_tokens
-                    if (isset($data['max_tokens'])) {
-                        // ok
-                    } elseif (isset($data['max_output_tokens'])) {
-                        $data['max_tokens'] = $data['max_output_tokens'];
-                        unset($data['max_output_tokens']);
-                    } elseif (isset($data['max_completion_tokens'])) {
-                        $data['max_tokens'] = $data['max_completion_tokens'];
-                        unset($data['max_completion_tokens']);
-                    }
-                }
-
                 $response = $curl->post('https://api.openai.com/v1/chat/completions', json_encode($data));
                 
                 // Check for curl errors (including timeout)
@@ -2119,44 +2038,28 @@ class essay_grader {
                     }
                     
                     if ($attempts < self::MAX_RETRY_ATTEMPTS) {
-                        sleep(7 * $attempts); // Slightly longer wait for long generations
+                        sleep(5 * $attempts); // Longer wait for API errors
                         continue;
                     }
                     
                     return ['success' => false, 'message' => $last_error];
                 }
 
-                // Extract text from Chat Completions (with fallbacks)
-                $text = '';
-                if (isset($body['choices'][0]['message']['content'])) {
-                    $text = (string)$body['choices'][0]['message']['content'];
-                } elseif (isset($body['output_text'])) {
-                    $text = (string)$body['output_text'];
-                } elseif (isset($body['content']) && is_array($body['content'])) {
-                    foreach ($body['content'] as $part) {
-                        if (is_array($part) && isset($part['type'])) {
-                            if ($part['type'] === 'output_text' && isset($part['text'])) {
-                                $text .= (string)$part['text'];
-                            } elseif ($part['type'] === 'text' && isset($part['text'])) {
-                                $text .= (string)$part['text'];
-                            }
-                        }
-                    }
-                }
-
-                if ($text === '') {
+                if (!isset($body['choices'][0]['message']['content'])) {
                     $last_error = 'Invalid API response structure';
                     error_log("DEBUG: {$operation_name} attempt {$attempts} failed - {$last_error}");
+                    
                     if ($attempts < self::MAX_RETRY_ATTEMPTS) {
                         sleep(2 * $attempts);
                         continue;
                     }
+                    
                     return ['success' => false, 'message' => $last_error];
                 }
 
                 // Success!
                 error_log("DEBUG: {$operation_name} succeeded on attempt {$attempts}");
-                return ['success' => true, 'response' => $text];
+                return ['success' => true, 'response' => $body['choices'][0]['message']['content']];
 
             } catch (\Exception $e) {
                 $last_error = "Exception: " . $e->getMessage();
@@ -2249,7 +2152,6 @@ Your primary goal is to create questions that test a specific grammatical rule w
 - **VOCABULARY BUILDER FORMAT:** The 'Complete the sentence' column MUST be a fill-in-the-blank exercise. Replace the target word in the sentence with a long underscore `__________`.
 - The correct answer in the multiple-choice questions should NOT be bolded. It should only be bolded in the Answer Key.
 - For the sentence improvement section, provide adequate writing space above each line for handwritten responses.
- - In the Complete Answer Key, PROVIDE a model "Improved:" sentence for EACH of the 10 Sentence Improvement items. Number them 1 through 10 and show only the improved revision for each.
 
 **EXACT HTML TEMPLATE TO USE:**
 <div class="page-break"></div>
@@ -2375,7 +2277,6 @@ Your primary goal is to create questions that test a specific grammatical rule w
 - **VOCABULARY BUILDER FORMAT:** The 'Complete the sentence' column MUST be a fill-in-the-blank exercise. Replace the target word in the sentence with a long underscore `__________`.
 - The correct answer in the multiple-choice questions should NOT be bolded. It should only be bolded in the Answer Key.
 - For the sentence improvement section, provide adequate writing space above each line for handwritten responses.
- - In the Complete Answer Key, PROVIDE a model "Improved:" sentence for EACH of the 10 Sentence Improvement items. Number them 1 through 10 and show only the improved revision for each.
 
 **EXACT HTML TEMPLATE TO USE:**
 <div class="feedback-section" style="background: #ffffff; margin-bottom: 25px; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border: 2px solid #007bff;">
@@ -2459,19 +2360,17 @@ PROMPT;
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $user_content] ]]
                 ],
-                'max_tokens' => 9000,
-                'temperature' => 0.45
+                'max_tokens' => 16000
             ];
             $result = $this->make_anthropic_api_call($data, 'homework generation');
         } else {
             $data = [
-                'model' => $this->get_openai_model(),
+                'model' => 'gpt-4o',  // FIXED: Use more reliable model
                 'messages' => [
                     ['role' => 'system', 'content' => $system_prompt],
                     ['role' => 'user', 'content' => $user_content]
                 ],
-                'max_completion_tokens' => 9000,
-                'temperature' => 0.45
+                'max_completion_tokens' => 16000
             ];
             $result = $this->make_openai_api_call($data, 'homework generation');
         }
@@ -2600,43 +2499,5 @@ PROMPT;
 
         return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
     }
-
-    /**
-     * Sanitize original essay text to remove pasted HTML/markdown wrappers while preserving strategic markers.
-     * - Strips common copied tags like <p ...>...</p> and attributes such as spellcheck.
-     * - Converts <br> to newlines so paragraph splitting works.
-     * - Removes leading/trailing quotes left by markdown.
-     */
-    protected function sanitize_original_essay_text($raw_text) {
-        if ($raw_text === null) {
-            return '';
-        }
-
-        $text = $raw_text;
-
-        // Replace <br> variants with newlines
-        $text = preg_replace('/<\s*br\s*\/?\s*>/i', "\n", $text);
-
-        // Remove opening <p ...> and closing </p> tags while keeping inner text
-        $text = preg_replace('/<\s*p\b[^>]*>/i', '', $text);
-        $text = preg_replace('/<\s*\/\s*p\s*>/i', "\n\n", $text);
-
-        // Remove other harmless attributes often copied in Word/Editors
-        $text = preg_replace('/\s*(contenteditable|spellcheck|style|class|dir|lang)\s*=\s*"[^"]*"/i', '', $text);
-
-        // Strip remaining tags except markers we never expect inside the raw text anyway
-        $text = strip_tags($text);
-
-        // Normalize whitespace
-        $text = preg_replace("/\r\n|\r/", "\n", $text);
-        $text = preg_replace("/\n{3,}/", "\n\n", $text);
-
-        // Trim smart quotes or stray quotes at text boundaries
-        $text = trim($text);
-        $text = preg_replace('/^[\"\'\x{2018}\x{2019}\x{201C}\x{201D}]+/u', '', $text);
-        $text = preg_replace('/[\"\'\x{2018}\x{2019}\x{201C}\x{201D}]+$/u', '', $text);
-
-        return $text;
-    }
-
 }
+
