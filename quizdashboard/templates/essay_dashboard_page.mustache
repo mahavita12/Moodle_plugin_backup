@@ -48,6 +48,7 @@
           <th>Finished</th>
           <th>Score</th>
           <th>%</th>
+          <th>Similarity</th>
           <th>Next step</th>
         </tr>
       </thead>
@@ -62,6 +63,13 @@
           <td>{{timefinish}}</td>
           <td>{{score}} / {{maxscore}}</td>
           <td>{{percentage}}%</td>
+          <td>
+            {{#similarity}}
+              {{#similarityflag}}<span class="badge bg-danger" title="Penalty applied">{{similarity}}%</span>{{/similarityflag}}
+              {{^similarityflag}}<span class="badge bg-success">{{similarity}}%</span>{{/similarityflag}}
+            {{/similarity}}
+            {{^similarity}}—{{/similarity}}
+          </td>
           <td><a class="btn btn-sm btn-outline-primary" href="{{nexturl}}">{{nextstep}}</a></td>
         </tr>
         {{/rows}}

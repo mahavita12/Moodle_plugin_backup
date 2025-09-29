@@ -20,6 +20,10 @@ if (data_submitted() && confirm_sesskey()) {
     $anthropic_key = optional_param('anthropic_apikey', '', PARAM_TEXT);
     $anthropic_model = optional_param('anthropic_model', 'sonnet-4', PARAM_TEXT);
     $google_folder_id = optional_param('google_folder_id', '', PARAM_TEXT);
+    // Similarity settings
+    $similarity_threshold = optional_param('similarity_threshold', '', PARAM_INT);
+    $similarity_autozero = optional_param('similarity_autozero', 0, PARAM_INT);
+    $similarity_warning_text = optional_param('similarity_warning_text', '', PARAM_RAW);
     $service_account_json = optional_param('service_account_json', '', PARAM_RAW);
     
     // Save provider
@@ -74,6 +78,17 @@ if (data_submitted() && confirm_sesskey()) {
     }
     
     // Save service account JSON
+    // Save similarity settings (empty values are allowed to fall back to defaults)
+    if ($similarity_threshold !== '') {
+        $st = max(0, min(100, (int)$similarity_threshold));
+        set_config('similarity_threshold', $st, 'local_quizdashboard');
+        \core\notification::success('Similarity threshold saved: ' . $st . '%');
+    }
+    set_config('similarity_autozero', $similarity_autozero ? 1 : 0, 'local_quizdashboard');
+    if ($similarity_warning_text !== '') {
+        set_config('similarity_warning_text', trim($similarity_warning_text), 'local_quizdashboard');
+        \core\notification::success('Similarity warning text saved.');
+    }
     // Save OpenAI model
     if (!empty($openai_model)) {
         set_config('openai_model', trim($openai_model), 'local_quizdashboard');
@@ -104,6 +119,13 @@ $current_anthropic_key = get_config('local_quizdashboard', 'anthropic_apikey');
 $current_anthropic_model = get_config('local_quizdashboard', 'anthropic_model') ?: 'sonnet-4';
 $current_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
 $current_openai_model = get_config('local_quizdashboard', 'openai_model') ?: 'gpt-5';
+// Similarity current values with defaults
+$cfg_similarity_threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+$cfg_similarity_autozero = (int)(get_config('local_quizdashboard', 'similarity_autozero') ?? 1);
+$cfg_similarity_warning_text = get_config('local_quizdashboard', 'similarity_warning_text');
+if ($cfg_similarity_warning_text === false || $cfg_similarity_warning_text === null || $cfg_similarity_warning_text === '') {
+    $cfg_similarity_warning_text = 'Similarity violation detected (copying previous revision). All category scores and the final score have been set to 0. Resubmissions must reflect your own work and improvements.';
+}
 
 echo $OUTPUT->header();
 ?>
@@ -174,6 +196,32 @@ echo $OUTPUT->header();
                     <input type="text" class="form-control" id="openai_model" name="openai_model" 
                            value="<?php echo htmlspecialchars($current_openai_model); ?>">
                     <small class="form-text text-muted">Default: gpt-5. Override if needed (e.g., gpt-4o).</small>
+                </div>
+            </div>
+
+            <hr>
+            <h4>Similarity Policy</h4>
+            <div class="form-group row">
+                <label for="similarity_threshold" class="col-sm-3 col-form-label">Similarity Threshold (%)</label>
+                <div class="col-sm-3">
+                    <input type="number" min="0" max="100" class="form-control" id="similarity_threshold" name="similarity_threshold" value="<?php echo (int)$cfg_similarity_threshold; ?>">
+                    <small class="form-text text-muted">Default 70. Resubmission ≥ threshold is penalized.</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label for="similarity_autozero" class="col-sm-3 col-form-label">Auto-zero on Violation</label>
+                <div class="col-sm-9">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="similarity_autozero" name="similarity_autozero" value="1" <?php echo $cfg_similarity_autozero ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="similarity_autozero">Set all category scores and final score to 0 when threshold is met</label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label for="similarity_warning_text" class="col-sm-3 col-form-label">Warning Banner Text</label>
+                <div class="col-sm-9">
+                    <textarea class="form-control" id="similarity_warning_text" name="similarity_warning_text" rows="3"><?php echo htmlspecialchars($cfg_similarity_warning_text); ?></textarea>
+                    <small class="form-text text-muted">Shown at the top of resubmission feedback when penalized.</small>
                 </div>
             </div>
 

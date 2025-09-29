@@ -33,7 +33,8 @@
       "Bash(net start:*)",
       "Bash(findstr:*)",
       "Bash(sc query:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(C:MoodleWindowsInstaller-latest-404serverphpphp.exe clear_opcache.php)"
     ],
     "deny": [],
     "ask": []

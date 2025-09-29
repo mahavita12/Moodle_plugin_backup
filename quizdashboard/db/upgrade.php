@@ -69,6 +69,25 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025092601, 'local', 'quizdashboard');
     }
 
+    // Add similarity fields to gradings table
+    if ($oldversion < 2025092901) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+
+        $fields = [
+            new xmldb_field('similarity_percent', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_mechanics'),
+            new xmldb_field('similarity_flag', XMLDB_TYPE_INTEGER, '1', null, null, null, '0', 'similarity_percent'),
+            new xmldb_field('similarity_checkedat', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'similarity_flag'),
+        ];
+
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2025092901, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 

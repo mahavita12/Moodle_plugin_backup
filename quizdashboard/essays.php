@@ -205,6 +205,7 @@ foreach ($records as $r) {
     $user_activity_url = new moodle_url('/report/outline/user.php', ['id' => $r->userid, 'course' => $r->courseid, 'mode' => 'outline']);
     $course_url = new moodle_url('/course/view.php', ['id' => $r->courseid]);
 
+    $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attemptid]);
     $rows[] = (object) [
         'attemptid'     => $attemptid,
         'userid'        => $r->userid,
@@ -235,7 +236,9 @@ foreach ($records as $r) {
         'gradeurl'      => $gradeurl ? $gradeurl->out(false) : '',
         'is_graded'     => $r->isgraded ?? false,
         'ai_likelihood' => $r->ai_likelihood ?? null, // This will now come from the database
-        'drive_link'    => $r->drive_link ?? null
+        'drive_link'    => $r->drive_link ?? null,
+        'similarity_percent' => $grading->similarity_percent ?? null,
+        'similarity_flag' => $grading->similarity_flag ?? 0
     ];
 }
 
@@ -420,6 +423,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th>Comment</th>
                     <!-- Grade column removed - keeping only Score column -->
                     <th>AI %</th>
+                    <th>Similarity</th>
                     <th>Auto Grade</th>
                     <th>Homework</th>
                 </tr>
@@ -471,6 +475,21 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 <?php else: ?>
                                     <!-- Only show Check button for ungraded essays -->
                                     <button type="button" class="btn btn-sm btn-info check-ai-btn" onclick="checkAILikelihood(<?php echo $row->attemptid; ?>, this)">Check</button>
+                                <?php endif; ?>
+                            </td>
+                            <td class="similarity-cell" style="text-align: center;">
+                                <?php if ($row->similarity_percent !== null): ?>
+                                    <?php if ($row->similarity_flag): ?>
+                                        <span class="badge bg-danger" title="Similarity violation - penalty applied">
+                                            <?php echo (int)$row->similarity_percent; ?>%
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="badge bg-success">
+                                            <?php echo (int)$row->similarity_percent; ?>%
+                                        </span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
                                 <?php endif; ?>
                             </td>
                             <td class="auto-grade-cell" style="text-align: center;">

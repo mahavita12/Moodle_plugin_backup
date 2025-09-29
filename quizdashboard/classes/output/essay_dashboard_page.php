@@ -49,6 +49,8 @@ class essay_dashboard_page implements renderable, templatable {
                 'score'       => $r->score,
                 'maxscore'    => $r->maxscore,
                 'percentage'  => $r->percentage,
+                'similarity'  => isset($r->similarity_percent) ? (int)$r->similarity_percent : null,
+                'similarityflag' => !empty($r->similarity_flag),
                 'quiz_type'   => $r->quiz_type,
                 'reviewurl'   => $r->reviewurl,
                 'gradeurl'    => $r->gradeurl,

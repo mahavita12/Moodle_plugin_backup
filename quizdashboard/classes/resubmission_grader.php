@@ -32,17 +32,19 @@ This student previously submitted this essay and received feedback. You are now 
 **GRADING PHILOSOPHY**: 
 - Compare the current submission directly against the previous submission and its feedback
 - Assess how well the student incorporated the feedback from their {$prev_ordinal} submission
-- Be fair - genuine improvement should be rewarded, minimal changes should not
+- Genuine improvement should be rewarded, minimal changes should not
+- Only increase scores where there is genuine, measurable improvement
+- Maintain the current scores where improvement is minimal or absent
+- Refrain from reducing the scores from the previous scores
 - If they simply copied the revision from the previous feedback, this should result in zero scores
+- Use Australian English for all feedback
 
 **SCORING APPROACH**:
 Previous scores from {$prev_ordinal} submission:
 " . $this->format_previous_scores_for_prompt($previous_scores) . "
 
 - Show improvement as: Previous Score → New Score  
-- Only increase scores where there is genuine, measurable improvement
-- Maintain or even decrease scores where improvement is minimal or absent
-- Use Australian English for all feedback
+
 
 **FINAL SCORE RULE**:
 - The Final Score (Previous → New) MUST equal the sum of the five NEW subcategory scores.
@@ -713,8 +715,11 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
 
             // 6) Copy detection vs previous revision
+            error_log("DEBUG: About to perform similarity check for attempt $attempt_id");
             $similarity_check = $this->detect_revision_copying($current_essay_data, $previous_grading);
+            error_log("DEBUG: Similarity check result: " . json_encode($similarity_check));
             if ($similarity_check['is_copy']) {
+                error_log("DEBUG: Copy detected! Applying penalty for similarity: " . $similarity_check['percentage'] . "%");
                 return $this->handle_copy_penalty(
                     $attempt_id,
                     $previous_attempt_id,
@@ -722,6 +727,8 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                     $submission_number,
                     $similarity_check['percentage']
                 );
+            } else {
+                error_log("DEBUG: No copy detected. Similarity: " . $similarity_check['percentage'] . "%");
             }
 
             // 7) Comparative feedback
@@ -789,11 +796,28 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 $complete_html = $this->enforce_final_score($complete_html, $prev_total, $new_total);
             }
 
-            // 11) Save grading record including scores and AI likelihood
+            // 11) Similarity check before save; enforce settings
+            $similarity = $this->detect_revision_copying($current_essay_data, $previous_grading);
+            $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+            $autozero = (int)(get_config('local_quizdashboard', 'similarity_autozero') ?? 1);
+            if ($similarity['is_copy'] && $autozero) {
+                return $this->handle_copy_penalty(
+                    $attempt_id,
+                    $previous_attempt_id,
+                    $previous_scores,
+                    $submission_number,
+                    $similarity['percentage']
+                );
+            }
+
+            // 11b) Save grading record including scores and AI likelihood (+ similarity metadata if computed)
+            if (!isset($feedback_result['data'])) { $feedback_result['data'] = []; }
+            $feedback_result['data']['similarity_percent'] = isset($similarity['percentage']) ? (int)$similarity['percentage'] : null;
+            $feedback_result['data']['similarity_flag'] = (!empty($similarity['is_copy']) && !$autozero) ? 1 : 0;
             $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '');
 
             // 12) Save resubmission tracking with scores
-            $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, false, null, $prev_total, $new_total);
+            $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, !empty($similarity['is_copy']), (float)($similarity['percentage'] ?? 0), $prev_total, $new_total);
 
             // 13) Save grade to Moodle using the calculated new_total
             // Use the specialized resubmission method that takes the calculated total
@@ -1136,10 +1160,19 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
      * Detect if current submission is a copy of previous revision
      */
     private function detect_revision_copying($current_essay_data, $previous_grading) {
+        error_log("DEBUG: detect_revision_copying called at " . date('Y-m-d H:i:s'));
+        error_log("DEBUG: File loaded from: " . __FILE__);
+        
         $previous_revision_text = $this->extract_revision_text_from_html($previous_grading->feedback_html);
         $current_text = trim($current_essay_data['answer_text'] ?? '');
 
+        error_log("DEBUG: Previous revision text length: " . strlen($previous_revision_text));
+        error_log("DEBUG: Current text length: " . strlen($current_text));
+        error_log("DEBUG: First 100 chars of current: " . substr($current_text, 0, 100));
+        error_log("DEBUG: First 100 chars of previous: " . substr($previous_revision_text, 0, 100));
+
         if (empty($previous_revision_text) || empty($current_text)) {
+            error_log("DEBUG: Empty text detected, returning no copy");
             return ['is_copy' => false, 'percentage' => 0];
         }
 
@@ -1147,8 +1180,16 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $normalized_previous = preg_replace('/\s+/', ' ', $previous_revision_text);
 
         similar_text($normalized_current, $normalized_previous, $similarity_percent);
+        error_log("DEBUG: Similarity percentage calculated: " . $similarity_percent . "%");
+
+        $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+        error_log("DEBUG: Similarity threshold from config: " . $threshold . "%");
+        
+        $is_violation = ($similarity_percent >= $threshold);
+        error_log("DEBUG: Is violation? " . ($is_violation ? 'YES' : 'NO'));
+        
         return [
-            'is_copy' => $similarity_percent > 80.0,
+            'is_copy' => $is_violation,
             'percentage' => round($similarity_percent, 2)
         ];
     }
@@ -1218,22 +1259,55 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         }
 
         $penalty_feedback_html = $this->generate_penalty_feedback($previous_scores, $submission_number);
+        // Prepend similarity warning banner using configured text
+        $warn = get_config('local_quizdashboard', 'similarity_warning_text');
+        if (empty($warn)) {
+            $warn = 'Similarity violation detected. All category scores and the final score have been set to 0.';
+        }
+        $banner = '<div style="background:#fdecea;border-left:6px solid #d93025;padding:12px 16px;margin-bottom:16px;">'
+                . '<strong>Similarity Violation (' . (int)$similarity_percentage . '%)</strong><br>'
+                . htmlspecialchars($warn) . '</div>';
+        $penalty_feedback_html = $banner . $penalty_feedback_html;
 
+        // Save result with similarity metadata
         $this->save_grading_result(
             $attempt_id,
             $penalty_feedback_html,
-            ['feedback_html' => $penalty_feedback_html, 'scores' => [
+            [
+                'feedback_html' => $penalty_feedback_html,
+                'scores' => [
                 'content_and_ideas' => 0,
                 'structure_and_organization' => 0,
                 'language_use' => 0,
                 'creativity_and_originality' => 0,
                 'mechanics' => 0
-            ]],
+                ],
+                'similarity_percent' => (int)$similarity_percentage,
+                'similarity_flag' => 1
+            ],
             $ai_likelihood,
             ''
         );
 
         $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, true, $similarity_percentage);
+
+        // CRITICAL FIX: Save the zero score to Moodle's grading system
+        // Without this, students cannot see their penalty score in the quiz review
+        if ($current_essay_data) {
+            $this->save_resubmission_grade_to_moodle(
+                $current_essay_data, 
+                ['feedback_html' => $penalty_feedback_html, 'scores' => [
+                    'content_and_ideas' => 0,
+                    'structure_and_organization' => 0,
+                    'language_use' => 0,
+                    'creativity_and_originality' => 0,
+                    'mechanics' => 0
+                ]], 
+                0, // Zero total score for penalty
+                100
+            );
+            error_log("DEBUG: Zero score saved to Moodle for similarity violation in attempt {$attempt_id}");
+        }
 
         return [
             'success' => true,

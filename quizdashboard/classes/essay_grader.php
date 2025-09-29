@@ -1341,6 +1341,12 @@ class essay_grader {
             $record->score_language_use = $score_language_use;
             $record->score_creativity_originality = $score_creativity_originality;
             $record->score_mechanics = $score_mechanics;
+            // Similarity fields may have been computed in resubmission flow; keep existing if not provided
+            if (isset($feedback_data['similarity_percent'])) {
+                $record->similarity_percent = (int)$feedback_data['similarity_percent'];
+                $record->similarity_flag = !empty($feedback_data['similarity_flag']) ? 1 : 0;
+                $record->similarity_checkedat = time();
+            }
             $record->timemodified = time();
             
             error_log("DEBUG: Checking for existing record...");

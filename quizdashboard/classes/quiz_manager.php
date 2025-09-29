@@ -72,7 +72,9 @@ class quiz_manager {
             gr.score_structure_organization,
             gr.score_language_use,
             gr.score_creativity_originality,
-            gr.score_mechanics
+            gr.score_mechanics,
+            gr.similarity_percent,
+            gr.similarity_flag
         FROM {quiz_attempts} qa
         LEFT JOIN {local_quizdashboard_gradings} gr ON gr.attempt_id = qa.id
         JOIN {quiz} q ON qa.quiz = q.id
