@@ -35,12 +35,30 @@ function($, Ajax, ModalFactory, ModalEvents, Str) {
         console.log('QuestionHelper: Current URL:', window.location.pathname);
 
         if (isQuizAttemptPage()) {
+            // Gate by tags: ask backend if helper is enabled for this quiz (by cmid)
+            var urlParams = new URLSearchParams(window.location.search);
+            var cmid = urlParams.get('cmid');
+            if (!cmid) {
+                console.log('QuestionHelper: No cmid in URL; not initializing');
+                return;
+            }
+            Ajax.call([{ methodname: 'local_questionhelper_is_enabled_for_quiz', args: { cmid: parseInt(cmid, 10) } }])[0]
+                .done(function(res){
+                    if (!res || !res.allowed) {
+                        console.log('QuestionHelper: Quiz not tagged for helper; skipping UI');
+                        return;
+                    }
+                    addCSSStyles();
+                    setTimeout(function() {
+                        calculateQuizLimits();
+                        scanAndAddHelpButtons();
+                    }, 500);
+                })
+                .fail(function(){
+                    console.log('QuestionHelper: Tag eligibility check failed; skipping UI');
+                });
+            return;
             console.log('QuestionHelper: On quiz attempt page, loading plugin...');
-            addCSSStyles();
-            setTimeout(function() {
-                calculateQuizLimits();
-                scanAndAddHelpButtons();
-            }, 1000);
         } else {
             console.log('QuestionHelper: Not on quiz attempt page, skipping...');
         }

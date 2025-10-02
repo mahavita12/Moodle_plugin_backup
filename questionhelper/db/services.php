@@ -20,6 +20,15 @@ $functions = array(
         'ajax'        => true,
         'loginrequired' => true,
     ),
+    'local_questionhelper_is_enabled_for_quiz' => array(
+        'classname'   => 'local_questionhelper\\external\\is_enabled_for_quiz',
+        'methodname'  => 'execute',
+        'classpath'   => '',
+        'description' => 'Check whether Question Helper is enabled for a quiz by tags',
+        'type'        => 'read',
+        'ajax'        => true,
+        'loginrequired' => true,
+    ),
 );
 
 

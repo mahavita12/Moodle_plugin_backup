@@ -92,5 +92,42 @@ if ($hassiteconfig) {
         1
     ));
 
+    // Allowed tags (comma-separated)
+    $settings->add(new admin_setting_configtext(
+        'local_questionhelper/allowed_tags',
+        get_string('allowed_tags', 'local_questionhelper'),
+        get_string('allowed_tags_desc', 'local_questionhelper'),
+        'math, thinking',
+        PARAM_TEXT
+    ));
+
+    // Allowed tags matching mode: any|all
+    $settings->add(new admin_setting_configselect(
+        'local_questionhelper/allowed_tags_mode',
+        get_string('allowed_tags_mode', 'local_questionhelper'),
+        get_string('allowed_tags_mode_desc', 'local_questionhelper'),
+        'any',
+        [
+            'any' => get_string('allowed_tags_mode_any', 'local_questionhelper'),
+            'all' => get_string('allowed_tags_mode_all', 'local_questionhelper'),
+        ]
+    ));
+
+    // Reset all globals action (admin-only). Use an admin_setting heading with a button link to a secured script.
+    $reseturl = new moodle_url('/local/questionhelper/reset_all_globals.php', ['sesskey' => sesskey()]);
+    $buttonhtml = html_writer::div(
+        html_writer::tag('a', get_string('resetglobals_button', 'local_questionhelper'), [
+            'href' => $reseturl->out(false),
+            'class' => 'btn btn-danger',
+            'onclick' => 'return confirm("' . get_string('resetglobals_confirm_body', 'local_questionhelper') . '");'
+        ]),
+        ''
+    );
+    $settings->add(new admin_setting_heading(
+        'local_questionhelper/resetglobals',
+        get_string('resetglobals', 'local_questionhelper'),
+        get_string('resetglobals_desc', 'local_questionhelper') . html_writer::empty_tag('br') . $buttonhtml
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }
