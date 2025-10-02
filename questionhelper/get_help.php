@@ -259,21 +259,21 @@ function call_openai($questiontext, $options, $mode = 'help') {
 
     $model = get_config('local_questionhelper', 'openai_model');
     if (empty($model)) { $model = 'gpt-3.5-turbo'; }
-    $data = [
-        'model' => $model,
-        'messages' => [
-            [
-                'role' => 'system',
-                'content' => 'You are helping students understand mathematical concepts. Create a SIMILAR but EASIER question that teaches the same key concept, then provide a brief explanation.'
-            ],
-            [
-                'role' => 'user',
-                'content' => $prompt
-            ]
-        ],
-        'max_tokens' => 500,
-        'temperature' => 0.7
-    ];
+	$data = [
+		'model' => $model,
+		'messages' => [
+			[
+				'role' => 'system',
+				'content' => 'You only output a single valid JSON object. No explanations, no markdown, no code fences, no extra text. Keys must be exactly: practice_question, options (with keys A,B,C,D), correct_answer (A|B|C|D), explanation, concept. Ensure strict JSON without trailing commas.'
+			],
+			[
+				'role' => 'user',
+				'content' => $prompt
+			]
+		],
+		'max_tokens' => 500,
+		'temperature' => 0.7
+	];
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, 'https://api.openai.com/v1/chat/completions');
@@ -299,33 +299,24 @@ function call_openai($questiontext, $options, $mode = 'help') {
         throw new Exception('Invalid response format');
     }
 
-    $content = $result['choices'][0]['message']['content'];
+	$content = $result['choices'][0]['message']['content'];
 
-    // Try to parse as JSON first
-    $parsed = json_decode($content, true);
-    if ($parsed && isset($parsed['practice_question']) && isset($parsed['options']) && isset($parsed['correct_answer'])) {
-        return [
-            'success' => true,
-            'practice_question' => $parsed['practice_question'],
-            'options' => $parsed['options'],
-            'correct_answer' => $parsed['correct_answer'],
-            'explanation' => $parsed['explanation'] ?? 'Answer explanation not provided.',
-            'concept_explanation' => $parsed['concept'] ?? 'Concept explanation not provided.'
-        ];
-    }
+	$normalized = local_questionhelper_parse_and_normalize_response($content);
+	if ($normalized['success']) {
+		return $normalized;
+	}
 
-    // If not properly formatted JSON, return error
-    // Debug: Log parsing failure for challenge questions
-    if ($mode === 'challenge') {
-        error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
-        error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
-    }
+	// If not properly formatted JSON, return error (with debug for challenge)
+	if ($mode === 'challenge') {
+		error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
+		error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
+	}
 
-    return [
-        'success' => false,
-        'error' => 'AI response was not in the expected format. Please try again.',
-        'retry' => true
-    ];
+	return [
+		'success' => false,
+		'error' => 'AI response was not in the expected format. Please try again.',
+		'retry' => true
+	];
 }
 
 /**
@@ -345,14 +336,14 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
 
     $prompt = ($mode === 'challenge') ? build_challenge_prompt($questiontext, $options) : build_prompt($questiontext, $options);
 
-    $payload = [
+	$payload = [
         'model' => $model,
         'max_tokens' => 800,
         'temperature' => 0.7,
         'messages' => [
             [
-                'role' => 'user',
-                'content' => [ [ 'type' => 'text', 'text' => $prompt ] ]
+				'role' => 'user',
+				'content' => [ [ 'type' => 'text', 'text' => "Respond with ONLY a single valid JSON object. No markdown, no code fences, no explanations. Keys: practice_question, options (A,B,C,D), correct_answer (A|B|C|D), explanation, concept.\n\n" . $prompt ] ]
             ]
         ]
     ];
@@ -399,29 +390,22 @@ function call_anthropic($questiontext, $options, $mode = 'help') {
         error_log("CHALLENGE DEBUG - Raw AI Response: " . substr($content, 0, 500));
     }
 
-    $parsed = json_decode($content, true);
-    if ($parsed && isset($parsed['practice_question']) && isset($parsed['options']) && isset($parsed['correct_answer'])) {
-        return [
-            'success' => true,
-            'practice_question' => $parsed['practice_question'],
-            'options' => $parsed['options'],
-            'correct_answer' => $parsed['correct_answer'],
-            'explanation' => $parsed['explanation'] ?? 'Answer explanation not provided.',
-            'concept_explanation' => $parsed['concept'] ?? 'Concept explanation not provided.'
-        ];
-    }
+	$normalized = local_questionhelper_parse_and_normalize_response($content);
+	if ($normalized['success']) {
+		return $normalized;
+	}
 
-    // Debug: Log parsing failure for challenge questions
-    if ($mode === 'challenge') {
-        error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
-        error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
-    }
+	// Debug: Log parsing failure for challenge questions
+	if ($mode === 'challenge') {
+		error_log("CHALLENGE DEBUG - JSON parsing failed. Content: " . substr($content, 0, 200));
+		error_log("CHALLENGE DEBUG - JSON error: " . json_last_error_msg());
+	}
 
-    return [
-        'success' => false,
-        'error' => 'AI response was not in the expected format. Please try again.',
-        'retry' => true
-    ];
+	return [
+		'success' => false,
+		'error' => 'AI response was not in the expected format. Please try again.',
+		'retry' => true
+	];
 }
 
 /**
@@ -443,7 +427,7 @@ function build_prompt($questiontext, $options) {
     $prompt .= "- Provide a detailed explanation for why the correct answer is right\n";
     $prompt .= "- Brief concept explanation to help understanding\n";
     $prompt .= "- DO NOT provide the answer to the original question\n";
-    $prompt .= "- Format response as JSON with this exact structure:\n";
+	$prompt .= "- Format response as JSON with this exact structure ONLY (no extra text):\n";
     $prompt .= "{\n";
     $prompt .= "  \"practice_question\": \"The question text here\",\n";
     $prompt .= "  \"options\": {\n";
@@ -457,7 +441,8 @@ function build_prompt($questiontext, $options) {
     $prompt .= "  \"concept\": \"Brief concept explanation (max 100 words)\"\n";
     $prompt .= "}\n";
 
-    return $prompt;
+	$prompt .= "\nReturn only the JSON object. Do not include markdown or code fences.\n";
+	return $prompt;
 }
 
 /**
@@ -475,7 +460,7 @@ function build_challenge_prompt($questiontext, $options) {
     $prompt .= "- Provide a detailed explanation for why the correct answer is right\n";
     $prompt .= "- Brief concept explanation to help understanding\n";
     $prompt .= "- DO NOT provide the answer to the original question\n";
-    $prompt .= "- Format response as JSON with this exact structure:\n";
+	$prompt .= "- Format response as JSON with this exact structure ONLY (no extra text):\n";
     $prompt .= "{\n";
     $prompt .= "  \"practice_question\": \"The question text here\",\n";
     $prompt .= "  \"options\": {\n";
@@ -489,7 +474,154 @@ function build_challenge_prompt($questiontext, $options) {
     $prompt .= "  \"concept\": \"Brief concept explanation (max 100 words)\"\n";
     $prompt .= "}\n";
 
-    return $prompt;
+	$prompt .= "\nReturn only the JSON object. Do not include markdown or code fences.\n";
+	return $prompt;
+	}
+
+	/**
+	 * Extract, parse, and normalize possibly messy AI content into the expected structure.
+	 * Ensures keys: practice_question (string), options (A..D => string), correct_answer (A|B|C|D),
+	 * explanation (string), concept_explanation (string)
+	 *
+	 * @param string $content
+	 * @return array ['success'=>bool, ...]
+	 */
+	function local_questionhelper_parse_and_normalize_response($content) {
+		$raw = trim((string)$content);
+		$clean = local_questionhelper_extract_json_block($raw);
+		$parsed = json_decode($clean, true);
+		if (!is_array($parsed)) {
+			// Try a second pass removing common wrappers like ```json ... ```
+			$clean2 = preg_replace("/```[a-zA-Z]*\n?|```/", "", $raw);
+			$clean2 = local_questionhelper_extract_json_block($clean2);
+			$parsed = json_decode($clean2, true);
+		}
+
+		if (!is_array($parsed)) {
+			return ['success' => false];
+		}
+
+		$normalized = local_questionhelper_normalize_ai_structure($parsed);
+		if (!$normalized) {
+			return ['success' => false];
+		}
+
+		return array_merge(['success' => true], $normalized);
+	}
+
+	/**
+	 * Attempt to extract the JSON object substring from a text blob.
+	 */
+	function local_questionhelper_extract_json_block($text) {
+		$text = trim($text);
+		// If fenced code with JSON is present, prefer inner block
+		if (preg_match('/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i', $text, $m)) {
+			return trim($m[1]);
+		}
+		// Fallback: get substring from first '{' to last '}'
+		$first = strpos($text, '{');
+		$last = strrpos($text, '}');
+		if ($first !== false && $last !== false && $last > $first) {
+			return trim(substr($text, $first, $last - $first + 1));
+		}
+		return $text;
+	}
+
+	/**
+	 * Normalize AI JSON into expected fields and validate.
+	 * @param array $data
+	 * @return array|null
+	 */
+	function local_questionhelper_normalize_ai_structure($data) {
+		$practice = isset($data['practice_question']) ? (string)$data['practice_question'] : '';
+		$options = isset($data['options']) ? $data['options'] : null;
+		$answer  = isset($data['correct_answer']) ? (string)$data['correct_answer'] : '';
+		$explain = isset($data['explanation']) ? (string)$data['explanation'] : '';
+		$concept = isset($data['concept']) ? (string)$data['concept'] : (isset($data['concept_explanation']) ? (string)$data['concept_explanation'] : '');
+
+		if ($practice === '' || empty($options)) {
+			return null;
+		}
+
+		// Normalize options to associative array with A..D
+		$normOptions = local_questionhelper_normalize_options($options);
+		if (!$normOptions) {
+			return null;
+		}
+
+		$normAnswer = local_questionhelper_normalize_answer($answer, $normOptions);
+		if (!$normAnswer) {
+			return null;
+		}
+
+		if ($explain === '') { $explain = 'Answer explanation not provided.'; }
+		if ($concept === '') { $concept = 'Concept explanation not provided.'; }
+
+		return [
+			'practice_question' => $practice,
+			'options' => $normOptions,
+			'correct_answer' => $normAnswer,
+			'explanation' => $explain,
+			'concept_explanation' => $concept
+		];
+	}
+
+	/**
+	 * Coerce options to {A: str, B: str, C: str, D: str}
+	 */
+	function local_questionhelper_normalize_options($options) {
+		// If options is already an associative array with letter keys
+		if (is_array($options)) {
+			// Convert stdClass to array if needed
+			if (is_object($options)) { $options = (array)$options; }
+			// If numeric array length 4
+			if (array_values($options) === $options && count($options) === 4) {
+				$letters = ['A','B','C','D'];
+				$out = [];
+				foreach ($letters as $idx => $letter) {
+					$out[$letter] = trim((string)$options[$idx]);
+				}
+				return $out;
+			}
+			// Map various keys to A..D
+			$map = [];
+			foreach ($options as $key => $val) {
+				$k = strtoupper(trim((string)$key));
+				if ($k === '1') { $k = 'A'; }
+				if ($k === '2') { $k = 'B'; }
+				if ($k === '3') { $k = 'C'; }
+				if ($k === '4') { $k = 'D'; }
+				if (in_array($k, ['A','B','C','D'], true)) {
+					$map[$k] = trim((string)$val);
+				}
+			}
+			if (count($map) === 4) { return $map; }
+		}
+		return null;
+	}
+
+	/**
+	 * Normalize correct answer to one of A|B|C|D. Accepts index, letter, or full option text.
+	 */
+	function local_questionhelper_normalize_answer($answer, $options) {
+		$ans = strtoupper(trim((string)$answer));
+		if (in_array($ans, ['A','B','C','D'], true)) { return $ans; }
+		// Numeric index 1..4
+		if (preg_match('/^[1-4]$/', $ans)) {
+			return ['1'=>'A','2'=>'B','3'=>'C','4'=>'D'][$ans];
+		}
+		// Sometimes returned as like "Option A" or "Answer: C"
+		if (preg_match('/([ABCD])/i', $ans, $m)) {
+			$letter = strtoupper($m[1]);
+			if (isset($options[$letter])) { return $letter; }
+		}
+		// Match by option text equality
+		$normAnsText = strtolower(preg_replace('/\s+/', ' ', $ans));
+		foreach (['A','B','C','D'] as $letter) {
+			$optText = strtolower(preg_replace('/\s+/', ' ', (string)$options[$letter]));
+			if ($optText === $normAnsText) { return $letter; }
+		}
+		return null;
 }
 
 /**
