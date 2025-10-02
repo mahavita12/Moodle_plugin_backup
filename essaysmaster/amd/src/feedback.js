@@ -1687,7 +1687,7 @@ define([], function () {
                         
                         // 10-second amber delay for reflection
                         const buttonTexts = { 1: "Proofread", 3: "Use better expression", 5: "Polish & Perfect" };
-                        const buttonDelays = { 1: 15, 3: 10, 5: 10 };
+                        const buttonDelays = { 1: 20, 3: 10, 5: 10 };
                         startAmberDelay(btn, buttonTexts[round], buttonDelays[round] || 10, () => {
                             processing = false;
                             // Re-apply after delay to keep protections

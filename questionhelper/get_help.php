@@ -84,150 +84,185 @@ if (!get_config('local_questionhelper', 'enabled') || !local_questionhelper_is_c
     exit;
 }
 
+// Determine user role in the quiz context for behavior control
+$context = null;
+$isstaff = false;
 try {
-    // ROLLING GLOBAL STRATEGY: Prefer the newest between personal and global; sync personal to newer global
-    if ($questionid > 0) {
-        global $DB, $USER;
+	if (method_exists($attempt, 'get_context')) {
+		$context = $attempt->get_context();
+	} else if (method_exists($attempt, 'get_cmid')) {
+		$context = context_module::instance($attempt->get_cmid());
+	} else if (method_exists($attempt, 'get_quiz')) {
+		$quizrec = $attempt->get_quiz();
+		if ($quizrec && isset($quizrec->id)) {
+			$cm = get_coursemodule_from_instance('quiz', $quizrec->id);
+			if ($cm && isset($cm->id)) {
+				$context = context_module::instance($cm->id);
+			}
+		}
+	}
+	if ($context) {
+		$isstaff = (has_capability('mod/quiz:grade', $context) || is_siteadmin());
+	}
+} catch (Exception $e) {
+	$isstaff = false;
+}
 
-        // Load existing personal and global records
-        $personal_record = $DB->get_record('local_qh_saved_help', [
-            'userid' => $USER->id,
-            'questionid' => $questionid,
-            'variant' => $mode,
-            'is_global' => 0
-        ]);
+try {
+	global $DB, $USER;
 
-        $global_record = $DB->get_record('local_qh_saved_help', [
-            'questionid' => $questionid,
-            'variant' => $mode,
-            'is_global' => 1
-        ]);
+	// STAFF: always regenerate and update global; no personal save
+	if ($isstaff) {
+		$provider = get_config('local_questionhelper', 'provider');
+		$response = ($provider === 'anthropic')
+			? call_anthropic($questiontext, $options, $mode)
+			: call_openai($questiontext, $options, $mode);
 
-        if ($personal_record) {
-            $personal_ts = (int)($personal_record->timemodified ?? 0);
-            $global_ts = (int)($global_record->timemodified ?? 0);
+		if ($questionid > 0 && !empty($response['success'])) {
+			$now = time();
+			$record_data = [
+				'questionid' => $questionid,
+				'variant' => $mode,
+				'practice_question' => $response['practice_question'] ?? '',
+				'optionsjson' => json_encode($response['options'] ?? []),
+				'correct_answer' => $response['correct_answer'] ?? '',
+				'explanation' => $response['explanation'] ?? '',
+				'concept_explanation' => $response['concept_explanation'] ?? '',
+				'timemodified' => $now
+			];
+			$global_record = $DB->get_record('local_qh_saved_help', [
+				'questionid' => $questionid,
+				'variant' => $mode,
+				'is_global' => 1
+			]);
+			if ($global_record) {
+				foreach ($record_data as $field => $value) { $global_record->$field = $value; }
+				$DB->update_record('local_qh_saved_help', $global_record);
+			} else {
+				$global_record = (object)$record_data;
+				$global_record->userid = null;
+				$global_record->is_global = 1;
+				$global_record->timecreated = $now;
+				$DB->insert_record('local_qh_saved_help', $global_record);
+			}
+		}
 
-            // If global exists and is newer, sync personal to global and return global
-            if ($global_record && $global_ts > $personal_ts) {
-                $personal_record->practice_question = $global_record->practice_question;
-                $personal_record->optionsjson = $global_record->optionsjson;
-                $personal_record->correct_answer = $global_record->correct_answer;
-                $personal_record->explanation = $global_record->explanation;
-                $personal_record->concept_explanation = $global_record->concept_explanation;
-                $personal_record->timemodified = $global_ts;
-                $DB->update_record('local_qh_saved_help', $personal_record);
+		header('Content-Type: application/json');
+		header('X-AI-Provider: ' . ($provider ?: 'openai'));
+		header('X-User-Type: staff-regenerated');
+		$response['provider'] = $provider ?: 'openai';
+		echo json_encode($response);
+		exit;
+	}
 
-                $response = [
-                    'success' => true,
-                    'practice_question' => (string)$global_record->practice_question,
-                    'options' => json_decode((string)$global_record->optionsjson, true),
-                    'correct_answer' => (string)$global_record->correct_answer,
-                    'explanation' => (string)$global_record->explanation,
-                    'concept_explanation' => (string)$global_record->concept_explanation,
-                    'is_cached' => true,
-                    'is_global' => true,
-                    'user_type' => 'returning-synced'
-                ];
+	// STUDENTS: prefer global; if none exists, first generation creates global and personal
+	if ($questionid > 0) {
+		$global_record = $DB->get_record('local_qh_saved_help', [
+			'questionid' => $questionid,
+			'variant' => $mode,
+			'is_global' => 1
+		]);
+		if ($global_record) {
+			// Ensure personal mirrors global (create/update silently)
+			$personal_record = $DB->get_record('local_qh_saved_help', [
+				'userid' => $USER->id,
+				'questionid' => $questionid,
+				'variant' => $mode,
+				'is_global' => 0
+			]);
+			$now = time();
+			if (!$personal_record) {
+				$personal_record = new stdClass();
+				$personal_record->userid = $USER->id;
+				$personal_record->questionid = $questionid;
+				$personal_record->variant = $mode;
+				$personal_record->practice_question = (string)$global_record->practice_question;
+				$personal_record->optionsjson = (string)$global_record->optionsjson;
+				$personal_record->correct_answer = (string)$global_record->correct_answer;
+				$personal_record->explanation = (string)$global_record->explanation;
+				$personal_record->concept_explanation = (string)$global_record->concept_explanation;
+				$personal_record->is_global = 0;
+				$personal_record->timecreated = $now;
+				$personal_record->timemodified = (int)($global_record->timemodified ?? $now);
+				$DB->insert_record('local_qh_saved_help', $personal_record);
+			} else if ((int)($global_record->timemodified ?? 0) > (int)($personal_record->timemodified ?? 0)) {
+				$personal_record->practice_question = $global_record->practice_question;
+				$personal_record->optionsjson = $global_record->optionsjson;
+				$personal_record->correct_answer = $global_record->correct_answer;
+				$personal_record->explanation = $global_record->explanation;
+				$personal_record->concept_explanation = $global_record->concept_explanation;
+				$personal_record->timemodified = $global_record->timemodified;
+				$DB->update_record('local_qh_saved_help', $personal_record);
+			}
 
-                header('Content-Type: application/json');
-                header('X-AI-Provider: cached-global');
-                header('X-User-Type: returning-synced');
-                $response['provider'] = 'cached-global';
-                echo json_encode($response);
-                exit;
-            }
+			$response = [
+				'success' => true,
+				'practice_question' => (string)$global_record->practice_question,
+				'options' => json_decode((string)$global_record->optionsjson, true),
+				'correct_answer' => (string)$global_record->correct_answer,
+				'explanation' => (string)$global_record->explanation,
+				'concept_explanation' => (string)$global_record->concept_explanation,
+				'is_cached' => true,
+				'is_global' => true,
+				'user_type' => 'student-global'
+			];
+			header('Content-Type: application/json');
+			header('X-AI-Provider: cached-global');
+			header('X-User-Type: student-global');
+			$response['provider'] = 'cached-global';
+			echo json_encode($response);
+			exit;
+		}
+	}
 
-            // Otherwise return user's personal copy
-            $response = [
-                'success' => true,
-                'practice_question' => (string)$personal_record->practice_question,
-                'options' => json_decode((string)$personal_record->optionsjson, true),
-                'correct_answer' => (string)$personal_record->correct_answer,
-                'explanation' => (string)$personal_record->explanation,
-                'concept_explanation' => (string)$personal_record->concept_explanation,
-                'is_cached' => true,
-                'is_global' => false,
-                'user_type' => 'returning'
-            ];
+	// No global exists yet for students: generate once, save as global and personal
+	$provider = get_config('local_questionhelper', 'provider');
+	$response = ($provider === 'anthropic')
+		? call_anthropic($questiontext, $options, $mode)
+		: call_openai($questiontext, $options, $mode);
 
-            header('Content-Type: application/json');
-            header('X-AI-Provider: cached-personal');
-            header('X-User-Type: returning');
-            $response['provider'] = 'cached-personal';
-            echo json_encode($response);
-            exit;
-        }
-    }
+	if ($questionid > 0 && !empty($response['success'])) {
+		$now = time();
+		$record_data = [
+			'questionid' => $questionid,
+			'variant' => $mode,
+			'practice_question' => $response['practice_question'] ?? '',
+			'optionsjson' => json_encode($response['options'] ?? []),
+			'correct_answer' => $response['correct_answer'] ?? '',
+			'explanation' => $response['explanation'] ?? '',
+			'concept_explanation' => $response['concept_explanation'] ?? '',
+			'timemodified' => $now
+		];
+		$global_record = $DB->get_record('local_qh_saved_help', [
+			'questionid' => $questionid,
+			'variant' => $mode,
+			'is_global' => 1
+		]);
+		if ($global_record) {
+			foreach ($record_data as $field => $value) { $global_record->$field = $value; }
+			$DB->update_record('local_qh_saved_help', $global_record);
+		} else {
+			$global_record = (object)$record_data;
+			$global_record->userid = null;
+			$global_record->is_global = 1;
+			$global_record->timecreated = $now;
+			$DB->insert_record('local_qh_saved_help', $global_record);
+		}
+		$personal_record = (object)$record_data;
+		$personal_record->userid = $USER->id;
+		$personal_record->is_global = 0;
+		$personal_record->timecreated = $now;
+		$DB->insert_record('local_qh_saved_help', $personal_record);
 
-    // This is a new user for this question - make API call and update global
-    $provider = get_config('local_questionhelper', 'provider');
-    if ($provider === 'anthropic') {
-        $response = call_anthropic($questiontext, $options, $mode);
-    } else {
-        $response = call_openai($questiontext, $options, $mode);
-    }
+		$response['is_global'] = false;
+		$response['user_type'] = 'student-first';
+		header('X-User-Type: student-first');
+	}
 
-    // Save/update the global record and create personal copy
-    if ($questionid > 0 && isset($response['success']) && $response['success']) {
-        global $DB, $USER;
-
-        $now = time();
-
-        // Create record object
-        $record_data = [
-            'questionid' => $questionid,
-            'variant' => $mode,
-            'practice_question' => $response['practice_question'] ?? '',
-            'optionsjson' => json_encode($response['options'] ?? []),
-            'correct_answer' => $response['correct_answer'] ?? '',
-            'explanation' => $response['explanation'] ?? '',
-            'concept_explanation' => $response['concept_explanation'] ?? '',
-            'timemodified' => $now
-        ];
-
-        // Update or create global record
-        $global_record = $DB->get_record('local_qh_saved_help', [
-            'questionid' => $questionid,
-            'variant' => $mode,
-            'is_global' => 1
-        ]);
-
-        if ($global_record) {
-            // Update existing global record
-            foreach ($record_data as $field => $value) {
-                $global_record->$field = $value;
-            }
-            $DB->update_record('local_qh_saved_help', $global_record);
-        } else {
-            // Create new global record
-            $global_record = new stdClass();
-            foreach ($record_data as $field => $value) {
-                $global_record->$field = $value;
-            }
-            $global_record->userid = null;
-            $global_record->is_global = 1;
-            $global_record->timecreated = $now;
-            $DB->insert_record('local_qh_saved_help', $global_record);
-        }
-
-        // Create personal copy for this user
-        $personal_record = new stdClass();
-        foreach ($record_data as $field => $value) {
-            $personal_record->$field = $value;
-        }
-        $personal_record->userid = $USER->id;
-        $personal_record->is_global = 0;
-        $personal_record->timecreated = $now;
-        $DB->insert_record('local_qh_saved_help', $personal_record);
-
-        $response['is_global'] = false;
-        $response['user_type'] = 'new';
-        header('X-User-Type: new');
-    }
-    header('Content-Type: application/json');
-    header('X-AI-Provider: ' . ($provider ?: 'openai'));
-    $response['provider'] = $provider ?: 'openai';
-    echo json_encode($response);
+	header('Content-Type: application/json');
+	header('X-AI-Provider: ' . ($provider ?: 'openai'));
+	$response['provider'] = $provider ?: 'openai';
+	echo json_encode($response);
 } catch (Exception $e) {
     header('HTTP/1.1 500 Internal Server Error');
     header('Content-Type: application/json');
