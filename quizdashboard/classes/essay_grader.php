@@ -353,13 +353,32 @@ class essay_grader {
                 
                 $DB->update_record('local_quizdashboard_gradings', $existing_grading);
 
+                // Auto-upload the combined feedback (with homework) to Google Drive
+                $drive_link = null;
+                if ($this->is_google_drive_configured()) {
+                    error_log("DEBUG: Uploading combined feedback (with_homework) to Google Drive for attempt {$attempt_id}");
+                    $drive_link = $this->upload_to_google_drive($complete_html, $essay_data, 'with_homework');
+                    if ($drive_link) {
+                        // Persist link if schema supports it (non-fatal if column absent)
+                        try {
+                            $existing_grading->drive_link = $drive_link;
+                            $DB->update_record('local_quizdashboard_gradings', $existing_grading);
+                        } catch (\Throwable $e) {
+                            error_log('Drive link DB update failed (non-fatal): ' . $e->getMessage());
+                        }
+                    } else {
+                        error_log("DEBUG: Google Drive upload returned no link for attempt {$attempt_id}");
+                    }
+                }
+
                 // TIMEOUT FIX: Restore original timeout before successful return
                 ini_set('max_execution_time', $original_time_limit);
                 error_log("DEBUG: Restored PHP max_execution_time to {$original_time_limit} seconds for successful homework generation");
                 
                 return [
                     'success' => true,
-                    'message' => 'Homework exercises generated successfully.'
+                    'message' => 'Homework exercises generated successfully.',
+                    'drive_link' => isset($drive_link) ? $drive_link : null
                 ];
 
             } catch (\Exception $e) {
