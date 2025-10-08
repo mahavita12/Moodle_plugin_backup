@@ -11,19 +11,19 @@ define(['jquery', 'core/notification', 'core/templates', 'core/str'], function($
         bindEvents: function() {
             var self = this;
             
-            // Quiz toggle switches
-            $(document).on('change', '.quiz-toggle', function() {
-                var quizId = $(this).data('quiz-id');
-                var isEnabled = $(this).prop('checked');
+            // Quiz toggle buttons (changed from .quiz-toggle to .toggle-quiz-btn)
+            $(document).on('click', '.toggle-quiz-btn', function() {
+                var quizId = $(this).data('quizid');  // Changed from 'quiz-id' to 'quizid'
+                var isEnabled = $(this).data('enabled');  // Get target state from button
                 self.toggleQuiz(quizId, isEnabled);
             });
 
-            // Bulk actions
-            $('#bulk-enable').on('click', function() {
+            // Bulk actions (changed from #bulk-enable to #bulk-enable-btn)
+            $('#bulk-enable-btn').on('click', function() {
                 self.bulkAction('enable');
             });
 
-            $('#bulk-disable').on('click', function() {
+            $('#bulk-disable-btn').on('click', function() {
                 self.bulkAction('disable');
             });
 
@@ -37,6 +37,15 @@ define(['jquery', 'core/notification', 'core/templates', 'core/str'], function($
                 var totalCheckboxes = $('.quiz-checkbox').length;
                 var checkedCheckboxes = $('.quiz-checkbox:checked').length;
                 $('#select-all-quizzes').prop('checked', totalCheckboxes === checkedCheckboxes);
+                
+                // Enable/disable bulk action buttons based on selection
+                if (checkedCheckboxes > 0) {
+                    $('#bulk-enable-btn').prop('disabled', false);
+                    $('#bulk-disable-btn').prop('disabled', false);
+                } else {
+                    $('#bulk-enable-btn').prop('disabled', true);
+                    $('#bulk-disable-btn').prop('disabled', true);
+                }
             });
 
             // Tab switching
@@ -84,24 +93,14 @@ define(['jquery', 'core/notification', 'core/templates', 'core/str'], function($
                 },
                 success: function(response) {
                     if (response.success) {
-                        var message = isEnabled ? 
-                            str.get_string('quiz_enabled', 'local_essaysmaster') :
-                            str.get_string('quiz_disabled', 'local_essaysmaster');
-                        notification.addNotification({
-                            message: message,
-                            type: 'success'
-                        });
-                        self.updateQuizStats();
+                        // Reload the page to reflect changes
+                        location.reload();
                     } else {
-                        notification.exception(new Error(response.error));
-                        // Revert the toggle
-                        $('[data-quiz-id="' + quizId + '"]').prop('checked', !isEnabled);
+                        notification.exception(new Error(response.error || 'Failed to toggle quiz'));
                     }
                 },
                 error: function(xhr, status, error) {
                     notification.exception(new Error('AJAX request failed: ' + error));
-                    // Revert the toggle
-                    $('[data-quiz-id="' + quizId + '"]').prop('checked', !isEnabled);
                 }
             });
         },
@@ -110,55 +109,45 @@ define(['jquery', 'core/notification', 'core/templates', 'core/str'], function($
             var self = this;
             var selectedQuizzes = [];
             
-            $('.quiz-checkbox:checked').each(function() {
-                selectedQuizzes.push($(this).data('quiz-id'));
+            // Get selected quiz IDs from checkboxes
+            $('input[name="quiz_ids[]"]:checked').each(function() {
+                selectedQuizzes.push($(this).val());
             });
 
             if (selectedQuizzes.length === 0) {
-                notification.alert(
-                    str.get_string('no_quizzes_selected', 'local_essaysmaster'),
-                    str.get_string('select_quizzes_first', 'local_essaysmaster')
-                );
+                alert('Please select at least one quiz');
                 return;
             }
 
-            $.ajax({
-                url: M.cfg.wwwroot + '/local/essaysmaster/ajax/bulk_action.php',
-                type: 'POST',
-                dataType: 'json',
-                data: {
-                    sesskey: M.cfg.sesskey,
-                    quiz_ids: selectedQuizzes,
-                    action: action
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var message = action === 'enable' ?
-                            str.get_string('quizzes_enabled', 'local_essaysmaster') :
-                            str.get_string('quizzes_disabled', 'local_essaysmaster');
-                        notification.addNotification({
-                            message: message,
-                            type: 'success'
-                        });
-                        
-                        // Update toggles
-                        selectedQuizzes.forEach(function(quizId) {
-                            $('[data-quiz-id="' + quizId + '"]').prop('checked', action === 'enable');
-                        });
-                        
-                        // Clear selections
-                        $('.quiz-checkbox').prop('checked', false);
-                        $('#select-all-quizzes').prop('checked', false);
-                        
-                        self.updateQuizStats();
-                    } else {
-                        notification.exception(new Error(response.error));
-                    }
-                },
-                error: function(xhr, status, error) {
-                    notification.exception(new Error('AJAX request failed: ' + error));
-                }
+            if (!confirm('Are you sure you want to ' + action + ' ' + selectedQuizzes.length + ' quiz(zes)?')) {
+                return;
+            }
+
+            // Use the dashboard.php action handler
+            var form = $('<form>', {
+                'method': 'POST',
+                'action': M.cfg.wwwroot + '/local/essaysmaster/dashboard.php?tab=quizzes'
             });
+            
+            form.append($('<input>', {
+                'type': 'hidden',
+                'name': 'sesskey',
+                'value': M.cfg.sesskey
+            }));
+            
+            form.append($('<input>', {
+                'type': 'hidden',
+                'name': 'action',
+                'value': action === 'enable' ? 'bulk_enable' : 'bulk_disable'
+            }));
+            
+            form.append($('<input>', {
+                'type': 'hidden',
+                'name': 'quizids',
+                'value': selectedQuizzes.join(',')
+            }));
+            
+            form.appendTo('body').submit();
         },
 
         switchTab: function(tab) {
