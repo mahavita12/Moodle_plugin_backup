@@ -1088,7 +1088,7 @@ class essay_grader {
                 
                 body { 
                     font-family: 'Times New Roman', Times, serif; 
-                    font-size: 11pt; 
+                    font-size: 10pt; 
                     line-height: 1.3;
                     color: #000;
                     background: white;
@@ -1112,7 +1112,7 @@ class essay_grader {
                 }
                 
                 h2 { 
-                    font-size: 14pt !important; 
+                    font-size: 12pt !important; 
                     font-weight: bold !important;
                 }
                 
@@ -1120,14 +1120,14 @@ class essay_grader {
                 hr { 
                     border: 0 !important;
                     border-top: 1pt solid #000 !important; 
-                    margin: 8pt 0 !important;
+                    margin: 6pt 0 !important;
                     page-break-after: avoid;
                 }
                 
                 /* Paragraphs and text */
                 p { 
-                    font-size: 11pt !important; 
-                    margin: 6pt 0 !important;
+                    font-size: 10pt !important; 
+                    margin: 4pt 0 !important;
                     text-align: justify;
                     orphans: 2;
                     widows: 2;
@@ -1135,14 +1135,14 @@ class essay_grader {
                 
                 /* Lists */
                 ul, ol { 
-                    font-size: 11pt !important; 
-                    margin: 6pt 0 !important;
+                    font-size: 10pt !important; 
+                    margin: 4pt 0 !important;
                     padding-left: 18pt !important;
                 }
                 
                 li { 
-                    font-size: 11pt !important; 
-                    margin: 3pt 0 !important;
+                    font-size: 10pt !important; 
+                    margin: 2pt 0 !important;
                     page-break-inside: avoid;
                 }
                 
@@ -1164,14 +1164,14 @@ class essay_grader {
                 
                 /* Better spacing for feedback sections */
                 .feedback-section {
-                    margin-bottom: 12pt !important;
-                    page-break-inside: avoid;
+                    margin-bottom: 10pt !important;
+                    page-break-inside: auto;
                 }
                 
                 /* Homework section print styles */
                 .homework-section { 
-                    page-break-before: always;
-                    margin-top: 15pt !important;
+                    page-break-inside: avoid;
+                    margin-top: 12pt !important;
                 }
                 
                 .exercise-section { 
@@ -1181,11 +1181,18 @@ class essay_grader {
                 
                 /* Ensure good page breaks */
                 .page-break-before {
-                    page-break-before: always;
+                    page-break-before: auto;
+                    break-before: auto;
                 }
                 
                 .no-page-break {
                     page-break-inside: avoid;
+                }
+                
+                /* Homework-specific overrides to avoid unnecessary breaks between exercises */
+                .homework-section .page-break,
+                .homework-section .pagebreak {
+                    display: none !important;
                 }
                 
                 /* Hide any screen-only elements */
@@ -1283,6 +1290,14 @@ class essay_grader {
             if (strpos($homework_html, '<!-- EXTRACT_HOMEWORK_START -->') === false) {
                 $homework_html = '<!-- EXTRACT_HOMEWORK_START -->' . $homework_html . '<!-- EXTRACT_HOMEWORK_END -->';
             }
+
+            // Sanitize homework: remove forced page-break elements/styles between exercises (keep markers)
+            // Remove inline styles that force page breaks
+            $homework_html = preg_replace('/\sstyle="[^"]*(?:page-break|break-(?:before|after|inside))[^"]*"/i', '', $homework_html);
+            // Remove common page-break elements
+            $homework_html = preg_replace('/<(?:div|p|span|hr|br)[^>]*(?:class\s*=\s*"[^"]*(?:page-break|pagebreak)[^"]*")[^>]*\/?>(?:\s|&nbsp;|\x{00A0})*/iu', '', $homework_html);
+            // Remove comment-based page break markers
+            $homework_html = preg_replace('/<!--\s*page\s*break\s*-->/i', '', $homework_html);
             
             // Remove any existing wrapper from homework_html to avoid double-wrapping
             $clean_homework = preg_replace('/<div[^>]*class="homework-section"[^>]*>/', '', $homework_html);
