@@ -60,12 +60,8 @@ class before_footer_html_generation {
             return;
         }
 
-        $config = $DB->get_record('local_essaysmaster_config', [
-            'quiz_id' => $attempt->quiz, 
-            'is_enabled' => 1
-        ]);
-
-        if (!$config) {
+        // Respect unified enablement logic using dashboard config table
+        if (!\local_essaysmaster_is_quiz_enabled($attempt->quiz)) {
             return;
         }
 

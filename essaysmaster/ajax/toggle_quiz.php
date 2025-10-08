@@ -13,28 +13,25 @@ header('Content-Type: application/json');
 try {
     $quiz_id = required_param('quiz_id', PARAM_INT);
     $enabled = required_param('enabled', PARAM_INT);
-    
+
     $dashboard_manager = new \local_essaysmaster\dashboard_manager();
-    $success = $dashboard_manager->toggle_quiz_status($quiz_id, $enabled);
-    
-    if ($success) {
+    $result = $dashboard_manager->toggle_quiz_enabled($quiz_id, (int)$enabled);
+
+    if (!empty($result['success'])) {
         echo json_encode([
             'success' => true,
-            'message' => $enabled ? 
-                get_string('quiz_enabled_success', 'local_essaysmaster') :
-                get_string('quiz_disabled_success', 'local_essaysmaster')
+            'message' => $result['message'] ?? ''
         ]);
     } else {
         echo json_encode([
             'success' => false,
-            'error' => get_string('quiz_toggle_failed', 'local_essaysmaster')
+            'error' => $result['message'] ?? get_string('quiz_toggle_failed', 'local_essaysmaster')
         ]);
     }
-    
+
 } catch (Exception $e) {
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()
     ]);
 }
-?>

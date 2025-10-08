@@ -151,12 +151,8 @@ function local_essaysmaster_before_footer() {
         return;
     }
 
-    $config = $DB->get_record('local_essaysmaster_config', [
-        'quiz_id' => $attempt->quiz, 
-        'is_enabled' => 1
-    ]);
-
-    if (!$config) {
+    // Respect unified enablement logic
+    if (!local_essaysmaster_is_quiz_enabled($attempt->quiz)) {
         return;
     }
 
