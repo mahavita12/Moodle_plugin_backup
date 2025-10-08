@@ -51,16 +51,52 @@ class before_footer_html_generation {
         // Include the lib.php file for helper functions
         require_once($GLOBALS['CFG']->dirroot . '/local/questionflags/lib.php');
 
+        // Handle on-demand generation of structure guide (teacher only)
+        if ($_POST && isset($_POST['generate_guide']) && confirm_sesskey()) {
+            require_once($GLOBALS['CFG']->dirroot . '/local/questionflags/classes/ai_helper.php');
+            require_capability('moodle/course:manageactivities', \context_course::instance($PAGE->course->id));
+
+            $questionid = required_param('questionid', PARAM_INT);
+            $prompt = local_questionflags_get_question_prompt_plain($questionid);
+            $content = '';
+            if (!empty($prompt)) {
+                try {
+                    $helper = new \local_questionflags\ai_helper();
+                    $result = $helper->generate_structure_guide($prompt, 'secondary', 'en-AU');
+                    if (!empty($result['success'])) {
+                        $content = $result['guide'];
+                    } else {
+                        error_log('QUESTIONFLAGS: Guide generation failed - ' . ($result['message'] ?? 'unknown'));
+                        $content = 'Generation temporarily unavailable. Please try again later.';
+                    }
+                } catch (\Throwable $e) {
+                    error_log('QUESTIONFLAGS: Guide generation exception - ' . $e->getMessage());
+                    $content = 'Generation error. Please try again later.';
+                }
+                if ($content !== '') {
+                    local_questionflags_save_question_guide($questionid, $content);
+                }
+            } else {
+                error_log('QUESTIONFLAGS: Empty prompt for question ' . $questionid);
+            }
+            redirect($PAGE->url);
+        }
+
         // Handle structure guide updates - NOW STORES IN QUESTION METADATA
         if ($_POST && isset($_POST['update_guide']) && confirm_sesskey()) {
             error_log("Structure guide update request received");
             error_log("POST data: " . print_r($_POST, true));
             
             $questionid = required_param('questionid', PARAM_INT);
-            $guide_content = required_param('guide_content', PARAM_RAW);
+            $guide_content = optional_param('guide_content', '', PARAM_RAW);
             
             error_log("Question ID: $questionid");
             error_log("Guide content length: " . strlen($guide_content));
+            
+            // Do not overwrite existing guide with empty content
+            if (trim($guide_content) === '') {
+                redirect($PAGE->url);
+            }
             
             // Store in question metadata table (works across all quizzes)
             $success = local_questionflags_save_question_guide($questionid, $guide_content);
@@ -409,6 +445,7 @@ a[aria-label*="Flag"],
     window.questionMapping = ' . $question_mapping_json . ';
     window.moodlePageType = "' . $page_type . '";
     window.isTeacher = ' . ($is_teacher ? 'true' : 'false') . ';
+    window.qfSesskey = "' . $sesskey . '";
 
     document.addEventListener("DOMContentLoaded", function() {
         console.log("Question flags loaded:", window.questionFlagsData);
@@ -431,6 +468,17 @@ a[aria-label*="Flag"],
             
             // Convert line breaks to HTML
             var formatted = escaped.replace(/\\n/g, "<br>");
+            // Strip any stray markdown tokens
+            formatted = formatted
+                .replace(/\*\*(.*?)\*\*/g, "$1")
+                .replace(/__(.*?)__/g, "$1")
+                .replace(/^#\s+/gm, "")
+                .replace(/^##\s+/gm, "")
+                .replace(/`/g, "");
+            // Enhance Label: content lines (blue bold label)
+            formatted = formatted.replace(/(^|<br>)\s*([A-Z][A-Za-z0-9 ]{2,20}):\s+/g, function(m, br, label){
+                return (br || "") + "<span style=\"color:#1f8ce6;font-weight:bold;\">" + label + ":</span> ";
+            });
             
             // Add some basic formatting for common patterns
             formatted = formatted
@@ -498,6 +546,15 @@ a[aria-label*="Flag"],
                 "</div>" +
                 (window.isTeacher ? 
                     "<div class=\\"guide-edit\\" id=\\"guide-edit-" + questionId + "\\">"+
+                        "<div style=\\"display:flex; gap:8px; margin-bottom:8px;\\">"+
+                            "<form method=\\"post\\" style=\\"display:inline;\\">"+
+                                "<input type=\\"hidden\\" name=\\"sesskey\\" value=\\"" + window.qfSesskey + "\\">"+
+                                "<input type=\\"hidden\\" name=\\"generate_guide\\" value=\\"1\\">"+
+                                "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
+                                "<button type=\\"submit\\" class=\\"save-btn\\" style=\\"background:#1f8ce6;\\">Generate Structure Guide</button>"+
+                            "</form>"+
+                            "<button type=\\"button\\" class=\\"cancel-btn\\" onclick=\\"cancelEdit(" + questionId + ")\\">Close</button>"+
+                        "</div>"+
                         "<textarea id=\\"guide-textarea-" + questionId + "\\" placeholder=\\"Enter structure guide...\\">"+guideContent+"</textarea>"+
                         "<button type=\\"button\\" class=\\"save-btn\\" onclick=\\"saveGuide(" + questionId + ")\\">Save</button>"+
                         "<button type=\\"button\\" class=\\"cancel-btn\\" onclick=\\"cancelEdit(" + questionId + ")\\">Cancel</button>"+

@@ -40,6 +40,30 @@ function local_questionflags_before_footer_DEPRECATED() {
 // Helper functions for question metadata storage
 
 /**
+ * Fetch and normalise the plain-text version of a question's prompt.
+ * @param int $questionid
+ * @return string
+ */
+function local_questionflags_get_question_prompt_plain($questionid) {
+    global $DB;
+    try {
+        $q = $DB->get_record('question', ['id' => $questionid], 'id,questiontext,questiontextformat');
+        if (!$q) { return ''; }
+        $contextid = 1; // Not required for plain stripping; fallback safe
+        $raw = (string)$q->questiontext;
+        // Convert Moodle formatted text to plain text conservatively
+        $text = strip_tags(html_entity_decode($raw, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        // Collapse whitespace
+        $text = preg_replace('/\s+/u', ' ', $text);
+        return trim($text);
+    } catch (\Throwable $e) {
+        error_log('QUESTIONFLAGS: Failed to fetch question prompt: ' . $e->getMessage());
+        return '';
+    }
+}
+
+
+/**
  * Save structure guide to question metadata (persists across all quizzes)
  *
  * @param int $questionid Question ID
@@ -115,14 +139,27 @@ function local_questionflags_get_quiz_guides($page) {
     $guides = [];
     
     try {
-        // Just get all guides from the custom table for now
-        $records = $DB->get_records('local_questionflags_guides');
-        
-        foreach ($records as $record) {
-            $guides[$record->questionid] = $record->guide_content;
+        // Prefer question_metadata if present
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists('question_metadata')) {
+            $sql = "SELECT questionid, value FROM {question_metadata} WHERE name = 'structure_guide'";
+            $records = $DB->get_records_sql($sql);
+            foreach ($records as $rec) {
+                $guides[$rec->questionid] = $rec->value;
+            }
         }
         
-        error_log('Successfully loaded ' . count($guides) . ' structure guides');
+        // Fallback and merge with legacy custom table
+        if ($DB->get_manager()->table_exists('local_questionflags_guides')) {
+            $legacy = $DB->get_records('local_questionflags_guides');
+            foreach ($legacy as $lr) {
+                if (!isset($guides[$lr->questionid]) || trim($guides[$lr->questionid]) === '') {
+                    $guides[$lr->questionid] = $lr->guide_content;
+                }
+            }
+        }
+        
+        error_log('Loaded structure guides (merged): ' . count($guides));
     } catch (Exception $e) {
         error_log('Error loading structure guides: ' . $e->getMessage());
     }
