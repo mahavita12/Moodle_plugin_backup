@@ -35,7 +35,19 @@
       "Bash(sc query:*)",
       "Bash(dir:*)",
       "Bash(C:MoodleWindowsInstaller-latest-404serverphpphp.exe clear_opcache.php)",
-      "Bash(copy \"C:\\MCP_servers\\moodle_backups\\get_help.php.backup_20250929_170046\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\questionhelper\\get_help.php\")"
+      "Bash(copy \"C:\\MCP_servers\\moodle_backups\\get_help.php.backup_20250929_170046\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\questionhelper\\get_help.php\")",
+      "Read(//c/MCP_servers/moodle_mcp_server/**)",
+      "Read(//c/Moodle Questions/Inputs/**)",
+      "Bash(python:*)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" clear_opcache.php)",
+      "Bash(php:*)",
+      "Bash(php.exe:*)",
+      "Bash(net stop:*)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\admin\\cli\\purge_caches.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quizdashboard\\clear_opcache.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quiz_uploader\\upload.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quiz_uploader\\classes\\upload_form.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -r \"define(''CLI_SCRIPT'', true); require_once(''../../config.php''); require_once(''classes/upload_form.php''); echo ''Form class loaded successfully'';\")"
     ],
     "deny": [],
     "ask": []

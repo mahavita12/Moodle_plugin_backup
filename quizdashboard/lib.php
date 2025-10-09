@@ -169,7 +169,7 @@ function local_quizdashboard_extend_navigation(global_navigation $navigation) {
  */
 function local_quizdashboard_before_standard_top_of_body_html() {
     global $PAGE, $CFG;
-    
+
     // Only run for logged-in users with capability  
     if (!CLI_SCRIPT && function_exists('has_capability')) {
         if (isloggedin() && !isguestuser() && has_capability('local/quizdashboard:view', context_system::instance()) && 
@@ -189,13 +189,14 @@ function local_quizdashboard_before_standard_top_of_body_html() {
                 
                 var nav = document.createElement('div');
                 nav.className = 'quiz-dashboard-global-nav';
-                nav.style.cssText = 'position:fixed;top:60px;right:60px;z-index:10001;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif';
+                nav.style.cssText = 'position:fixed;top:60px;right:60px;z-index:10001;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
                 
                 // Check current page for active state
                 var currentPath = window.location.pathname;
                 var quizActive = currentPath.includes('/local/quizdashboard/index.php');
                 var essayActive = currentPath.includes('/local/quizdashboard/essays.php');
                 var questionsActive = currentPath.includes('/local/quizdashboard/questions.php');
+                var uploaderActive = currentPath.includes('/local/quiz_uploader/upload.php');
                 var essaysmasterActive = currentPath.includes('/local/essaysmaster/dashboard.php');
                 
                 nav.innerHTML = '<div class="nav-dropdown" style="position:relative;display:inline-block">' +
@@ -204,7 +205,8 @@ function local_quizdashboard_before_standard_top_of_body_html() {
                         '<a href="<?php echo $CFG->wwwroot; ?>/local/quizdashboard/index.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px' + (quizActive ? ';background:#e9ecef;font-weight:500' : '') + '">Quiz Dashboard</a>' +
                         '<a href="<?php echo $CFG->wwwroot; ?>/local/quizdashboard/essays.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px' + (essayActive ? ';background:#e9ecef;font-weight:500' : '') + '">Essay Dashboard</a>' +
                         '<a href="<?php echo $CFG->wwwroot; ?>/local/quizdashboard/questions.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px' + (questionsActive ? ';background:#e9ecef;font-weight:500' : '') + '">Questions Dashboard</a>' +
-                        '<a href="<?php echo $CFG->wwwroot; ?>/local/essaysmaster/dashboard.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;font-size:13px' + (essaysmasterActive ? ';background:#e9ecef;font-weight:500' : '') + '">EssaysMaster Dashboard</a>' +
+                        '<a href="<?php echo $CFG->wwwroot; ?>/local/essaysmaster/dashboard.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px' + (essaysmasterActive ? ';background:#e9ecef;font-weight:500' : '') + '">EssaysMaster Dashboard</a>' +
+                        '<a href="<?php echo $CFG->wwwroot; ?>/local/quiz_uploader/upload.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;font-size:13px' + (uploaderActive ? ';background:#e9ecef;font-weight:500' : '') + '">Quiz Uploader</a>' +
                     '</div>' +
                 '</div>';
                 
