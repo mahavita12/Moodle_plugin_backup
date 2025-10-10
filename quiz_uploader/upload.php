@@ -60,7 +60,6 @@ if ($mform->is_cancelled()) {
 
 // Display form
 echo $OUTPUT->header();
-echo $OUTPUT->heading('Upload Quiz from XML File');
 
 // Add JavaScript for section loading
 ?>
@@ -68,105 +67,139 @@ echo $OUTPUT->heading('Upload Quiz from XML File');
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Quiz uploader: Initializing...');
 
-    var courseSelect = document.getElementById('id_course');
-    var sectionSelect = document.getElementById('id_section');
-    var sectionHidden = document.querySelector('input[name="section_hidden"]');
+    // ===== COURSE/SECTION DROPDOWNS FOR 3 QUIZ DESTINATIONS =====
 
-    if (!courseSelect || !sectionSelect) {
-        console.error('Form elements not found');
-        return;
-    }
+    // Helper function to setup course/section pair
+    function setupCourseSectionPair(courseId, sectionId, hiddenId, courseNum) {
+        var courseSelect = document.getElementById(courseId);
+        var sectionSelect = document.getElementById(sectionId);
+        var sectionHidden = document.querySelector('input[name="' + hiddenId + '"]');
 
-    console.log('Quiz uploader: Form elements found');
-
-    // Update hidden field when section changes
-    sectionSelect.addEventListener('change', function() {
-        if (sectionHidden) {
-            sectionHidden.value = this.value;
-            console.log('Section changed to:', this.value);
-        }
-    });
-
-    courseSelect.addEventListener('change', function() {
-        var courseid = this.value;
-        console.log('Course selected:', courseid);
-
-        if (!courseid) {
-            sectionSelect.innerHTML = '<option value="">Please select a course first...</option>';
+        if (!courseSelect || !sectionSelect) {
+            console.log('Course/Section ' + courseNum + ' not found (may be intentional)');
             return;
         }
 
-        sectionSelect.innerHTML = '<option value="">Loading sections...</option>';
-        sectionSelect.disabled = true;
+        console.log('Setting up Course/Section ' + courseNum);
 
-        fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + courseid + '&sesskey=' + M.cfg.sesskey)
+        // Update hidden field when section changes
+        sectionSelect.addEventListener('change', function() {
+            if (sectionHidden) {
+                sectionHidden.value = this.value;
+                console.log('Section ' + courseNum + ' changed to:', this.value);
+            }
+        });
+
+        // Load sections when course changes
+        courseSelect.addEventListener('change', function() {
+            var courseid = this.value;
+            console.log('Course ' + courseNum + ' selected:', courseid);
+
+            if (!courseid) {
+                sectionSelect.innerHTML = '<option value="">Please select a course first...</option>';
+                return;
+            }
+
+            sectionSelect.innerHTML = '<option value="">Loading sections...</option>';
+            sectionSelect.disabled = true;
+
+            fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + courseid + '&sesskey=' + M.cfg.sesskey)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    console.log('Sections loaded for Course ' + courseNum + ':', data);
+                    var options = '<option value="">-- Select a section --</option>';
+                    if (data && data.length > 0) {
+                        data.forEach(function(section) {
+                            options += '<option value="' + section.id + '">' + section.name + '</option>';
+                        });
+                    }
+                    sectionSelect.innerHTML = options;
+                    sectionSelect.disabled = false;
+                })
+                .catch(function(error) {
+                    console.error('Failed to load sections for Course ' + courseNum + ':', error);
+                    sectionSelect.innerHTML = '<option value="">Error loading sections</option>';
+                    sectionSelect.disabled = false;
+                });
+        });
+
+        // Trigger change if course is already selected
+        if (courseSelect.value) {
+            courseSelect.dispatchEvent(new Event('change'));
+        }
+    }
+
+    // Setup Course 2 and 3 (Course 1 handled separately below since it's a hidden field)
+    setupCourseSectionPair('id_course2', 'id_section2', 'section2_hidden', 2);
+    setupCourseSectionPair('id_course3', 'id_section3', 'section3_hidden', 3);
+
+    // Setup Course 1 (Central Question Banks) - Special handling since course is hidden field
+    var course1Input = document.querySelector('input[name="course1"]');
+    var section1Select = document.getElementById('id_section1');
+    var section1Hidden = document.querySelector('input[name="section1_hidden"]');
+
+    if (section1Select && section1Hidden) {
+        // Update hidden field when section changes
+        section1Select.addEventListener('change', function() {
+            section1Hidden.value = this.value;
+            console.log('Section 1 changed to:', this.value);
+        });
+    }
+
+    // Load sections for Course 1 (Central Question Banks) automatically
+    if (course1Input && course1Input.value && section1Select) {
+        console.log('Loading sections for Central Question Banks (Course 1)...');
+        fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + course1Input.value + '&sesskey=' + M.cfg.sesskey)
             .then(function(response) { return response.json(); })
             .then(function(data) {
-                console.log('Sections loaded:', data);
+                console.log('Sections loaded for Course 1:', data);
                 var options = '<option value="">-- Select a section --</option>';
                 if (data && data.length > 0) {
                     data.forEach(function(section) {
                         options += '<option value="' + section.id + '">' + section.name + '</option>';
                     });
                 }
-                sectionSelect.innerHTML = options;
-                sectionSelect.disabled = false;
+                section1Select.innerHTML = options;
+                section1Select.disabled = false;
             })
             .catch(function(error) {
-                console.error('Failed to load sections:', error);
-                sectionSelect.innerHTML = '<option value="">Error loading sections</option>';
-                sectionSelect.disabled = false;
+                console.error('Failed to load sections for Course 1:', error);
+                section1Select.innerHTML = '<option value="">Error loading sections</option>';
             });
-    });
-
-    // Trigger change if course is already selected
-    if (courseSelect.value) {
-        courseSelect.dispatchEvent(new Event('change'));
     }
 
     console.log('Quiz uploader: Initialized successfully');
 
     // ===== CASCADING CATEGORY DROPDOWNS =====
-    var catLayer1 = document.getElementById('id_cat_layer1');
-    var catLayer1Hidden = document.querySelector('input[name="cat_layer1_hidden"]');
+    // Layer 1 is fixed as "System Category", so we start from Layer 2
     var catLayer2 = document.getElementById('id_cat_layer2');
     var catLayer2Hidden = document.querySelector('input[name="cat_layer2_hidden"]');
-    var catLayer2New = document.getElementById('id_cat_layer2_new');
     var catLayer3 = document.getElementById('id_cat_layer3');
     var catLayer3Hidden = document.querySelector('input[name="cat_layer3_hidden"]');
-    var catLayer3New = document.getElementById('id_cat_layer3_new');
     var catLayer4 = document.getElementById('id_cat_layer4');
     var catLayer4Hidden = document.querySelector('input[name="cat_layer4_hidden"]');
     var catLayer4New = document.getElementById('id_cat_layer4_new');
 
-    // Load Layer 1 (System categories) on page load
-    if (catLayer1) {
-        console.log('Loading Layer 1 categories...');
-        loadCategories(0, catLayer1, 1);
-    }
-
-    // Layer 1 change -> Update hidden field and load Layer 2
-    if (catLayer1) {
-        catLayer1.addEventListener('change', function() {
-            var parentId = this.value;
-            console.log('Layer 1 change event fired. Selected:', parentId);
-
-            // Update hidden field
-            if (catLayer1Hidden) {
-                catLayer1Hidden.value = parentId;
-                console.log('Layer 1 hidden field updated to:', parentId);
-            }
-
-            // Load Layer 2 if selection made
-            if (parentId) {
-                loadCategories(parentId, catLayer2, 2, catLayer2Hidden);
-                // Reset lower layers
-                catLayer3.innerHTML = '<option value="">-- Select or create new --</option>';
-                catLayer4.innerHTML = '<option value="">-- Select or create new --</option>';
-                if (catLayer3Hidden) catLayer3Hidden.value = '';
-                if (catLayer4Hidden) catLayer4Hidden.value = '';
-            }
-        });
+    // Load Layer 2 (Subject) on page load - find "System Category" first
+    if (catLayer2) {
+        console.log('Finding System Category to load Layer 2...');
+        // First find the System Category ID
+        fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_categories.php?parentid=0&level=1&sesskey=' + M.cfg.sesskey)
+            .then(r => r.json())
+            .then(data => {
+                console.log('Top level categories:', data);
+                // Find "System Category" or "System" in the results
+                var systemCat = data.find(function(cat) {
+                    return cat.name === 'System Category' || cat.name === 'System';
+                });
+                if (systemCat) {
+                    console.log('Found System Category with ID:', systemCat.id);
+                    loadCategories(systemCat.id, catLayer2, 2, catLayer2Hidden);
+                } else {
+                    console.error('System Category not found');
+                }
+            })
+            .catch(err => console.error('Failed to find System Category:', err));
     }
 
     // Layer 2 change -> Update hidden field and load Layer 3
@@ -180,9 +213,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 catLayer2Hidden.value = parentId;
                 console.log('Layer 2 hidden field updated to:', parentId);
             }
-
-            // Clear "create new" field
-            if (catLayer2New) catLayer2New.value = '';
 
             // Load Layer 3 if selection made
             if (parentId) {
@@ -205,9 +235,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 catLayer3Hidden.value = parentId;
                 console.log('Layer 3 hidden field updated to:', parentId);
             }
-
-            // Clear "create new" field
-            if (catLayer3New) catLayer3New.value = '';
 
             // Load Layer 4 if selection made
             if (parentId) {
@@ -308,11 +335,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('Auto-filled topic name from filename:', filename);
             }
 
-            // Auto-fill Quiz Name
-            var quizNameField = document.getElementById('id_quizname');
-            if (quizNameField && !quizNameField.value) {
-                quizNameField.value = filename;
-                console.log('Auto-filled quiz name from filename:', filename);
+            // Auto-fill all 3 Quiz Name fields
+            var quizName1Field = document.getElementById('id_quizname1');
+            if (quizName1Field && !quizName1Field.value) {
+                quizName1Field.value = filename;
+                console.log('Auto-filled quiz name 1 from filename:', filename);
+            }
+
+            var quizName2Field = document.getElementById('id_quizname2');
+            if (quizName2Field && !quizName2Field.value) {
+                quizName2Field.value = filename;
+                console.log('Auto-filled quiz name 2 from filename:', filename);
+            }
+
+            var quizName3Field = document.getElementById('id_quizname3');
+            if (quizName3Field && !quizName3Field.value) {
+                quizName3Field.value = filename;
+                console.log('Auto-filled quiz name 3 from filename:', filename);
             }
 
             // Upload file via AJAX endpoint
@@ -383,42 +422,13 @@ function process_upload($data) {
 
         $draftitemid = $data->draftitemid;
         error_log('Quiz Uploader - Using draft itemid: ' . $draftitemid);
+        error_log('Quiz Uploader - Form data received: ' . print_r($data, true));
 
-        // Build quiz settings
+        // No quiz settings - removed from form
         $settings = new \stdClass();
-        if (!empty($data->timeclose)) {
-            $settings->timeclose = $data->timeclose;
-        }
-        if (!empty($data->timelimit)) {
-            $settings->timelimit = $data->timelimit;
-        }
-        if (!empty($data->completionminattempts)) {
-            $settings->completionminattempts = $data->completionminattempts;
-        }
 
         // File already uploaded via JavaScript to draft area
-        // Just call web service with the draft itemid
         require_once(__DIR__ . '/classes/external/import_quiz_from_xml.php');
-
-        // Get section - try hidden field first, then regular field, then default to section 0
-        $sectionid = null;
-        if (!empty($data->section_hidden)) {
-            $sectionid = $data->section_hidden;
-        } else if (!empty($data->section)) {
-            $sectionid = $data->section;
-        } else {
-            // Find first section (section 0) for this course
-            $firstsection = $DB->get_record('course_sections', ['course' => $data->course, 'section' => 0], 'id');
-            if ($firstsection) {
-                $sectionid = $firstsection->id;
-                error_log('Quiz Uploader - Section not provided, using first section: ' . $sectionid);
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'Could not find a section in the selected course'
-                ];
-            }
-        }
 
         // Build 5-layer category structure from form data
         require_once(__DIR__ . '/classes/category_manager.php');
@@ -441,32 +451,25 @@ function process_upload($data) {
         // Build category path array
         $categorypath = [];
 
-        // Layer 1: System (use hidden field)
-        if (!empty($data->cat_layer1_hidden)) {
-            $layer1cat = $DB->get_record('question_categories', ['id' => $data->cat_layer1_hidden]);
-            if ($layer1cat) {
-                $categorypath[] = $layer1cat->name;
-            }
+        // Layer 1: System (fixed value)
+        if (!empty($data->cat_layer1_fixed)) {
+            $categorypath[] = trim($data->cat_layer1_fixed);
         }
 
-        // Layer 2: Subject (use hidden field or new)
+        // Layer 2: Subject (select from dropdown only)
         if (!empty($data->cat_layer2_hidden)) {
             $layer2cat = $DB->get_record('question_categories', ['id' => $data->cat_layer2_hidden]);
             if ($layer2cat) {
                 $categorypath[] = $layer2cat->name;
             }
-        } else if (!empty($data->cat_layer2_new)) {
-            $categorypath[] = trim($data->cat_layer2_new);
         }
 
-        // Layer 3: Type (use hidden field or new)
+        // Layer 3: Type (select from dropdown only)
         if (!empty($data->cat_layer3_hidden)) {
             $layer3cat = $DB->get_record('question_categories', ['id' => $data->cat_layer3_hidden]);
             if ($layer3cat) {
                 $categorypath[] = $layer3cat->name;
             }
-        } else if (!empty($data->cat_layer3_new)) {
-            $categorypath[] = trim($data->cat_layer3_new);
         }
 
         // Layer 4: Class Code (use hidden field or new)
@@ -486,6 +489,31 @@ function process_upload($data) {
 
         error_log('Quiz Uploader - Category path: ' . print_r($categorypath, true));
 
+        // Check for duplicates BEFORE creating category (if enabled)
+        if ($data->checkduplicates) {
+            require_once(__DIR__ . '/classes/duplicate_checker.php');
+
+            // Get the topic name (last element of category path - Layer 5)
+            $topicname = end($categorypath);
+
+            error_log('Quiz Uploader - Checking for duplicates: topic=' . $topicname . ', context=' . $systemcontext->id);
+
+            $dupcheck = \local_quiz_uploader\duplicate_checker::check_all(
+                null, // courseid not needed for category-only check
+                null, // quiz name not checked
+                $topicname,
+                $systemcontext->id
+            );
+
+            if ($dupcheck->has_duplicates) {
+                return [
+                    'success' => false,
+                    'message' => "Duplicate found: Topic '{$dupcheck->category_name}' already exists with questions in the question bank.",
+                    'error' => 'duplicate_detected'
+                ];
+            }
+        }
+
         // Create category hierarchy if needed
         $category = \local_quiz_uploader\category_manager::ensure_category_hierarchy($categorypath, $systemcontext->id);
         if (!$category) {
@@ -497,25 +525,192 @@ function process_upload($data) {
 
         error_log('Quiz Uploader - Category created/found: ' . $category->id . ' - ' . $category->name);
 
-        error_log('Quiz Uploader - Calling import_quiz_from_xml with course=' . $data->course . ', section=' . $sectionid . ', draftitemid=' . $draftitemid . ', category=' . $category->id);
+        // Build array of course/section pairs to create quizzes in
+        $quiz_destinations = [];
 
-        $result = \local_quiz_uploader\external\import_quiz_from_xml::execute(
-            $data->course,
-            $sectionid,
-            $draftitemid,
-            $data->quizname,
-            $data->checkduplicates ? 1 : 0,
-            json_encode($settings)
-        );
+        // Course 1: Central Question Banks (Required)
+        $section1id = null;
+        if (!empty($data->section1_hidden)) {
+            $section1id = $data->section1_hidden;
+        } else if (!empty($data->section1)) {
+            $section1id = $data->section1;
+        } else {
+            // Find first section (section 0) for this course
+            $firstsection = $DB->get_record('course_sections', ['course' => $data->course1, 'section' => 0], 'id');
+            if ($firstsection) {
+                $section1id = $firstsection->id;
+            }
+        }
 
-        error_log('Quiz Uploader - import_quiz_from_xml returned: ' . print_r($result, true));
+        if (!empty($data->course1) && !empty($section1id)) {
+            // Validate quiz name exists - check if property exists first
+            $quizname1 = isset($data->quizname1) ? trim($data->quizname1) : '';
+
+            if (empty($quizname1)) {
+                return [
+                    'success' => false,
+                    'message' => 'Quiz name 1 is required for Course 1 (Central Question Banks). Please enter a quiz name.'
+                ];
+            }
+
+            $quiz_destinations[] = [
+                'course' => $data->course1,
+                'section' => $section1id,
+                'quizname' => $quizname1,
+                'label' => 'Course 1 (Central Question Banks)'
+            ];
+        }
+
+        // Course 2: Optional
+        if (!empty($data->course2)) {
+            $section2id = null;
+            if (!empty($data->section2_hidden)) {
+                $section2id = $data->section2_hidden;
+            } else if (!empty($data->section2)) {
+                $section2id = $data->section2;
+            } else {
+                // Find first section for this course
+                $firstsection = $DB->get_record('course_sections', ['course' => $data->course2, 'section' => 0], 'id');
+                if ($firstsection) {
+                    $section2id = $firstsection->id;
+                }
+            }
+
+            if (!empty($section2id) && !empty($data->quizname2)) {
+                $quiz_destinations[] = [
+                    'course' => $data->course2,
+                    'section' => $section2id,
+                    'quizname' => $data->quizname2,
+                    'label' => 'Course 2'
+                ];
+            }
+        }
+
+        // Course 3: Optional
+        if (!empty($data->course3)) {
+            $section3id = null;
+            if (!empty($data->section3_hidden)) {
+                $section3id = $data->section3_hidden;
+            } else if (!empty($data->section3)) {
+                $section3id = $data->section3;
+            } else {
+                // Find first section for this course
+                $firstsection = $DB->get_record('course_sections', ['course' => $data->course3, 'section' => 0], 'id');
+                if ($firstsection) {
+                    $section3id = $firstsection->id;
+                }
+            }
+
+            if (!empty($section3id) && !empty($data->quizname3)) {
+                $quiz_destinations[] = [
+                    'course' => $data->course3,
+                    'section' => $section3id,
+                    'quizname' => $data->quizname3,
+                    'label' => 'Course 3'
+                ];
+            }
+        }
+
+        error_log('Quiz Uploader - Quiz destinations: ' . print_r($quiz_destinations, true));
+
+        // Import questions ONCE (not 3 times!)
+        require_once(__DIR__ . '/classes/question_importer.php');
+        require_once(__DIR__ . '/classes/quiz_creator.php');
+
+        // Get XML content from draft area
+        $fs = get_file_storage();
+        $usercontext = \context_user::instance($USER->id);
+        $files = $fs->get_area_files($usercontext->id, 'user', 'draft', $draftitemid, 'id DESC', false);
+
+        if (empty($files)) {
+            return [
+                'success' => false,
+                'message' => 'No file found in draft area'
+            ];
+        }
+
+        $file = reset($files);
+        $xmlcontent = $file->get_content();
+
+        // Import questions to the category (ONCE)
+        error_log('Quiz Uploader - Importing questions to category: ' . $category->name);
+        $importresult = \local_quiz_uploader\question_importer::import_from_xml($xmlcontent, $category, $quiz_destinations[0]['course']);
+
+        if (!$importresult->success) {
+            return [
+                'success' => false,
+                'message' => 'Failed to import questions: ' . ($importresult->error ?? 'Unknown error')
+            ];
+        }
+
+        error_log('Quiz Uploader - Imported ' . count($importresult->questionids) . ' questions');
+
+        // Create quizzes in all specified destinations (using same questions)
+        $results = [];
+        $first_result = null;
+
+        foreach ($quiz_destinations as $destination) {
+            error_log('Quiz Uploader - Creating quiz "' . $destination['quizname'] . '" in ' . $destination['label'] . ': course=' . $destination['course'] . ', section=' . $destination['section']);
+
+            // Create quiz
+            $quizresult = \local_quiz_uploader\quiz_creator::create_quiz(
+                $destination['course'],
+                $destination['section'],
+                $destination['quizname'],
+                '',  // intro text
+                $settings  // Pass settings object directly
+            );
+
+            if (!$quizresult->success) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to create quiz in ' . $destination['label'] . ': ' . ($quizresult->error ?? 'Unknown error'),
+                    'quizname' => $destination['quizname'],
+                    'questioncount' => 0
+                ];
+            }
+
+            // Add questions to quiz (reuse same question IDs)
+            $addresult = \local_quiz_uploader\quiz_creator::add_questions_to_quiz($quizresult->quizid, $importresult->questionids);
+
+            if (!$addresult->success) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to add questions to quiz in ' . $destination['label'] . ': ' . ($addresult->error ?? 'Unknown error'),
+                    'quizname' => $destination['quizname'],
+                    'questioncount' => 0
+                ];
+            }
+
+            $results[] = [
+                'label' => $destination['label'],
+                'success' => true,
+                'message' => 'Quiz created with ' . count($importresult->questionids) . ' questions'
+            ];
+
+            // Store first result for compatibility
+            if ($first_result === null) {
+                $first_result = [
+                    'success' => true,
+                    'questionsimported' => count($importresult->questionids),
+                    'quizid' => $quizresult->quizid
+                ];
+            }
+        }
+
+        // All quizzes created successfully - build detailed message
+        $quiz_details = [];
+        foreach ($quiz_destinations as $dest) {
+            $quiz_details[] = '"' . $dest['quizname'] . '" in ' . $dest['label'];
+        }
+        $success_message = count($results) . ' quiz(es) created successfully: ' . implode(', ', $quiz_details);
 
         return [
-            'success' => $result['success'],
-            'message' => $result['message'],
-            'quizname' => $data->quizname,
-            'questioncount' => $result['questionsimported'] ?? 0,
-            'debug' => isset($result['error']) ? 'Error code: ' . $result['error'] : null,
+            'success' => true,
+            'message' => $success_message,
+            'quizname' => $quiz_destinations[0]['quizname'], // Return first quiz name
+            'questioncount' => $first_result['questionsimported'] ?? 0,
+            'debug' => null,
         ];
 
     } catch (\Exception $e) {

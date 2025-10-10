@@ -32,66 +32,70 @@ class duplicate_checker {
     }
 
     /**
-     * Check if questions already exist in category.
+     * Check if ANY category with the exact name already exists AND has questions.
      *
-     * @param int $categoryid Category ID
-     * @param array $questionnames Array of question names to check
-     * @return array Array of question names that already exist
+     * @param string $categoryname Category name (Layer 5 / topic name)
+     * @param int $contextid Context ID (typically system context)
+     * @return bool True if ANY category with this name exists AND contains questions
      */
-    public static function questions_exist($categoryid, $questionnames) {
+    public static function category_exists($categoryname, $contextid) {
         global $DB;
 
-        if (empty($questionnames)) {
-            return [];
+        // Find ALL categories with this exact name in the given context
+        $categories = $DB->get_records('question_categories', [
+            'name' => $categoryname,
+            'contextid' => $contextid
+        ]);
+
+        if (empty($categories)) {
+            // No categories with this name exist
+            return false;
         }
 
-        // Use IN clause to check multiple names
-        list($insql, $params) = $DB->get_in_or_equal($questionnames, SQL_PARAMS_NAMED);
-        $params['categoryid'] = $categoryid;
+        // Check if ANY of these categories have questions
+        foreach ($categories as $category) {
+            $sql = "SELECT COUNT(q.id)
+                    FROM {question} q
+                    JOIN {question_versions} qv ON qv.questionid = q.id
+                    JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid
+                    WHERE qbe.questioncategoryid = ?";
 
-        // Moodle 4.x uses question_bank_entries structure
-        $sql = "SELECT DISTINCT q.name
-                FROM {question} q
-                JOIN {question_versions} qv ON qv.questionid = q.id
-                JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid
-                WHERE qbe.questioncategoryid = :categoryid
-                AND q.name $insql";
+            $questioncount = $DB->count_records_sql($sql, [$category->id]);
 
-        $existing = $DB->get_fieldset_sql($sql, $params);
+            // If this category has questions, return true (duplicate found)
+            if ($questioncount > 0) {
+                return true;
+            }
+        }
 
-        return $existing;
+        // None of the categories with this name have questions
+        return false;
     }
 
     /**
-     * Comprehensive duplicate check for quiz and questions.
+     * Comprehensive duplicate check for category (topic name) only.
+     * Quiz name is NOT checked - allows duplicate quiz names.
      *
-     * @param int $courseid Course ID
-     * @param string $quizname Quiz name
-     * @param int $categoryid Category ID
-     * @param array $questionnames Array of question names
+     * @param int $courseid Course ID (not used, kept for compatibility)
+     * @param string $quizname Quiz name (not used, kept for compatibility)
+     * @param string $categoryname Category name (Layer 5 / topic name)
+     * @param int $contextid Context ID
      * @return object Result object with duplicate information
      */
-    public static function check_all($courseid, $quizname, $categoryid, $questionnames) {
+    public static function check_all($courseid, $quizname, $categoryname, $contextid) {
         $result = new \stdClass();
         $result->has_duplicates = false;
         $result->quiz_exists = false;
         $result->quiz_name = null;
-        $result->questions_exist = [];
-        $result->question_count = 0;
+        $result->category_exists = false;
+        $result->category_name = null;
 
-        // Check quiz name
-        if (self::quiz_exists($courseid, $quizname)) {
+        // ONLY check if category (topic name) exists with questions
+        // Quiz name is NOT checked - duplicate quiz names are allowed
+        if (self::category_exists($categoryname, $contextid)) {
             $result->has_duplicates = true;
-            $result->quiz_exists = true;
-            $result->quiz_name = $quizname;
-        }
-
-        // Check questions
-        $existing_questions = self::questions_exist($categoryid, $questionnames);
-        if (!empty($existing_questions)) {
-            $result->has_duplicates = true;
-            $result->questions_exist = $existing_questions;
-            $result->question_count = count($existing_questions);
+            $result->category_exists = true;
+            $result->category_name = $categoryname;
         }
 
         return $result;

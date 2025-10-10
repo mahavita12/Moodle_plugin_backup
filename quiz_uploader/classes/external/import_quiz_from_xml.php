@@ -13,6 +13,7 @@ use external_function_parameters;
 use external_value;
 use external_single_structure;
 use context_course;
+use context_system;
 use local_quiz_uploader\xml_parser;
 use local_quiz_uploader\category_manager;
 use local_quiz_uploader\duplicate_checker;
@@ -42,6 +43,7 @@ class import_quiz_from_xml extends external_api {
             'quizname' => new external_value(PARAM_TEXT, 'Quiz name'),
             'checkduplicates' => new external_value(PARAM_INT, 'Check for duplicates (1=yes, 0=no)', VALUE_DEFAULT, 1),
             'quizsettings' => new external_value(PARAM_RAW, 'Quiz settings as JSON', VALUE_DEFAULT, '{}'),
+            'categoryid' => new external_value(PARAM_INT, 'Question category ID (optional, extracted from XML if not provided)', VALUE_DEFAULT, 0),
         ]);
     }
 
@@ -54,9 +56,10 @@ class import_quiz_from_xml extends external_api {
      * @param string $quizname Quiz name
      * @param int $checkduplicates Check duplicates flag
      * @param string $quizsettings Quiz settings JSON
+     * @param int $categoryid Question category ID (0 = extract from XML)
      * @return array Result array
      */
-    public static function execute($courseid, $sectionid, $draftitemid, $quizname, $checkduplicates = 1, $quizsettings = '{}') {
+    public static function execute($courseid, $sectionid, $draftitemid, $quizname, $checkduplicates = 1, $quizsettings = '{}', $categoryid = 0) {
         global $USER;
 
         // Validate parameters
@@ -67,6 +70,7 @@ class import_quiz_from_xml extends external_api {
             'quizname' => $quizname,
             'checkduplicates' => $checkduplicates,
             'quizsettings' => $quizsettings,
+            'categoryid' => $categoryid,
         ]);
 
         // Validate context
@@ -119,42 +123,62 @@ class import_quiz_from_xml extends external_api {
             ];
         }
 
-        // Step 3: Extract category path from XML
-        $categorypath = xml_parser::extract_category_path($xmlcontent);
-        if (!$categorypath) {
-            $categorypath = '$course$/top/Imported Questions';
-        }
+        // Step 3: Get category (use provided categoryid or extract from XML)
+        if (!empty($categoryid)) {
+            // Use the category provided from the upload form (5-layer structure)
+            global $DB;
+            $category = $DB->get_record('question_categories', ['id' => $categoryid]);
+            if (!$category) {
+                return [
+                    'success' => false,
+                    'error' => 'nocategory',
+                    'message' => 'Invalid category ID provided: ' . $categoryid,
+                    'quizid' => 0,
+                    'cmid' => 0,
+                    'quizurl' => '',
+                    'questionsimported' => 0,
+                    'questionids' => json_encode([]),
+                    'categoryid' => 0,
+                    'categoryname' => '',
+                    'duplicates' => json_encode([]),
+                ];
+            }
+        } else {
+            // Legacy: Extract category path from XML (old method)
+            $categorypath = xml_parser::extract_category_path($xmlcontent);
+            if (!$categorypath) {
+                $categorypath = '$course$/top/Imported Questions';
+            }
 
-        // Step 4: Get or create category
-        $category = category_manager::get_or_create_from_path($categorypath, $courseid);
-        if (!$category) {
-            return [
-                'success' => false,
-                'error' => 'nocategory',
-                'message' => get_string('error_nocategory', 'local_quiz_uploader'),
-                'quizid' => 0,
-                'cmid' => 0,
-                'quizurl' => '',
-                'questionsimported' => 0,
-                'questionids' => json_encode([]),
-                'categoryid' => 0,
-                'categoryname' => '',
-                'duplicates' => json_encode([]),
-            ];
+            // Step 4: Get or create category
+            $category = category_manager::get_or_create_from_path($categorypath, $courseid);
+            if (!$category) {
+                return [
+                    'success' => false,
+                    'error' => 'nocategory',
+                    'message' => get_string('error_nocategory', 'local_quiz_uploader'),
+                    'quizid' => 0,
+                    'cmid' => 0,
+                    'quizurl' => '',
+                    'questionsimported' => 0,
+                    'questionids' => json_encode([]),
+                    'categoryid' => 0,
+                    'categoryname' => '',
+                    'duplicates' => json_encode([]),
+                ];
+            }
         }
 
         // Step 5: Check for duplicates (if enabled)
         if ($checkduplicates) {
-            $questionnames = xml_parser::extract_question_names($xmlcontent);
-            $dupcheck = duplicate_checker::check_all($courseid, $quizname, $category->id, $questionnames);
+            $systemcontext = context_system::instance();
+            $dupcheck = duplicate_checker::check_all($courseid, $quizname, $category->name, $systemcontext->id);
 
             if ($dupcheck->has_duplicates) {
                 return [
                     'success' => false,
                     'error' => 'duplicate_detected',
-                    'message' => 'Duplicates found: ' .
-                        ($dupcheck->quiz_exists ? "Quiz '$quizname' exists. " : '') .
-                        ($dupcheck->question_count > 0 ? "{$dupcheck->question_count} questions exist." : ''),
+                    'message' => "Duplicate found: Topic '{$dupcheck->category_name}' already exists with questions in the question bank.",
                     'quizid' => 0,
                     'cmid' => 0,
                     'quizurl' => '',
@@ -163,10 +187,8 @@ class import_quiz_from_xml extends external_api {
                     'categoryid' => $category->id,
                     'categoryname' => $category->name,
                     'duplicates' => json_encode([
-                        'quiz_exists' => $dupcheck->quiz_exists,
-                        'quiz_name' => $dupcheck->quiz_name,
-                        'questions_exist' => $dupcheck->questions_exist,
-                        'question_count' => $dupcheck->question_count,
+                        'category_exists' => $dupcheck->category_exists,
+                        'category_name' => $dupcheck->category_name,
                     ]),
                 ];
             }
