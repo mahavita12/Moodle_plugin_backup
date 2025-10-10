@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupCourseSectionPair('id_course2', 'id_section2', 'section2_hidden', 2);
     setupCourseSectionPair('id_course3', 'id_section3', 'section3_hidden', 3);
 
-    // Setup Course 1 (Central Question Banks) - Special handling since course is hidden field
+    // Setup Course 1 (Central Question Bank) - Special handling since course is hidden field
     var course1Input = document.querySelector('input[name="course1"]');
     var section1Select = document.getElementById('id_section1');
     var section1Hidden = document.querySelector('input[name="section1_hidden"]');
@@ -146,9 +146,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Load sections for Course 1 (Central Question Banks) automatically
+    // Load sections for Course 1 (Central Question Bank) automatically
     if (course1Input && course1Input.value && section1Select) {
-        console.log('Loading sections for Central Question Banks (Course 1)...');
+        console.log('Loading sections for Central Question Bank (Course 1)...');
         fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + course1Input.value + '&sesskey=' + M.cfg.sesskey)
             .then(function(response) { return response.json(); })
             .then(function(data) {
@@ -528,7 +528,7 @@ function process_upload($data) {
         // Build array of course/section pairs to create quizzes in
         $quiz_destinations = [];
 
-        // Course 1: Central Question Banks (Required)
+        // Course 1: Central Question Bank (Required)
         $section1id = null;
         if (!empty($data->section1_hidden)) {
             $section1id = $data->section1_hidden;
@@ -549,7 +549,7 @@ function process_upload($data) {
             if (empty($quizname1)) {
                 return [
                     'success' => false,
-                    'message' => 'Quiz name 1 is required for Course 1 (Central Question Banks). Please enter a quiz name.'
+                    'message' => 'Quiz name 1 is required for Course 1 (Central Question Bank). Please enter a quiz name.'
                 ];
             }
 
@@ -557,7 +557,7 @@ function process_upload($data) {
                 'course' => $data->course1,
                 'section' => $section1id,
                 'quizname' => $quizname1,
-                'label' => 'Course 1 (Central Question Banks)'
+                'label' => 'Course 1 (Central Question Bank)'
             ];
         }
 

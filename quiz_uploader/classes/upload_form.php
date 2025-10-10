@@ -56,13 +56,13 @@ class upload_form extends \moodleform {
         $mform->addElement('header', 'quizdestinationsheader', 'Quiz Destinations (Create up to 3 quiz copies)');
         $mform->setExpanded('quizdestinationsheader', true);
 
-        // Course 1: Central Question Banks (Required)
-        $mform->addElement('static', 'course1_label', '', '<strong>Quiz Copy 1: Central Question Banks</strong>');
+        // Course 1: Central Question Bank (Required)
+        $mform->addElement('static', 'course1_label', '', '<strong>Quiz Copy 1: Central Question Bank</strong>');
 
-        // Find "Central Question Banks" course ID
-        $centralcourse = $DB->get_record('course', ['shortname' => 'Central Question Banks']);
+        // Find "Central Question Bank" course ID
+        $centralcourse = $DB->get_record('course', ['fullname' => 'Central Question Bank']);
         if (!$centralcourse) {
-            $centralcourse = $DB->get_record('course', ['fullname' => 'Central Question Banks']);
+            $centralcourse = $DB->get_record('course', ['shortname' => 'CQB']);
         }
 
         if ($centralcourse) {
@@ -70,7 +70,7 @@ class upload_form extends \moodleform {
             $mform->addElement('hidden', 'course1', $centralcourse->id);
             $mform->setType('course1', PARAM_INT);
         } else {
-            $mform->addElement('static', 'course1_error', 'Course 1', '<span style="color:red;">ERROR: "Central Question Banks" course not found</span>');
+            $mform->addElement('static', 'course1_error', 'Course 1', '<span style="color:red;">ERROR: "Central Question Bank" course not found</span>');
         }
 
         $mform->addElement('select', 'section1', 'Section 1', ['' => 'Please wait...']);
@@ -143,7 +143,7 @@ class upload_form extends \moodleform {
         global $DB;
         $errors = parent::validation($data, $files);
 
-        // Validate Course 1 (Central Question Banks - Required)
+        // Validate Course 1 (Central Question Bank - Required)
         if (empty($data['course1'])) {
             $errors['course1'] = 'Course 1 is required';
         }
@@ -151,7 +151,7 @@ class upload_form extends \moodleform {
         // Validate Section 1 (use hidden field if available, otherwise dropdown)
         $section1 = !empty($data['section1_hidden']) ? $data['section1_hidden'] : $data['section1'] ?? '';
         if (empty($section1)) {
-            $errors['section1'] = 'Please select a section for Course 1 (Central Question Banks)';
+            $errors['section1'] = 'Please select a section for Course 1 (Central Question Bank)';
         }
 
         // Validate Quiz Name 1 (required)
