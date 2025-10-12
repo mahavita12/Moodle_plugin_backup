@@ -47,7 +47,11 @@
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quizdashboard\\clear_opcache.php\")",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quiz_uploader\\upload.php\")",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quiz_uploader\\classes\\upload_form.php\")",
-      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -r \"define(''CLI_SCRIPT'', true); require_once(''../../config.php''); require_once(''classes/upload_form.php''); echo ''Form class loaded successfully'';\")"
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -r \"define(''CLI_SCRIPT'', true); require_once(''../../config.php''); require_once(''classes/upload_form.php''); echo ''Form class loaded successfully'';\")",
+      "Bash(fc:*)",
+      "Bash(copy:*)",
+      "Bash(git pull:*)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\admin\\cli\\upgrade.php\" --non-interactive)"
     ],
     "deny": [],
     "ask": []

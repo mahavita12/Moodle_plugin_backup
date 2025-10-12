@@ -1,0 +1,80 @@
+SAFER ATTO EDITOR SPELLCHECK DISABLING CODE
+=============================================
+
+Replace lines 338-370 in feedback.js with this safer version:
+
+        // 3. Atto editor - SAFER: Wait for editors to fully load
+        const disableAtto = () => {
+            try {
+                const attoSelectors = [
+                    'iframe[id*="atto"]',
+                    '.editor_atto iframe',
+                    'div[data-fieldtype="editor"] iframe'
+                ];
+
+                attoSelectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(ifr => {
+                        // Skip if already processed
+                        if (ifr.dataset.emSpellcheckDisabled) return;
+
+                        const processIframe = () => {
+                            try {
+                                const doc = ifr.contentDocument || ifr.contentWindow?.document;
+                                const body = doc?.body;
+
+                                // Only process if body exists AND has content (editor fully loaded)
+                                if (body && body.childNodes.length > 0) {
+                                    // Only set spellcheck attributes, don't modify structure
+                                    body.setAttribute('spellcheck', 'false');
+                                    body.setAttribute('data-gramm', 'false');
+                                    body.setAttribute('data-enable-grammarly', 'false');
+                                    body.spellcheck = false;
+
+                                    // Mark as processed
+                                    ifr.dataset.emSpellcheckDisabled = 'true';
+                                    console.log('✅ Disabled spellcheck on Atto editor:', ifr.id || 'unnamed');
+                                } else if (body && body.childNodes.length === 0) {
+                                    // Editor still loading, will retry later
+                                    console.log('⏳ Atto editor still loading, will retry');
+                                }
+                            } catch (e) {
+                                // Normal - iframe not accessible yet
+                                console.log('⏳ Atto iframe not accessible yet');
+                            }
+                        };
+
+                        // Try immediately
+                        processIframe();
+
+                        // Set up load event listener if not yet processed
+                        if (!ifr.dataset.emSpellcheckDisabled) {
+                            ifr.addEventListener('load', () => {
+                                setTimeout(processIframe, 150); // Small delay for editor init
+                            }, { once: true });
+
+                            // Fallback retries
+                            setTimeout(processIframe, 2000);
+                            setTimeout(processIframe, 4000);
+                        }
+                    });
+                });
+            } catch (e) {
+                console.warn('⚠️ Atto spellcheck disable failed:', e);
+            }
+        };
+
+        // Initial run
+        disableAtto();
+
+        // Delayed retries for dynamically loaded editors
+        setTimeout(disableAtto, 1500);
+        setTimeout(disableAtto, 3000);
+        setTimeout(disableAtto, 5000);
+
+KEY IMPROVEMENTS:
+=================
+1. Checks if iframe body has content before modifying (editor is ready)
+2. Marks processed iframes to avoid re-processing
+3. Uses iframe 'load' event to wait for editor initialization
+4. Multiple delayed retries (1.5s, 3s, 5s) instead of just 1s
+5. Only modifies spellcheck attributes, doesn't touch editor structure

@@ -310,7 +310,7 @@ function local_essaysmaster_after_config() {
                 // Create navigation
                 var nav = document.createElement("div");
                 nav.className = "essaysmaster-global-nav";
-                nav.style.cssText = "position:fixed;top:60px;right:20px;z-index:10000;font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",Roboto,sans-serif";
+                nav.style.cssText = "position:fixed;top:60px;right:20px;z-index:10000;font-family:-apple-system,BlinkMacSystemFont,sans-serif";
                 
                 nav.innerHTML = `
                     <div class="nav-link" style="position:relative;display:inline-block">
