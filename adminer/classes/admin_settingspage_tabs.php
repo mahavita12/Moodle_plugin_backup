@@ -1,3 +1,4 @@
+<?php
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -14,21 +15,33 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Add css needed by the modal iframe.
- *
+ * Settings page to show a customized link on the admin settings tree.
+ * @package    local_adminer
+ * @author Andreas Grabs <moodle@grabs-edv.de>
+ * @copyright  Andreas Grabs
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+namespace local_adminer;
+
+use local_adminer\globals as gl;
+
+/**
+ * Settings page providing a tabbed view.
+ * @package     local_adminer
  * @author      Andreas Grabs <info@grabs-edv.de>
  * @copyright   2018 onwards Grabs EDV {@link https://www.grabs-edv.de}
  * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class admin_settingspage_tabs extends \admin_settingpage {
+    /**
+     * Generate the HTML output.
+     *
+     * @return string
+     */
+    public function output_html() {
+        global $OUTPUT;
 
-define(function() {
-    return {
-        'init': function(css) {
-            var head = document.head || document.getElementsByTagName('head')[0];
-            var mystyle = document.createElement('style');
-
-            mystyle.innerHTML = css;
-            head.appendChild(mystyle);
-        }
-    };
-});
+        return '<a href="blabla">hjallllllllo</a>';
+    }
+}
