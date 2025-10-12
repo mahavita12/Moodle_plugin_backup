@@ -283,53 +283,13 @@ function local_essaysmaster_extend_navigation(global_navigation $navigation) {
 /**
  * Global page initialization hook - Add EssaysMaster Dashboard navigation to every page
  * This ensures it loads on every page regardless of theme or navigation hooks
+ * 
+ * DISABLED: Removed global navigation panel to prevent duplicate panels on every page
  */
 function local_essaysmaster_after_config() {
-    global $PAGE, $CFG;
-    
-    // Only add if user has permission and not on login pages
-    if (has_capability('local/essaysmaster:viewdashboard', context_system::instance()) && 
-        !preg_match('/login|logout/', $_SERVER['REQUEST_URI'])) {
-        
-        // Add inline JavaScript that creates global navigation
-        $PAGE->requires->js_init_code('
-            // Wait for DOM and add EssaysMaster Dashboard navigation
-            document.addEventListener("DOMContentLoaded", function() {
-                console.log("EssaysMaster: Adding global dashboard navigation...");
-                
-                // Remove any existing navigation first
-                var existingNav = document.querySelector(".essaysmaster-global-nav");
-                if (existingNav) {
-                    existingNav.remove();
-                }
-                
-                // Determine current page for active state
-                var currentPath = window.location.pathname;
-                var isDashboard = currentPath.includes("/local/essaysmaster/dashboard.php");
-                
-                // Create navigation
-                var nav = document.createElement("div");
-                nav.className = "essaysmaster-global-nav";
-                nav.style.cssText = "position:fixed;top:60px;right:20px;z-index:10000;font-family:-apple-system,BlinkMacSystemFont,sans-serif";
-                
-                nav.innerHTML = `
-                    <div class="nav-link" style="position:relative;display:inline-block">
-                        <a href="' . $CFG->wwwroot . '/local/essaysmaster/dashboard.php" 
-                           class="nav-button" 
-                           style="background:${isDashboard ? \'#28a745\' : \'#007cba\'};color:#fff;padding:8px 16px;border:1px solid:${isDashboard ? \'#1e7e34\' : \'#005a87\'};text-decoration:none;border-radius:4px;font-size:13px;font-weight:500;min-width:140px;text-align:center;box-shadow:0 2px 5px rgba(0,0,0,0.2);display:inline-block;transition:all 0.15s ease-in-out"
-                           onmouseover="this.style.background=\'${isDashboard ? \'#218838\' : \'#005a87\'}\'"
-                           onmouseout="this.style.background=\'${isDashboard ? \'#28a745\' : \'#007cba\'}\'"
-                           title="Access EssaysMaster Dashboard">
-                           ðŸ“Š EssaysMaster Dashboard
-                        </a>
-                    </div>
-                `;
-                
-                document.body.appendChild(nav);
-                console.log("EssaysMaster: Global dashboard navigation created successfully!");
-            });
-        ');
-    }
+    // Navigation panel removed - users can access dashboard via Moodle's navigation system
+    // or by directly visiting /local/essaysmaster/dashboard.php
+    return;
 }
 
 /**
