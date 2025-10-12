@@ -27,20 +27,42 @@ defined('MOODLE_INTERNAL') || die;
 if ($hassiteconfig) {
     $pluginname = get_string('pluginname', 'local_adminer');
 
-    $ADMIN->add('server', new admin_externalpage(
-        'local_adminer',
-        $pluginname,
-        new moodle_url('/local/adminer/index.php'),
-        'local/adminer:useadminer')
-    );
+    $adminersecret = $CFG->local_adminer_secret ?? '';
+    $adminerdisabled = true;
+    if ($adminersecret !== \local_adminer\util::DISABLED_SECRET) {
+        $adminerdisabled = false;
+        $ADMIN->add('server', new admin_externalpage(
+            'local_adminer',
+            $pluginname,
+            \local_adminer\util::get_adminer_url(),
+            'local/adminer:useadminer')
+        );
+    }
 
     $settings = new admin_settingpage('local_adminer_settings', $pluginname);
     $ADMIN->add('localplugins', $settings);
 
     $configs = [];
 
+    if ($adminerdisabled) {
+        $configs[] = new admin_setting_heading(
+            'local_adminer_disabled_note',
+            '',
+            $OUTPUT->render_from_template('local_adminer/disabled_note', [])
+        );
+    }
+
+    $templatecontext = [
+        'disabledsecret' => \local_adminer\util::DISABLED_SECRET,
+    ];
     $configs[] = new admin_setting_heading(
-        'local_adminer',
+        'local_adminer_securitynote',
+        '',
+        $OUTPUT->render_from_template('local_adminer/security_note', $templatecontext)
+    );
+
+    $configs[] = new admin_setting_heading(
+        'local_adminer_settings',
         get_string('settings'),
         ''
     );
@@ -52,6 +74,13 @@ if ($hassiteconfig) {
         '',
         0,
         $options
+    );
+
+    $configs[] = new admin_setting_configcheckbox(
+        'showquicklink',
+        get_string('showquicklink', 'local_adminer'),
+        get_string('showquicklink_help', 'local_adminer'),
+        1
     );
 
     // Put all settings into the settings page.
