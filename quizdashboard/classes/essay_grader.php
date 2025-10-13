@@ -2315,8 +2315,7 @@ Your primary goal is to create questions that test a specific grammatical rule w
 <li>[Question 3]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 4]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 5]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 6]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 7]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
+
 </ol>
 </div>
 
@@ -2330,8 +2329,7 @@ Your primary goal is to create questions that test a specific grammatical rule w
 <li>[Question 3]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 4]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 5]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 6]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 7]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
+
 </ol>
 </div>
 
@@ -2433,15 +2431,14 @@ Your primary goal is to create questions that test a specific grammatical rule w
 <li>[Question 3]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 4]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 5]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 6]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 7]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
+
 </ol>
 </div>
 
 <div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
 <h3 style="color:#0066cc;">Exercise 2: [Grammar Topic]</h3>
 <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
-[Continue with 7 questions using same format]
+[Continue with 5 questions using same format]
 </div>
 
 <div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
