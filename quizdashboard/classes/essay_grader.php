@@ -705,67 +705,73 @@ class essay_grader {
         - ALL examples must be styled in blue color (#3399cc)
         - For other sections (Content, Structure, Creativity), do NOT use original->improved format
 
+        **LIMITS (STRICT):**
+        - For every category, the 'Areas for Improvement' list must contain no more than 3 concise bullets (maximum 3).
+        - In Content and Ideas, Structure and Organization, and Creativity and Originality sections, the 'Examples' list must contain no more than 3 items (maximum 3). Do not mention quantities in the output.
+        - In Language Use and Mechanics, include no more than 5 Original → Improved pairs (maximum 5). Do not mention quantities in the output.
+        - Overall Comments must be concise and limited to at most 3 short paragraphs; aim for 1–2 sentences per paragraph.
+
         Output structured feedback with these sections: 
 
         <h2 style=\"font-size:18px;\">1. Content and Ideas (25%)</h2> 
         <p><strong>Score:</strong> X/25</p> 
         <ul> 
         <li><strong>Relevance to Question:</strong> <span class=\"relevance-output\" style=\"color:#87CEEB; font-weight: bold;\">Clearly state whether the essay directly answers the question. If Question includes 'what do you feel like writing today', you must only provide some positive comments without talking about relevance to Question.</span></li> 
-        <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
+        <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
         <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
-        <li><span style=\"color:#3399cc;\">- At least three examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
+        <li><span style=\"color:#3399cc;\">- Provide up to three examples (maximum 3). Do not mention quantities in the output.</span></li></ul></li> 
         </ul> 
 
         <h2 style=\"font-size:18px;\">2. Structure and Organization (25%)</h2> 
         <p><strong>Score:</strong> X/25</p> 
         <ul> 
-        <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
+        <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
         <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
-        <li><span style=\"color:#3399cc;\">- At least three specific examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
+        <li><span style=\"color:#3399cc;\">- Provide up to three examples (maximum 3). Do not mention quantities in the output.</span></li></ul></li> 
         </ul> 
 
         <h2 style=\"font-size:18px;\">3. Language Use (20%)</h2> 
         <p><strong>Score:</strong> X/20</p> 
         <ul> 
-        <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
+        <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
-        <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples showing original and improved versions. ALWAYS format as:
+        <li><span style=\"color:#3399cc;\">- Provide clear and relevant examples showing original and improved versions (maximum 5 pairs). ALWAYS format as:
         <br>• <span style=\"color:#808080;\">Original: [student's text in grey]</span>
         <br>• <span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
         NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following it MUST be in grey color (#808080). Use separate lines for each original and improved pair.</span></li>
-        <li><span style=\"color:#3399cc;\">- At least five examples must be included showing the original and improved version separately on different lines, but do not mention quantity in the output.</span></li></ul></li> 
+        <li><span style=\"color:#3399cc;\">- Provide up to five examples (maximum 5) showing the original and improved version separately on different lines. Do not mention quantities in the output.</span></li></ul></li> 
         </ul> 
 
         <h2 style=\"font-size:18px;\">4. Creativity and Originality (20%)</h2> 
         <p><strong>Score:</strong> X/20</p> 
         <ul> 
-        <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
+        <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
         <li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples that are specific, distinct, and contextual with clear details how they could be improved or corrected. Do NOT use original→improved format for this section.</span></li>
-        <li><span style=\"color:#3399cc;\">- At least four specific examples must be shown, but do not mention quantity in the output.</span></li></ul></li> 
+        <li><span style=\"color:#3399cc;\">- Provide up to three examples (maximum 3). Do not mention quantities in the output.</span></li></ul></li> 
         </ul> 
 
         <h2 style=\"font-size:18px;\">5. Mechanics (10%)</h2> 
         <p><strong>Score:</strong> X/10</p> 
         <ul> 
-        <li><strong>Strengths:</strong><ul><li>...</li></ul></li> 
+        <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li> 
         <li><strong>Areas for Improvement:</strong><ul><li>...</li></ul></li> 
         <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
         <li><span style=\"color:#3399cc;\">- List specific grammar, punctuation, and spelling mistakes found in the essay with corrections. ALWAYS format corrections as:
         <br><span style=\"color:#808080;\">Original: [student's mistake in grey]</span>
         <br><span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
         NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following it MUST be in grey color (#808080). Each original and improved pair must be on separate lines.</span></li>
-        <li><span style=\"color:#3399cc;\">- Include up to 10 examples showing the original and improved version separately on different lines, but do not mention the limit in the output.</span></li></ul></li> 
+        <li><span style=\"color:#3399cc;\">- Include up to 5 examples (maximum 5) showing the original and improved version separately on different lines. Do not mention the limit in the output.</span></li></ul></li> 
         </ul> 
 
         <h2 style=\"font-size:18px;\">Overall Comments</h2> 
-        <div id=\"overall-comments\"><p>Encouraging tone with 2–3 specific suggestions for improvement.</p></div> 
+        <div id=\"overall-comments\"><p>Provide up to three short paragraphs (1–2 sentences each), concise and encouraging with concrete next steps.</p></div> 
 
         <h2 style=\"font-size:16px;\"><p><strong>Final Score: X/100</strong></p></h2> 
 
@@ -2225,13 +2231,12 @@ You are an expert homework generator for Australian students aged 11-16. Create 
 
 **CRITICAL: You MUST create ALL of these sections, including a COMPLETE ANSWER KEY at the end. The answer key is NOT optional.**
 
-1. Exercise 1: [Advanced Style/Register topic from the **author's writing patterns**] - 7 questions.
-2. Exercise 2: [Advanced Grammar/Sophistication topic from the **author's writing patterns**] - 7 questions.
-3. Exercise 3: [Second grammar topic from the **author's second common mistakes**] - 7 questions.
-4. Exercise 4: [Spelling topic] - 6 questions.
-5. Vocabulary Builder table - exactly 6 rows with sophisticated words.
-6. Sentence Improvement - exactly 10 of the author's actual problematic sentences.
-7. Complete Answer Key for ALL exercises above.
+1. Exercise 1: [Advanced Style/Register topic from the **author's writing patterns**] - 5 questions.
+2. Exercise 2: [Advanced Grammar/Sophistication topic from the **author's writing patterns**] - 5 questions.
+3. Exercise 3: [Second grammar topic from the **author's second common mistakes**] - 5 questions.
+4. Vocabulary Builder table - exactly 6 rows with sophisticated words.
+5. Sentence Improvement - up to 10 of the author's actual problematic sentences (maximum 10).
+6. Complete Answer Key for ALL exercises above.
 
 **ADVANCED MODIFICATIONS FOR EXERCISES 1 & 2 ONLY:**
 
@@ -2259,7 +2264,7 @@ Instead of basic grammar errors, test complex concepts like:
 **ADVANCED VOCABULARY BUILDER:**
 Use sophisticated but age-appropriate words like: articulate, comprehensive, facilitate, contemporary, paradigm, intrinsic, etc.
 
-**KEEP EXERCISES 3, 4, 5, 6, 7, 8 EXACTLY THE SAME FORMAT**
+**KEEP EXERCISES IN THE EXACT FORMAT SHOWN BELOW**
 
 **ABSOLUTE FORMATTING RULES:**
 - The final output must be ONLY the raw HTML content. Do NOT wrap the output in ```html or ```.
@@ -2333,15 +2338,10 @@ Your primary goal is to create questions that test a specific grammatical rule w
 <h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Exercise 3: [Third Grammar Topic]</h3>
 <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
 <p style="font-family: Calibri, Arial, sans-serif; margin-bottom:15px;"><strong>Instructions:</strong> Choose the correct option for each sentence.</p>
-[Continue with 7 questions using same format]
+[Continue with 5 questions using same format]
 </div>
 
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Exercise 4: [Spelling Topic]</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to spelling]</p>
-<p style="font-family: Calibri, Arial, sans-serif; margin-bottom:15px;"><strong>Instructions:</strong> Choose the correctly spelled word for each sentence.</p>
-[Continue with 6 questions using same format]
-</div>
+<!-- Exercise 4 removed intentionally -->
 
 <div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
 <h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Vocabulary Builder</h3>
@@ -2373,19 +2373,18 @@ Your primary goal is to create questions that test a specific grammatical rule w
 </div>
 PROMPT;
         } else {
-            // Keep your EXACT existing general prompt - NO CHANGES
+            // General prompt
             $system_prompt = <<<'PROMPT'
 You are an expert homework generator for Australian students aged 11-16. Create comprehensive personalized homework exercises that EXACTLY match the following structure and quality.
 
 **CRITICAL: You MUST create ALL of these sections, including a COMPLETE ANSWER KEY at the end. The answer key is NOT optional.**
 
-1. Exercise 1: [Grammar topic from the **author's most common mistakes**] - 7 questions.
-2. Exercise 2: [Second grammar topic from the **author's second common mistakes**] - 7 questions.
-3. Exercise 3: [Third grammar topic from the **author's third common mistakes**] - 7 questions.
-4. Exercise 4: [Spelling topic] - 6 questions.
-5. Vocabulary Builder table - exactly 6 rows with their actual words.
-6. Sentence Improvement - exactly 10 of the author's actual problematic sentences.
-7. Complete Answer Key for ALL exercises above.
+1. Exercise 1: [Grammar topic from the **author's most common mistakes**] - 5 questions.
+2. Exercise 2: [Second grammar topic from the **author's second common mistakes**] - 5 questions.
+3. Exercise 3: [Third grammar topic from the **author's third common mistakes**] - 5 questions.
+4. Vocabulary Builder table - exactly 6 rows with their actual words.
+5. Sentence Improvement - up to 10 of the author's actual problematic sentences (maximum 10).
+6. Complete Answer Key for ALL exercises above.
 
 **ABSOLUTE FORMATTING RULES:**
 - The final output must be ONLY the raw HTML content. Do NOT wrap the output in ```html or ```.
@@ -2445,14 +2444,10 @@ Your primary goal is to create questions that test a specific grammatical rule w
 <div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
 <h3 style="color:#0066cc;">Exercise 3: [Grammar Topic]</h3>
 <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
-[Continue with 7 questions using same format]
+[Continue with 5 questions using same format]
 </div>
 
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-<h3 style="color:#0066cc;">Exercise 4: [Spelling Topic]</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to spelling]</p>
-[Continue with 6 questions using same format]
-</div>
+<!-- Exercise 4 removed intentionally -->
 
 <div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
 <h3 style="color:#0066cc;">Vocabulary Builder</h3>

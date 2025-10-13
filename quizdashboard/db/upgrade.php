@@ -88,6 +88,31 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025092901, 'local', 'quizdashboard');
     }
 
+    // Ensure large text capacity for feedback/homework/comments (maps to LONGTEXT on MySQL)
+    if ($oldversion < 2025101301) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+
+        // feedback_html -> BIG TEXT
+        $feedback = new xmldb_field('feedback_html', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'attempt_id');
+        if ($dbman->field_exists($table, $feedback)) {
+            $dbman->change_field_precision($table, $feedback);
+        }
+
+        // homework_html -> BIG TEXT (if present)
+        $homework = new xmldb_field('homework_html', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'ai_likelihood');
+        if ($dbman->field_exists($table, $homework)) {
+            $dbman->change_field_precision($table, $homework);
+        }
+
+        // overall_comments -> BIG TEXT
+        $overall = new xmldb_field('overall_comments', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'feedback_html');
+        if ($dbman->field_exists($table, $overall)) {
+            $dbman->change_field_precision($table, $overall);
+        }
+
+        upgrade_plugin_savepoint(true, 2025101301, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 

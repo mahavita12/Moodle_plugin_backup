@@ -59,22 +59,29 @@ Improved: [corrected text]
 - Always use line breaks between original and improved versions
 - ALL examples must be styled in blue color (#3399cc)
 
+**LIMITS (STRICT):**
+- For every category, the 'Areas for Improvement' list must contain no more than 3 concise bullets (maximum 3).
+- In Content and Ideas, Structure and Organization, and Creativity and Originality sections, the 'Examples' list must contain no more than 3 items (maximum 3). Do not mention quantities in the output.
+- In Language Use and Mechanics, include no more than 5 Original → Improved pairs (maximum 5). Do not mention quantities in the output.
+
 **OUTPUT STRUCTURE**: You must follow this exact HTML format:
 
 <h2 style=\"font-size:18px;\">1. Content and Ideas (25%)</h2>
 <p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
+<li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
-<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide at least three specific examples with clear improvement suggestions in blue color.</span></li></ul></li>
+<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide up to three examples (maximum 3) with clear improvement suggestions in blue color.</span></li></ul></li>
 </ul>
 
 <h2 style=\"font-size:18px;\">2. Structure and Organization (25%)</h2>
 <p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
+<li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
-<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide at least three specific examples with clear improvement suggestions in blue color.</span></li></ul></li>
+<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide up to three examples (maximum 3) with clear improvement suggestions in blue color.</span></li></ul></li>
 </ul>
 
 <h2 style=\"font-size:18px;\">3. Language Use (20%)</h2>
@@ -83,19 +90,20 @@ Improved: [corrected text]
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
 <li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\">
-<li><span style=\"color:#3399cc;\">- Provide multiple clear and relevant examples showing original and improved versions. ALWAYS format as:
+<li><span style=\"color:#3399cc;\">- Provide clear and relevant examples showing original and improved versions (maximum 5 pairs). ALWAYS format as:
 <br> <span style=\"color:#808080;\">Original: [student's text in grey]</span>
 <br> <span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
 NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following it MUST be in grey color (#808080). Use separate lines for each original and improved pair.</span></li>
-<li><span style=\"color:#3399cc;\">- At least five examples must be included showing the original and improved version separately on different lines, but do not mention quantity in the output.</span></li></ul></li>
+<li><span style=\"color:#3399cc;\">- Provide up to five examples (maximum 5) showing the original and improved version separately on different lines. Do not mention quantities in the output.</span></li></ul></li>
 </ul>
 
 <h2 style=\"font-size:18px;\">4. Creativity and Originality (20%)</h2>
 <p><strong>Score (Previous  New):</strong> [PREVIOUS_SCORE]/20  [NEW_SCORE]/20</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
+<li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
-<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide at least four specific examples with clear improvement suggestions in blue color.</span></li></ul></li>
+<li><strong>Examples:</strong><ul style=\"list-style-type:disc; padding-left:20px; margin-top:10px;\"><li><span style=\"color:#3399cc;\">Provide up to three examples (maximum 3) with clear improvement suggestions in blue color.</span></li></ul></li>
 </ul>
 
 <h2 style=\"font-size:18px;\">5. Mechanics (10%)</h2>
@@ -108,11 +116,11 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 <br><span style=\"color:#808080;\">Original: [student's mistake in grey]</span>
 <br><span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span>
 NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following it MUST be in grey color (#808080). Each original and improved pair must be on separate lines.</span></li>
-<li><span style=\"color:#3399cc;\">- Include up to 10 examples showing the original and improved version separately on different lines, but do not mention the limit in the output.</span></li></ul></li>
+<li><span style=\"color:#3399cc;\">- Include up to 5 examples (maximum 5) showing the original and improved version separately on different lines. Do not mention the limit in the output.</span></li></ul></li>
 </ul>
 
 <h2 style=\"font-size:18px;\">Overall Comments</h2>
-<div id=\"overall-comments\"><p>[Summary of progress and encouragement]</p></div>
+<div id=\"overall-comments\"><p>Provide up to three short paragraphs (1–2 sentences each), concise and encouraging with concrete next steps.</p></div>
 
 <h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous → New): [PREVIOUS_TOTAL]/100 → [NEW_TOTAL]/100</strong></p></h2>
 
