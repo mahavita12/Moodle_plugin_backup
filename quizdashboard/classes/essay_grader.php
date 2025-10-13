@@ -2156,19 +2156,22 @@ class essay_grader {
                 $body = json_decode($response, true);
 
                 if (isset($body['error'])) {
-                    $last_error = "API error: {$body['error']['message']}";
+                    $errmsg = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string)$body['error']['message'];
+                    $last_error = "API error: {$errmsg}";
                     error_log("DEBUG: {$operation_name} attempt {$attempts} failed - {$last_error}");
-                    
-                    // Don't retry on certain errors
-                    if (strpos($body['error']['message'], 'rate limit') !== false) {
-                        return ['success' => false, 'message' => $last_error];
-                    }
-                    
+
+                    $lower = strtolower($errmsg);
+                    $isRate = (strpos($lower, 'rate limit') !== false) || (strpos($lower, 'too many requests') !== false) || (strpos($lower, 'capacity') !== false) || (strpos($lower, 'overloaded') !== false);
                     if ($attempts < self::MAX_RETRY_ATTEMPTS) {
-                        sleep(7 * $attempts); // Slightly longer wait for long generations
+                        if ($isRate) {
+                            $wait = rand(10, 20);
+                            error_log("DEBUG: Rate limit detected for {$operation_name}. Backing off {$wait}s before retry #" . ($attempts + 1));
+                            sleep($wait);
+                            continue;
+                        }
+                        sleep(7 * $attempts);
                         continue;
                     }
-                    
                     return ['success' => false, 'message' => $last_error];
                 }
 
@@ -2586,10 +2589,19 @@ PROMPT;
                 $body = json_decode($response, true);
 
                 if (isset($body['error'])) {
-                    $last_error = 'API error: ' . (is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : $body['error']);
+                    $msg = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string)$body['error'];
+                    $last_error = 'API error: ' . $msg;
                     error_log("🚨 Quiz Dashboard (Anthropic): {$operation_name} attempt {$attempts} failed - {$last_error}");
 
+                    $lower = strtolower($msg);
+                    $isRate = (strpos($lower, 'rate limit') !== false) || (strpos($lower, 'too many requests') !== false) || (strpos($lower, 'capacity') !== false) || (strpos($lower, 'overloaded') !== false);
                     if ($attempts < self::MAX_RETRY_ATTEMPTS) {
+                        if ($isRate) {
+                            $wait = rand(10, 20);
+                            error_log("DEBUG: Anthropic rate limit detected for {$operation_name}. Backing off {$wait}s before retry #" . ($attempts + 1));
+                            sleep($wait);
+                            continue;
+                        }
                         sleep(5 * $attempts);
                         continue;
                     }
