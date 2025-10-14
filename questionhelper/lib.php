@@ -30,6 +30,14 @@ defined('MOODLE_INTERNAL') || die();
 function local_questionhelper_before_footer() {
     global $PAGE;
 
+    // Respect plugin enabled setting and configuration.
+    if (!get_config('local_questionhelper', 'enabled')) {
+        return;
+    }
+    if (!local_questionhelper_is_configured()) {
+        return;
+    }
+
     // Only load on quiz attempt pages
     if (strpos($PAGE->pagetype, 'mod-quiz-attempt') !== false) {
         $PAGE->requires->js_call_amd('local_questionhelper/quiz_helper', 'init');

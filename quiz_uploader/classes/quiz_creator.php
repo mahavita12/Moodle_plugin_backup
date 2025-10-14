@@ -48,6 +48,9 @@ class quiz_creator {
             // Get quiz module ID
             $module = $DB->get_record('modules', ['name' => 'quiz'], '*', MUST_EXIST);
 
+            // Get Moodle's admin defaults for quiz settings
+            $quizconfig = get_config('quiz');
+
             // Prepare module info
             $moduleinfo = new \stdClass();
             $moduleinfo->modulename = 'quiz';
@@ -63,38 +66,60 @@ class quiz_creator {
             $moduleinfo->groupmode = 0;
             $moduleinfo->groupingid = 0;
 
-            // Apply default settings
-            $moduleinfo->quizpassword = $settings->quizpassword ?? '';
-            $moduleinfo->subnet = $settings->subnet ?? '';
-            $moduleinfo->browsersecurity = $settings->browsersecurity ?? '-';
-            $moduleinfo->delay1 = $settings->delay1 ?? 0;
-            $moduleinfo->delay2 = $settings->delay2 ?? 0;
+            // Apply settings - use provided settings or fall back to Moodle's admin defaults
+            $moduleinfo->quizpassword = $settings->quizpassword ?? $quizconfig->quizpassword ?? '';
+            $moduleinfo->subnet = $settings->subnet ?? $quizconfig->subnet ?? '';
+            $moduleinfo->browsersecurity = $settings->browsersecurity ?? $quizconfig->browsersecurity ?? '-';
+            $moduleinfo->delay1 = $settings->delay1 ?? $quizconfig->delay1 ?? 0;
+            $moduleinfo->delay2 = $settings->delay2 ?? $quizconfig->delay2 ?? 0;
             $moduleinfo->timeopen = $settings->timeopen ?? 0;
             $moduleinfo->timeclose = $settings->timeclose ?? 0;
-            $moduleinfo->timelimit = $settings->timelimit ?? 0;
-            $moduleinfo->overduehandling = $settings->overduehandling ?? 'autosubmit';
-            $moduleinfo->graceperiod = $settings->graceperiod ?? 0;
-            $moduleinfo->preferredbehaviour = $settings->preferredbehaviour ?? 'deferredfeedback';
-            $moduleinfo->canredoquestions = $settings->canredoquestions ?? 0;
-            $moduleinfo->attempts = $settings->attempts ?? 0;
-            $moduleinfo->attemptonlast = $settings->attemptonlast ?? 0;
-            $moduleinfo->grademethod = $settings->grademethod ?? 1;
-            $moduleinfo->decimalpoints = $settings->decimalpoints ?? 2;
-            $moduleinfo->questiondecimalpoints = $settings->questiondecimalpoints ?? -1;
-            $moduleinfo->reviewattempt = $settings->reviewattempt ?? 69904;
-            $moduleinfo->reviewcorrectness = $settings->reviewcorrectness ?? 4368;
-            $moduleinfo->reviewmarks = $settings->reviewmarks ?? 4368;
-            $moduleinfo->reviewspecificfeedback = $settings->reviewspecificfeedback ?? 4368;
-            $moduleinfo->reviewgeneralfeedback = $settings->reviewgeneralfeedback ?? 4368;
-            $moduleinfo->reviewrightanswer = $settings->reviewrightanswer ?? 4368;
-            $moduleinfo->reviewoverallfeedback = $settings->reviewoverallfeedback ?? 4368;
-            $moduleinfo->questionsperpage = $settings->questionsperpage ?? 1;
-            $moduleinfo->navmethod = $settings->navmethod ?? 'free';
-            $moduleinfo->shuffleanswers = $settings->shuffleanswers ?? 1;
+            $moduleinfo->timelimit = $settings->timelimit ?? $quizconfig->timelimit ?? 0;
+            $moduleinfo->overduehandling = $settings->overduehandling ?? $quizconfig->overduehandling ?? 'autosubmit';
+            $moduleinfo->graceperiod = $settings->graceperiod ?? $quizconfig->graceperiod ?? 0;
+            $moduleinfo->preferredbehaviour = $settings->preferredbehaviour ?? $quizconfig->preferredbehaviour ?? 'deferredfeedback';
+            $moduleinfo->canredoquestions = $settings->canredoquestions ?? $quizconfig->canredoquestions ?? 0;
+            $moduleinfo->attempts = $settings->attempts ?? $quizconfig->attempts ?? 0;
+            $moduleinfo->attemptonlast = $settings->attemptonlast ?? $quizconfig->attemptonlast ?? 0;
+            $moduleinfo->grademethod = $settings->grademethod ?? $quizconfig->grademethod ?? 1;
+            $moduleinfo->decimalpoints = $settings->decimalpoints ?? $quizconfig->decimalpoints ?? 2;
+            $moduleinfo->questiondecimalpoints = $settings->questiondecimalpoints ?? $quizconfig->questiondecimalpoints ?? -1;
+            
+            // Set review options as individual checkboxes (form-style) rather than combined values
+            // quiz_process_options() will combine these into the review* fields using bitwise OR
+            // Each review field needs checkboxes for: during, immediately, open, closed
+            $reviewfields = ['attempt', 'correctness', 'marks', 'maxmarks', 'specificfeedback', 'generalfeedback', 'rightanswer', 'overallfeedback'];
+            $reviewtimes = ['during', 'immediately', 'open', 'closed'];
+            $timebits = [
+                'during' => 0x10000,      // 65536
+                'immediately' => 0x01000,  // 4096
+                'open' => 0x00100,         // 256
+                'closed' => 0x00010        // 16
+            ];
+            
+            foreach ($reviewfields as $field) {
+                $configfield = 'review' . $field;
+                $defaultvalue = $quizconfig->$configfield ?? 69904; // Default to all times enabled
+                
+                // Set individual checkbox fields based on bit flags
+                foreach ($reviewtimes as $time) {
+                    $checkboxfield = $field . $time;
+                    // Check if this time bit is set in the config
+                    if ($defaultvalue & $timebits[$time]) {
+                        $moduleinfo->$checkboxfield = 1;
+                    } else {
+                        $moduleinfo->$checkboxfield = 0;
+                    }
+                }
+            }
+            
+            $moduleinfo->questionsperpage = $settings->questionsperpage ?? $quizconfig->questionsperpage ?? 1;
+            $moduleinfo->navmethod = $settings->navmethod ?? $quizconfig->navmethod ?? 'free';
+            $moduleinfo->shuffleanswers = $settings->shuffleanswers ?? $quizconfig->shuffleanswers ?? 1;
             $moduleinfo->sumgrades = 0;
-            $moduleinfo->grade = $settings->grade ?? 10;
-            $moduleinfo->showuserpicture = $settings->showuserpicture ?? 0;
-            $moduleinfo->showblocks = $settings->showblocks ?? 0;
+            $moduleinfo->grade = $settings->grade ?? $quizconfig->maximumgrade ?? 10;
+            $moduleinfo->showuserpicture = $settings->showuserpicture ?? $quizconfig->showuserpicture ?? 0;
+            $moduleinfo->showblocks = $settings->showblocks ?? $quizconfig->showblocks ?? 0;
             $moduleinfo->completionattemptsexhausted = $settings->completionattemptsexhausted ?? 0;
             $moduleinfo->completionpass = $settings->completionpass ?? 0;
 
