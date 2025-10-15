@@ -2,7 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_quizdashboard';
-$plugin->version = 2025101301; // Bump: LONGTEXT columns + prompt changes
+$plugin->version = 2025101502; // Bump: enable hook-based global navigation (retry)
 $plugin->requires = 2022112800; // Moodle 4.0+
 $plugin->maturity = MATURITY_BETA;
 $plugin->release = 'v.1.0 - Auto-Grading Integration';
