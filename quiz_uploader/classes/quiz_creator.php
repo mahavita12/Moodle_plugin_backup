@@ -115,7 +115,7 @@ class quiz_creator {
             
             $moduleinfo->questionsperpage = $settings->questionsperpage ?? $quizconfig->questionsperpage ?? 1;
             $moduleinfo->navmethod = $settings->navmethod ?? $quizconfig->navmethod ?? 'free';
-            $moduleinfo->shuffleanswers = $settings->shuffleanswers ?? $quizconfig->shuffleanswers ?? 1;
+            $moduleinfo->shuffleanswers = $settings->shuffleanswers ?? $quizconfig->shuffleanswers ?? 0;
             $moduleinfo->sumgrades = 0;
             $moduleinfo->grade = $settings->grade ?? $quizconfig->maximumgrade ?? 10;
             $moduleinfo->showuserpicture = $settings->showuserpicture ?? $quizconfig->showuserpicture ?? 0;
