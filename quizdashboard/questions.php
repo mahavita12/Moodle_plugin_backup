@@ -334,6 +334,13 @@ echo '<style>
     border-left: 1px solid #dee2e6;
 }
 
+/* Ensure question header links are visible on dark header */
+.questions-dashboard-table th.col-question a,
+.questions-dashboard-table th.col-question a:visited {
+    color: #ffffff !important;
+    text-decoration: underline;
+}
+
 /* Alternating row colors that respect sticky columns (first 4 only) */
 .questions-dashboard-table tr:nth-child(even) td:nth-child(1),
 .questions-dashboard-table tr:nth-child(even) td:nth-child(2),
@@ -660,7 +667,18 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="col-duration">Duration</th>
                     <?php if (!empty($quiz_questions)): ?>
                         <?php foreach ($quiz_questions as $question): ?>
-                            <th class="col-question">Q<?php echo $question->slot_number; ?></th>
+                            <?php 
+                                // Build edit link to question bank for this question
+                                $returnurl = new moodle_url('/mod/quiz/edit.php', ['cmid' => $cmid]);
+                                $editurl = new moodle_url('/question/bank/editquestion/question.php', [
+                                    'returnurl' => $returnurl->out_as_local_url(false),
+                                    'cmid' => $cmid,
+                                    'id' => $question->id
+                                ]);
+                            ?>
+                            <th class="col-question">
+                                <a href="<?php echo $editurl->out(false); ?>" target="_blank" rel="noopener" title="Open question in a new tab">Q<?php echo $question->slot_number; ?></a>
+                            </th>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tr>
@@ -706,16 +724,16 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td>
                                 <input type="checkbox" class="row-checkbox" value="<?php echo $attempt->attemptid; ?>" onchange="updateSelectedCount()">
                             </td>
-                            <td>
-                                <a href="<?php echo new moodle_url('/user/profile.php', ['id' => $attempt->userid]); ?>" class="user-id-link" target="_blank">
-                                    <?php echo $attempt->userid; ?>
-                                </a>
-                            </td>
-                            <td style="text-align: left;">
-                                <a href="<?php echo new moodle_url('/user/profile.php', ['id' => $attempt->userid]); ?>" class="user-name-link" target="_blank">
-                                    <?php echo htmlspecialchars($attempt->username); ?>
-                                </a>
-                            </td>
+						<td>
+							<a href="<?php echo (new moodle_url('/local/quizdashboard/questions.php', ['userid' => $attempt->userid, 'courseid' => $courseid, 'quizid' => $quizid]))->out(false); ?>" class="user-id-link">
+								<?php echo $attempt->userid; ?>
+							</a>
+						</td>
+						<td style="text-align: left;">
+							<a href="<?php echo (new moodle_url('/local/quizdashboard/questions.php', ['userid' => $attempt->userid, 'courseid' => $courseid, 'quizid' => $quizid]))->out(false); ?>" class="user-name-link">
+								<?php echo htmlspecialchars($attempt->username); ?>
+							</a>
+						</td>
                             <td>
                                 <?php echo !empty($attempt->attemptno) ? $attempt->attemptno : '-'; ?>
                             </td>
@@ -839,145 +857,68 @@ function initializeInteractiveFilters() {
     
     const sectionSelect = document.getElementById('sectionid');
     const courseSelect = document.getElementById('courseid');
+    const quizSelect   = document.getElementById('quizid');
     
     if (!sectionSelect || !courseSelect) {
         console.log('Missing select elements:', {sectionSelect, courseSelect}); // Debug log
         return;
     }
     
-    // Create course-to-sections mapping from PHP data - WITH FULL DEBUG
-    const courseSections = {};
-    console.log('DEBUG: Starting sections data generation...');
-    
-    <?php 
-    // Generate JavaScript mapping with extensive debugging
-    echo "console.log('PHP sections data check: sections count = " . count($sections) . "');\n";
-    
-    if (!empty($sections)) {
-        $section_count = 0;
-        foreach ($sections as $section) {
-            $section_count++;
-            $section_display = !empty($section->name) ? $section->name : "Section {$section->section}";
-            $full_display = $section_display . " ({$section->coursename})";
-            
-            echo "console.log('Processing section #" . $section_count . ":', {\n";
-            echo "    id: '" . $section->id . "',\n";
-            echo "    name: '" . addslashes($section->name) . "',\n";
-            echo "    coursename: '" . addslashes($section->coursename) . "',\n";
-            echo "    section: '" . $section->section . "',\n";
-            echo "    display: '" . addslashes($section_display) . "'\n";
-            echo "});\n";
-            
-            echo "if (!courseSections['" . addslashes($section->coursename) . "']) {\n";
-            echo "    courseSections['" . addslashes($section->coursename) . "'] = [];\n";
-            echo "    console.log('Created new course group: " . addslashes($section->coursename) . "');\n";
-            echo "}\n";
-            echo "courseSections['" . addslashes($section->coursename) . "'].push({\n";
-            echo "    id: '" . $section->id . "',\n";
-            echo "    name: '" . addslashes($section_display) . "',\n";
-            echo "    fullname: '" . addslashes($full_display) . "'\n";
-            echo "});\n";
-            echo "console.log('Added section to course: " . addslashes($section->coursename) . "');\n";
-        }
-        echo "console.log('TOTAL sections processed: " . $section_count . "');\n";
-    } else {
-        echo "console.log('ERROR: No sections data available in Questions Dashboard');\n";
-        echo "console.log('Sections variable type:', typeof sections);\n";
-        echo "console.log('Sections variable:', sections);\n";
-    }
-    ?>
-    
-    console.log('FINAL courseSections object:', courseSections);
-    
-    console.log('Questions Dashboard - Course sections mapping:', courseSections); // Debug log
-    
-    // Store original sections for "All Courses" view
-    const allSectionsOriginal = Array.from(sectionSelect.options).slice(1); // Skip "All Sections"
-    console.log('Original sections stored:', allSectionsOriginal.length);
-    
-    // Function to filter sections based on selected course - IDENTICAL to Quiz Dashboard
-    function filterSections() {
-        const selectedCourseId = courseSelect.value;
-        
-        // IMPORTANT: Get course NAME from the selected option, not the ID
-        const selectedCourseOption = courseSelect.options[courseSelect.selectedIndex];
-        const selectedCourseName = selectedCourseOption ? selectedCourseOption.textContent : '';
-        
-        console.log('Questions Dashboard filtering:', {
-            courseId: selectedCourseId,
-            courseName: selectedCourseName
-        });
-        
-        // Clear current section options (except "All Sections")
-        while (sectionSelect.children.length > 1) {
-            sectionSelect.removeChild(sectionSelect.lastChild);
-        }
-        
-        // Reset to "All Sections"
-        sectionSelect.selectedIndex = 0;
-        
-        if (selectedCourseId === '') {
-            // Show all sections when no course is selected
-            allSectionsOriginal.forEach(originalOption => {
-                const option = originalOption.cloneNode(true);
-                sectionSelect.appendChild(option);
-            });
-            console.log('Questions Dashboard: Showing all sections');
-        } else {
-            // Show only sections for the selected course
-            console.log('DEBUG: Looking for sections with course name:', selectedCourseName);
-            console.log('DEBUG: Available course names in courseSections:', Object.keys(courseSections));
-            
-            const sectionsForCourse = courseSections[selectedCourseName] || [];
-            console.log('Questions Dashboard: Sections found for', selectedCourseName, ':', sectionsForCourse);
-            
-            // Try exact match first, then fallback to partial match
-            if (sectionsForCourse.length === 0) {
-                console.log('DEBUG: No exact match, trying partial match...');
-                for (const [courseName, sections] of Object.entries(courseSections)) {
-                    console.log('DEBUG: Checking if', courseName, 'matches', selectedCourseName);
-                    if (courseName.includes(selectedCourseName) || selectedCourseName.includes(courseName)) {
-                        console.log('DEBUG: Found partial match:', courseName);
-                        sectionsForCourse.push(...sections);
-                    }
-                }
-            }
-            
-            sectionsForCourse.forEach(section => {
-                const option = document.createElement('option');
-                option.value = section.id;
-                option.textContent = section.fullname;
-                sectionSelect.appendChild(option);
-                console.log('DEBUG: Added option:', section.fullname);
-            });
-            
-            // Show message if no sections found
-            if (sectionsForCourse.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = 'No sections found for this course';
-                option.disabled = true;
-                sectionSelect.appendChild(option);
-                console.log('Questions Dashboard: No sections found for course:', selectedCourseName);
-                console.log('DEBUG: Full courseSections object:', courseSections);
-            }
-        }
-        
-        // Restore selected section if it still exists
-        const currentSectionId = '<?php echo $sectionid; ?>';
-        if (currentSectionId) {
-            sectionSelect.value = currentSectionId;
-        }
+    // Load sections via the Quiz Uploader AJAX endpoint
+    function loadSections(courseId) {
+        if (!sectionSelect) return;
+        sectionSelect.innerHTML = '<option value="">All Sections</option>';
+        if (!courseId) { return; }
+        const url = M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + encodeURIComponent(courseId) + '&sesskey=' + SESSKEY;
+        fetch(url)
+            .then(function(r){ return r.json(); })
+            .then(function(list){
+                const currentSectionId = '<?php echo $sectionid; ?>';
+                let html = '<option value="">All Sections</option>';
+                (list || []).forEach(function(s){
+                    const label = s.name || ('Section ' + s.section);
+                    const sel = (currentSectionId && (''+currentSectionId) === (''+s.id)) ? ' selected' : '';
+                    html += '<option value="' + s.id + '"' + sel + '>' + label.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+                });
+                sectionSelect.innerHTML = html;
+                refreshQuizzes();
+            })
+            .catch(function(e){ console.warn('Section refresh failed', e); });
     }
     
     // Add event listener to course dropdown
     courseSelect.addEventListener('change', function() {
-        console.log('Questions Dashboard course changed to:', this.value, this.options[this.selectedIndex].textContent);
-        filterSections();
+        console.log('Questions Dashboard course changed to:', this.value);
+        loadSections(this.value);
     });
     
     // Initialize filters on page load
-    setTimeout(filterSections, 100); // Small delay to ensure DOM is ready
+    setTimeout(function(){ loadSections(courseSelect.value); refreshQuizzes(); }, 100);
+
+    function refreshQuizzes() {
+        if (!quizSelect) return;
+        const courseId = courseSelect.value;
+        if (!courseId) return;
+        const sectionId = sectionSelect && sectionSelect.value ? sectionSelect.value : '';
+        const url = M.cfg.wwwroot + '/local/quizdashboard/ajax.php?action=get_quizzes&sesskey=' + SESSKEY + '&courseid=' + encodeURIComponent(courseId) + (sectionId ? ('&sectionid=' + sectionId) : '');
+        fetch(url)
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+                if (!data || data.success !== true) return;
+                const current = '<?php echo (int)$quizid; ?>';
+                let html = '<option value="">Select Quiz</option>';
+                data.quizzes.forEach(function(q){
+                    const sel = (current && (''+current) === (''+q.id)) ? ' selected' : '';
+                    html += '<option value="' + q.id + '"' + sel + '>' + q.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+                });
+                quizSelect.innerHTML = html;
+            })
+            .catch(function(e){ console.warn('Quiz refresh failed', e); });
+    }
+
+    if (sectionSelect) {
+        sectionSelect.addEventListener('change', function(){ refreshQuizzes(); });
+    }
 }
 
 // Initialize when DOM is ready

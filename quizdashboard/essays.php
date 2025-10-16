@@ -141,6 +141,7 @@ if (optional_param('action', '', PARAM_ALPHANUMEXT)) {
 $userid      = optional_param('userid', '', PARAM_INT);
 $studentname = optional_param('studentname', '', PARAM_TEXT);
 $coursename  = optional_param('coursename', '', PARAM_TEXT);
+$sectionid   = optional_param('sectionid', '', PARAM_INT);
 $quizname    = optional_param('quizname', '', PARAM_TEXT);
 $questionname = optional_param('questionname', '', PARAM_TEXT);
 $month       = optional_param('month', '', PARAM_TEXT);
@@ -161,7 +162,7 @@ $unique_userids = $filterdata['userids'];
 
 // FIXED: Pass status parameter to the quiz manager
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $month
+    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid
 );
 
 
@@ -275,6 +276,19 @@ require_once(__DIR__ . '/navigation_fallback.php');
         <form method="GET" class="filter-form">
             <div class="filter-row">
 
+				<div class="filter-group">
+					<label for="studentname">User:</label>
+					<select name="studentname" id="studentname">
+						<option value="">All Users</option>
+						<?php foreach ($unique_users as $user): ?>
+							<option value="<?php echo htmlspecialchars($user->fullname); ?>" 
+								<?php echo $studentname === $user->fullname ? 'selected' : ''; ?>>
+								<?php echo htmlspecialchars($user->fullname); ?>
+							</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+
                 <div class="filter-group">
                     <label for="userid">User ID:</label>
                     <select name="userid" id="userid">
@@ -289,28 +303,22 @@ require_once(__DIR__ . '/navigation_fallback.php');
                 </div>
 
                 <div class="filter-group">
-                    <label for="coursename">Course:</label>
-                    <select name="coursename" id="coursename">
-                        <option value="">All Courses</option>
-                        <?php foreach ($unique_courses as $course): ?>
-                            <option value="<?php echo htmlspecialchars($course->fullname); ?>" 
-                                <?php echo $coursename === $course->fullname ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($course->fullname); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+					<label for="coursename">Course:</label>
+					<select name="coursename" id="coursename">
+						<option value="">All Courses</option>
+						<?php foreach ($unique_courses as $course): ?>
+							<option value="<?php echo htmlspecialchars($course->fullname); ?>" data-courseid="<?php echo (int)$course->id; ?>"
+								<?php echo $coursename === $course->fullname ? 'selected' : ''; ?>>
+								<?php echo htmlspecialchars($course->fullname); ?>
+							</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
 
                 <div class="filter-group">
                     <label for="quizname">Quiz:</label>
                     <select name="quizname" id="quizname">
                         <option value="">All Quizzes</option>
-                        <?php foreach ($unique_quizzes as $quiz): ?>
-                            <option value="<?php echo htmlspecialchars($quiz->name); ?>" 
-                                <?php echo $quizname === $quiz->name ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($quiz->name); ?>
-                            </option>
-                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -454,7 +462,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <!-- Removed Sub # column to widen key columns -->
                             <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
                             <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
-                            <td><a href="<?php echo $row->user_activity_url; ?>" class="user-name-link" target="_blank"><?php echo htmlspecialchars($row->studentname); ?></a></td>
+					<td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
                             <td><a href="<?php echo $row->course_url; ?>" class="course-link" target="_blank"><?php echo htmlspecialchars($row->coursename); ?></a></td>
                             <td><?php echo !empty($row->timefinish) ? date('Y-m-d H:i', $row->timefinish) : '-'; ?></td>
                             <td><?php echo $row->time_taken ?: '-'; ?></td>
@@ -897,6 +905,72 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.row-checkbox').forEach(cb => {
         cb.addEventListener('change', updateSelectedCount);
     });
+
+    // Dynamic sections/quizzes refresh using existing AJAX endpoints
+    (function setupCascadingFilters(){
+        const courseSelect = document.getElementById('coursename');
+        const sectionSelect = document.getElementById('sectionid');
+        const quizSelect    = document.getElementById('quizname');
+        if (!courseSelect || !quizSelect) return;
+
+        // Ensure a Section select exists; if not, create a lightweight one before Quiz
+        if (!sectionSelect) {
+            const quizGroup = document.getElementById('quizname').closest('.filter-group');
+            const container = document.createElement('div');
+            container.className = 'filter-group';
+            container.innerHTML = '<label for="sectionid">Section:</label><select name="sectionid" id="sectionid"><option value="">All Sections</option></select>';
+            quizGroup.parentNode.insertBefore(container, quizGroup);
+        }
+
+        const sectionSel = document.getElementById('sectionid');
+
+        function loadSections() {
+            if (!sectionSel) return;
+            sectionSel.innerHTML = '<option value="">All Sections</option>';
+            const opt = courseSelect.options[courseSelect.selectedIndex];
+            const courseId = opt ? opt.getAttribute('data-courseid') : '';
+            if (!courseId) { refreshQuizzes(); return; }
+            fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + encodeURIComponent(courseId) + '&sesskey=' + SESSKEY)
+                .then(r => r.json())
+                .then(list => {
+                    let html = '<option value="">All Sections</option>';
+                    (list||[]).forEach(s => {
+                        const label = s.name || ('Section ' + s.section);
+                        html += '<option value="' + s.id + '">' + label.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+                    });
+                    sectionSel.innerHTML = html;
+                    refreshQuizzes();
+                })
+                .catch(() => { refreshQuizzes(); });
+        }
+
+        function refreshQuizzes() {
+            if (!quizSelect) return;
+            const opt = courseSelect.options[courseSelect.selectedIndex];
+            const courseId = opt ? opt.getAttribute('data-courseid') : '';
+            if (!courseId) return;
+            const sectionId = sectionSel && sectionSel.value ? sectionSel.value : '';
+            const url = M.cfg.wwwroot + '/local/quizdashboard/ajax.php?action=get_quizzes&sesskey=' + SESSKEY + '&courseid=' + encodeURIComponent(courseId) + (sectionId ? ('&sectionid=' + sectionId) : '');
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    if (!data || data.success !== true) return;
+                    let html = '<option value="">All Quizzes</option>';
+                    const current = '<?php echo addslashes($quizname); ?>';
+                    data.quizzes.forEach(q => {
+                        const sel = (current && current === q.name) ? ' selected' : '';
+                        html += '<option value="' + q.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '"' + sel + '>' + q.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+                    });
+                    quizSelect.innerHTML = html;
+                })
+                .catch(()=>{});
+        }
+
+        courseSelect.addEventListener('change', loadSections);
+        if (sectionSel) sectionSel.addEventListener('change', refreshQuizzes);
+        // Initial population
+        loadSections();
+    })();
 });
 </script>
 

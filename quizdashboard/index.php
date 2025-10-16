@@ -384,7 +384,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <select name="coursename" id="coursename">
                         <option value="">All Courses</option>
                         <?php foreach ($unique_courses as $course): ?>
-                            <option value="<?php echo htmlspecialchars($course->fullname); ?>" 
+                            <option value="<?php echo htmlspecialchars($course->fullname); ?>" data-courseid="<?php echo (int)$course->id; ?>"
                                 <?php echo $coursename === $course->fullname ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($course->fullname); ?>
                             </option>
@@ -577,11 +577,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <?php echo $row->userid; ?>
                                 </a>
                             </td>
-                            <td>
-                                <a href="<?php echo $row->user_activity_url; ?>" class="user-name-link" target="_blank">
-                                    <?php echo htmlspecialchars($row->studentname); ?>
-                                </a>
-                            </td>
+						<td>
+							<a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link">
+								<?php echo htmlspecialchars($row->studentname); ?>
+							</a>
+						</td>
                             <td>
                                 <a href="<?php echo $row->course_url; ?>" class="course-link" target="_blank">
                                     <?php echo htmlspecialchars($row->coursename); ?>
@@ -651,92 +651,88 @@ function initializeInteractiveFilters() {
     
     const sectionSelect = document.getElementById('sectionid');
     const courseSelect = document.getElementById('coursename');
+    const quizSelect    = document.getElementById('quizname');
     
     if (!sectionSelect || !courseSelect) {
         console.log('Missing select elements:', {sectionSelect, courseSelect}); // Debug log
         return;
     }
     
-    // Create course-to-sections mapping from PHP data
-    const courseSections = {};
-    <?php 
-    // Generate JavaScript mapping of course names to their section IDs
-    foreach ($unique_sections as $section) {
-        $section_display = !empty($section->name) ? $section->name : "Section {$section->section}";
-        $full_display = $section_display . " ({$section->coursename})";
-        echo "if (!courseSections['" . addslashes($section->coursename) . "']) {\n";
-        echo "    courseSections['" . addslashes($section->coursename) . "'] = [];\n";
-        echo "}\n";
-        echo "courseSections['" . addslashes($section->coursename) . "'].push({\n";
-        echo "    id: '" . $section->id . "',\n";
-        echo "    name: '" . addslashes($section_display) . "',\n";
-        echo "    fullname: '" . addslashes($full_display) . "'\n";
-        echo "});\n";
-    }
-    ?>
-    
-    console.log('Course sections mapping:', courseSections); // Debug log
-    
-    // Store original sections for "All Courses" view
-    const allSectionsOriginal = Array.from(sectionSelect.options).slice(1); // Skip "All Sections"
-    
-    // Function to filter sections based on selected course
-    function filterSections() {
-        const selectedCourse = courseSelect.value;
-        console.log('Filtering sections for course:', selectedCourse); // Debug log
-        
-        // Clear current section options (except "All Sections")
-        while (sectionSelect.children.length > 1) {
-            sectionSelect.removeChild(sectionSelect.lastChild);
-        }
-        
-        // Reset to "All Sections"
-        sectionSelect.selectedIndex = 0;
-        
-        if (selectedCourse === '') {
-            // Show all sections when no course is selected
-            allSectionsOriginal.forEach(originalOption => {
-                const option = originalOption.cloneNode(true);
-                sectionSelect.appendChild(option);
-            });
-            console.log('Showing all sections'); // Debug log
-        } else {
-            // Show only sections for the selected course
-            const sectionsForCourse = courseSections[selectedCourse] || [];
-            console.log('Sections for course:', sectionsForCourse); // Debug log
-            
-            sectionsForCourse.forEach(section => {
-                const option = document.createElement('option');
-                option.value = section.id;
-                option.textContent = section.fullname;
-                sectionSelect.appendChild(option);
-            });
-            
-            // Show message if no sections found
-            if (sectionsForCourse.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = 'No sections found for this course';
-                option.disabled = true;
-                sectionSelect.appendChild(option);
-            }
-        }
-        
-        // Restore selected section if it still exists
-        const currentSectionId = '<?php echo $sectionid; ?>';
-        if (currentSectionId) {
-            sectionSelect.value = currentSectionId;
-        }
+    // Load sections via the Quiz Uploader AJAX endpoint
+    function loadSections(courseId) {
+        if (!sectionSelect) return;
+        // Reset list
+        sectionSelect.innerHTML = '<option value="">All Sections</option>';
+        if (!courseId) { return; }
+        const url = M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + encodeURIComponent(courseId) + '&sesskey=' + SESSKEY;
+        fetch(url)
+            .then(function(r){ return r.json(); })
+            .then(function(list){
+                const currentSectionId = '<?php echo $sectionid; ?>';
+                let html = '<option value="">All Sections</option>';
+                (list || []).forEach(function(s){
+                    const label = s.name || ('Section ' + s.section);
+                    const sel = (currentSectionId && (''+currentSectionId) === (''+s.id)) ? ' selected' : '';
+                    html += '<option value="' + s.id + '"' + sel + '>' + label.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+                });
+                sectionSelect.innerHTML = html;
+                // After sections load, refresh quizzes to reflect combination
+                refreshQuizzes();
+            })
+            .catch(function(e){ console.warn('Section refresh failed', e); });
     }
     
     // Add event listener to course dropdown
     courseSelect.addEventListener('change', function() {
         console.log('Course changed to:', this.value); // Debug log
-        filterSections();
+        const opt = this.options[this.selectedIndex];
+        const cid = opt ? opt.getAttribute('data-courseid') : '';
+        loadSections(cid);
     });
+
+    // When section changes, refresh quizzes
+    if (sectionSelect) {
+        sectionSelect.addEventListener('change', function() {
+            refreshQuizzes();
+        });
+    }
     
     // Initialize filters on page load
-    setTimeout(filterSections, 100); // Small delay to ensure DOM is ready
+    setTimeout(function(){
+        const opt = courseSelect.options[courseSelect.selectedIndex];
+        const cid = opt ? opt.getAttribute('data-courseid') : '';
+        loadSections(cid);
+        refreshQuizzes();
+    }, 100);
+
+    // Fetch quizzes for selected course/section using plugin AJAX
+    function refreshQuizzes(){
+        if (!quizSelect) return;
+        const courseName = courseSelect.value;
+        if (!courseName) {
+            return; // list already populated with all quizzes (server-rendered) when no course filter
+        }
+        // Get actual course id from selected option's data attribute
+        const selectedOption = courseSelect.options[courseSelect.selectedIndex];
+        const courseId = selectedOption ? selectedOption.getAttribute('data-courseid') : '';
+        const sectionId = sectionSelect && sectionSelect.value ? sectionSelect.value : '';
+        if (!courseId) return;
+        const url = M.cfg.wwwroot + '/local/quizdashboard/ajax.php?action=get_quizzes&sesskey=' + SESSKEY + '&courseid=' + encodeURIComponent(courseId) + (sectionId ? ('&sectionid=' + sectionId) : '');
+        fetch(url)
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            if (!data || data.success !== true) return;
+            const current = '<?php echo addslashes($quizname); ?>';
+            let opts = document.createElement('select');
+            let html = '<option value="">All Quizzes</option>';
+            data.quizzes.forEach(function(q){
+                const sel = (current && current === q.name) ? ' selected' : '';
+                html += '<option value="' + q.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '"' + sel + '>' + q.name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</option>';
+            });
+            quizSelect.innerHTML = html;
+        })
+        .catch(function(e){ console.warn('Quiz refresh failed', e); });
+    }
 }
 
 // Initialize when DOM is ready

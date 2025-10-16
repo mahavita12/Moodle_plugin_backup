@@ -71,6 +71,40 @@ try {
     };
 
     switch ($action) {
+        case 'get_quizzes':
+            $courseid  = required_param('courseid', PARAM_INT);
+            $sectionid = optional_param('sectionid', 0, PARAM_INT);
+
+            // Validate course and capability
+            $DB->get_record('course', ['id' => $courseid], '*', MUST_EXIST);
+            $ctx = context_course::instance($courseid);
+            require_capability('moodle/course:view', $ctx);
+
+            // Only include quizzes that have at least one attempt in progress or finished
+            $sql = "SELECT DISTINCT q.id, q.name
+                      FROM {quiz} q
+                      JOIN {course_modules} cm ON cm.instance = q.id
+                      JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                     WHERE q.course = :courseid
+                       AND EXISTS (
+                           SELECT 1
+                             FROM {quiz_attempts} qa
+                            WHERE qa.quiz = q.id
+                              AND qa.state IN ('finished','inprogress')
+                       )";
+            $params = ['courseid' => $courseid];
+            if (!empty($sectionid)) {
+                $sql .= " AND cm.section = :sectionid";
+                $params['sectionid'] = $sectionid;
+            }
+            $sql .= " ORDER BY q.name";
+
+            $records = $DB->get_records_sql($sql, $params);
+            $result = array_map(function($r) { return ['id' => (int)$r->id, 'name' => (string)$r->name]; }, array_values($records));
+
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            echo json_encode(['success' => true, 'quizzes' => $result], JSON_UNESCAPED_UNICODE);
+            exit;
         case 'show_key_source':
             $k1 = get_config('local_quizdashboard', 'openai_api_key');
             $k2 = get_config('openai_api_key');
