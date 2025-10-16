@@ -750,7 +750,7 @@ function executeBulkAction() {
 }
 
 function openFeedbackWindow(attemptId) {
-    var url = '<?php echo (new moodle_url('/local/quizdashboard/viewfeedback.php'))->out(false); ?>?id=' + attemptId;
+    var url = '<?php echo (new moodle_url('/local/quizdashboard/viewfeedback.php'))->out(false); ?>?clean=1&id=' + attemptId;
     var feedbackWindow = window.open(url, 'feedback_' + attemptId, 'width=1000,height=700,scrollbars=yes,resizable=yes,menubar=yes,toolbar=yes');
     if (feedbackWindow) {
         feedbackWindow.focus();

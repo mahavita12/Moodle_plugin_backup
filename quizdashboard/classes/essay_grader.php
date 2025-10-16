@@ -1305,10 +1305,14 @@ class essay_grader {
             // Remove comment-based page break markers
             $homework_html = preg_replace('/<!--\s*page\s*break\s*-->/i', '', $homework_html);
             
-            // Remove any existing wrapper from homework_html to avoid double-wrapping
-            $clean_homework = preg_replace('/<div[^>]*class="homework-section"[^>]*>/', '', $homework_html);
-            $clean_homework = preg_replace('/<\/div>\s*$/', '', $clean_homework);
-            
+            // Ensure homework is wrapped so print CSS can target it precisely
+            // Do NOT strip strategic markers; wrap outside them.
+            $clean_homework = $homework_html;
+            // If not already wrapped, add a wrapper that our print CSS understands
+            if (stripos($clean_homework, 'class="homework-section"') === false && stripos($clean_homework, 'class=\'homework-section\'') === false) {
+                $clean_homework = '<div class="homework-section">' . $clean_homework . '</div>';
+            }
+
             $html_output .= $clean_homework;
             $html_output .= '</div>';
         }

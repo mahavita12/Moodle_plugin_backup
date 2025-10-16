@@ -6,6 +6,12 @@
 
 // Only proceed if we're not in CLI mode and user is logged in
 if (!CLI_SCRIPT && !during_initial_install()) {
+    // Skip for print or clean views (e.g., feedback windows)
+    $isclean = isset($_GET['clean']) && (int)$_GET['clean'] === 1;
+    $isprint = isset($_GET['print']) && (int)$_GET['print'] === 1;
+    if ($isclean || $isprint) {
+        return;
+    }
     
     // Use output buffering to inject navigation at the end of page rendering
     if (!defined('QUIZDASHBOARD_BUFFER_STARTED')) {
@@ -28,6 +34,10 @@ if (!CLI_SCRIPT && !during_initial_install()) {
             }
             
             global $CFG, $PAGE;
+            // Extra safety: if the final page layout is print, do not inject
+            if (isset($PAGE) && $PAGE->pagelayout === 'print') {
+                return $buffer;
+            }
             
             $current_url = $PAGE->url ? $PAGE->url->out(false) : '';
             $is_main_dashboard = strpos($current_url, '/local/quizdashboard/index.php') !== false;

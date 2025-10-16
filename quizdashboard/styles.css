@@ -1127,7 +1127,7 @@
 
 @media print {
     /* Hide navigation and other screen elements */
-    .navbar, .nav, .breadcrumb, .screen-only {
+    .navbar, .nav, .breadcrumb, .screen-only, .quiz-dashboard-global-nav, .nav-button, .nav-menu, .global-blocks-toggle {
         display: none !important;
     }
     
@@ -1204,6 +1204,37 @@
     margin: 0 auto;
     padding: 20px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ============================== */
+/* CLEAN VIEW (minimal chrome) */
+/* ============================== */
+
+.clean-feedback-view {
+    max-width: 900px;
+    margin: 20px auto;
+    background: #ffffff;
+    padding: 24px 28px;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.clean-feedback-view h1,
+.clean-feedback-view h2,
+.clean-feedback-view h3 {
+    color: #1f2937;
+    margin: 0.75rem 0 0.5rem 0;
+}
+
+.clean-feedback-view .feedback-header { border: 0; padding-bottom: 0; margin-bottom: 10px; }
+.clean-feedback-view .student-info { border-left-color: #0ea5e9; background: #f8fafc; }
+.clean-feedback-view .feedback-content h2 { border: 0; padding-bottom: 0; margin-top: 18px; color: #0f172a; }
+.clean-feedback-view .feedback-content { font-size: 15px; color: #111827; line-height: 1.6; }
+
+/* Clean print: hide any chrome */
+@media print {
+    .clean-feedback-view { box-shadow: none; margin: 0; padding: 0; max-width: 100%; }
 }
 
 .popup-feedback-view .feedback-header {
@@ -1364,7 +1395,8 @@
     }
     
     .admin-feedback-view,
-    .popup-feedback-view {
+    .popup-feedback-view,
+    .clean-feedback-view {
         margin: 0;
         padding: 0;
         box-shadow: none;
@@ -1385,6 +1417,28 @@
     .admin-feedback-view p {
         margin: 3pt 0 !important;
     }
+}
+
+/* Narrow page margins and optimize for paper usage */
+@page {
+    size: A4;
+    margin: 8mm; /* reduce default to save paper */
+}
+
+@media print {
+    body { margin: 0; }
+    .clean-feedback-view,
+    .admin-feedback-view,
+    .popup-feedback-view {
+        padding: 6mm 6mm; /* tighter inner padding */
+    }
+    /* Page break rules for feedback vs homework */
+    .feedback-section { page-break-inside: auto; }
+    .feedback-section + .feedback-section .homework-section { page-break-before: always; }
+    /* Prevent breaks within any single exercise */
+    .homework-section .exercise-section { page-break-inside: avoid; }
+    /* Also avoid breaks between exercises by reducing margins rather than inserting breaks */
+    .homework-section .exercise-section + .exercise-section { page-break-before: avoid; }
 }
 
 /* ============================== */

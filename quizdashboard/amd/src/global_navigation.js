@@ -9,6 +9,12 @@ define(['jquery'], function($) {
         
         init: function() {
             console.log('Initializing Quiz Dashboard global navigation');
+            try {
+                var params = new URLSearchParams(window.location.search);
+                if (params.get('clean') === '1' || params.get('print') === '1') {
+                    return; // don't inject on clean/print views
+                }
+            } catch (e) {}
             this.injectStyles();
             this.injectNavigation();
         },

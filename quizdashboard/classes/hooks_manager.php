@@ -37,6 +37,13 @@ class hooks_manager {
             return;
         }
         
+        // Skip injection for print/clean views
+        $is_print_layout = ($PAGE->pagelayout === 'print');
+        $has_clean_flag = isset($_GET['clean']) && (int)$_GET['clean'] === 1;
+        if ($is_print_layout || $has_clean_flag) {
+            return;
+        }
+
         // Add CSS and JavaScript to inject navigation
         $PAGE->requires->js_call_amd('local_quizdashboard/global_navigation', 'init');
         
