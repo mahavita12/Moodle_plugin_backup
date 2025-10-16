@@ -170,6 +170,7 @@ define(['jquery'], function($) {
             var currentPath = window.location.pathname;
             var quizActive = currentPath.indexOf('/local/quizdashboard/index.php') !== -1 ? 'active' : '';
             var essayActive = currentPath.indexOf('/local/quizdashboard/essays.php') !== -1 ? 'active' : '';
+            var essaysmasterActive = currentPath.indexOf('/local/essaysmaster/dashboard.php') !== -1 ? 'active' : '';
             
             // Get Moodle's wwwroot from the page
             var wwwroot = M.cfg.wwwroot || '';
@@ -181,6 +182,7 @@ define(['jquery'], function($) {
                     <div class="nav-menu">
                         <a href="${wwwroot}/local/quizdashboard/index.php" class="${quizActive}">📝 Quiz Dashboard</a>
                         <a href="${wwwroot}/local/quizdashboard/essays.php" class="${essayActive}">✍️ Essay Dashboard</a>
+                        <a href="${wwwroot}/local/essaysmaster/dashboard.php" class="${essaysmasterActive}">🧠 EssaysMaster</a>
                     </div>
                 </div>
             </div>`;
