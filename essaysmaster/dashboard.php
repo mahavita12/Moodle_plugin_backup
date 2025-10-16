@@ -89,9 +89,6 @@ echo $OUTPUT->header();
 
 // Dashboard tabs
 $tabs = [];
-$tabs[] = new tabobject('overview', 
-    new moodle_url('/local/essaysmaster/dashboard.php'), 
-    get_string('overview', 'local_essaysmaster'));
 $tabs[] = new tabobject('students', 
     new moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students']), 
     get_string('student_progress', 'local_essaysmaster'));
@@ -99,7 +96,7 @@ $tabs[] = new tabobject('quizzes',
     new moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'quizzes']), 
     get_string('quiz_configuration', 'local_essaysmaster'));
 
-$currenttab = optional_param('tab', 'overview', PARAM_ALPHA);
+$currenttab = optional_param('tab', 'students', PARAM_ALPHA);
 echo $OUTPUT->tabtree($tabs, $currenttab);
 
 // Main content based on active tab
@@ -173,11 +170,11 @@ switch ($currenttab) {
             'type' => 'submit',
             'class' => 'btn btn-primary'
         ]);
-        $filter_form .= html_writer::tag('button', 'Reset', [
-            'type' => 'button',
-            'class' => 'btn btn-secondary',
-            'onclick' => 'resetFilters()'
-        ]);
+        $filter_form .= html_writer::link(
+            new moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students']),
+            'Reset',
+            ['class' => 'btn btn-secondary']
+        );
         $filter_form .= html_writer::end_div();
         
         $filter_form .= html_writer::end_div(); // filter-row
@@ -262,43 +259,9 @@ switch ($currenttab) {
         echo html_writer::end_div(); // essaysmaster-dashboard
         break;
         
-    default: // overview
-        echo html_writer::start_div('essaysmaster-dashboard overview');
-        
-        // Statistics cards
-        echo html_writer::start_div('statistics-row');
-        
-        $stats_html = '';
-        $stats_html .= html_writer::div(
-            html_writer::tag('h4', $statistics['total_students']) .
-            html_writer::tag('p', get_string('total_students', 'local_essaysmaster', '')),
-            'stat-card'
-        );
-        $stats_html .= html_writer::div(
-            html_writer::tag('h4', $statistics['active_sessions']) .
-            html_writer::tag('p', get_string('active_sessions', 'local_essaysmaster', '')),
-            'stat-card'
-        );
-        $stats_html .= html_writer::div(
-            html_writer::tag('h4', $statistics['completion_rate'] . '%') .
-            html_writer::tag('p', get_string('completion_rate', 'local_essaysmaster', '')),
-            'stat-card'
-        );
-        $stats_html .= html_writer::div(
-            html_writer::tag('h4', $statistics['avg_score'] . '/100') .
-            html_writer::tag('p', get_string('avg_score', 'local_essaysmaster', '')),
-            'stat-card'
-        );
-        
-        echo $stats_html;
-        echo html_writer::end_div(); // statistics-row
-        
-        // Recent activity summary
-        echo html_writer::tag('h3', get_string('recent_activity', 'local_essaysmaster'));
-        $recent_progress = array_slice($student_progress, 0, 10); // Show top 10
-        echo $dashboard->render_student_progress_table($recent_progress, true); // Compact view
-        
-        echo html_writer::end_div(); // essaysmaster-dashboard overview
+    default:
+        // Fallback: redirect to students tab if an unknown tab is passed
+        redirect(new moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students']));
         break;
 }
 

@@ -597,12 +597,14 @@ class dashboard_manager {
                     ])
                 );
                 
-                // Student Name - link to user activity
-                $user_activity_url = new \moodle_url('/user/profile.php', ['id' => $progress->user_id ?? 0]);
+                // Student Name - act as filter link back to this dashboard (no external profile)
+                $filter_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
+                    'tab' => 'students',
+                    'search' => $progress->student_name ?? ''
+                ]);
                 $output .= \html_writer::tag('td',
-                    \html_writer::link($user_activity_url, $progress->student_name ?? 'Unknown Student', [
-                        'class' => 'user-name-link',
-                        'target' => '_blank'
+                    \html_writer::link($filter_url, $progress->student_name ?? 'Unknown Student', [
+                        'class' => 'user-name-link'
                     ])
                 );
                 
@@ -968,9 +970,10 @@ class dashboard_manager {
                     'data-userid' => $progress->user_id ?? ''
                 ]);
                 
-                // Student name (clickable link to detail view)
-                $student_url = new \moodle_url('/local/essaysmaster/student_detail.php', [
-                    'session_id' => $progress->session_id ?? 0
+                // Student name acts as filter link back to dashboard
+                $student_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
+                    'tab' => 'students',
+                    'search' => $progress->student_name ?? ''
                 ]);
                 $row[] = \html_writer::link($student_url, $progress->student_name ?? 'Unknown Student');
                 
