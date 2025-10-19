@@ -20,6 +20,65 @@ require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 class quiz_creator {
 
     /**
+     * Build quiz settings object based on mode (default or test).
+     *
+     * @param string $mode Quiz settings mode ('default' or 'test')
+     * @param int $questioncount Number of questions in the quiz
+     * @param int $timelimit Time limit in minutes (only for test mode)
+     * @return object Quiz settings object
+     */
+    public static function build_quiz_settings($mode = 'default', $questioncount = 0, $timelimit = 45) {
+        $settings = new \stdClass();
+
+        // Set maximum grade equal to number of questions
+        $settings->grade = $questioncount > 0 ? $questioncount : 10;
+
+        // All 8 review option fields
+        $allreviewoptions = ['attempt', 'correctness', 'marks', 'maxmarks', 'specificfeedback', 'generalfeedback', 'rightanswer', 'overallfeedback'];
+        
+        if ($mode === 'test') {
+            // Test mode settings
+            $settings->preferredbehaviour = 'deferredfeedback';
+            $settings->shuffleanswers = 0; // No shuffle within questions
+            
+            // Time limit in seconds (convert minutes to seconds)
+            $settings->timelimit = $timelimit * 60;
+            
+            // Review options - tick all 8 options for all time periods
+            // Note: For deferred feedback, "during" will be greyed out by Moodle, but we'll tick them anyway
+            $settings->reviewoptions = [
+                'during' => ['correctness', 'marks', 'maxmarks', 'specificfeedback'], // These 4 will be ticked but greyed out
+                'immediately' => $allreviewoptions, // All 8 options
+                'open' => $allreviewoptions, // All 8 options
+                'closed' => $allreviewoptions // All 8 options
+            ];
+            
+            // Completion conditions
+            $settings->completionminattempts = 2;
+            $settings->completionminattemptsenabled = 1;
+            
+        } else {
+            // Default mode settings
+            $settings->preferredbehaviour = 'interactive';
+            $settings->shuffleanswers = 0; // No shuffle within questions
+            
+            // Review options - tick all 8 options for all time periods
+            $settings->reviewoptions = [
+                'during' => ['correctness', 'marks', 'maxmarks', 'specificfeedback'], // The 4 options specified
+                'immediately' => $allreviewoptions, // All 8 options
+                'open' => $allreviewoptions, // All 8 options
+                'closed' => $allreviewoptions // All 8 options
+            ];
+            
+            // Completion conditions
+            $settings->completionminattempts = 2;
+            $settings->completionminattemptsenabled = 1;
+        }
+
+        return $settings;
+    }
+
+    /**
      * Create a quiz activity in a course section.
      *
      * @param int $courseid Course ID
@@ -97,18 +156,35 @@ class quiz_creator {
                 'closed' => 0x00010        // 16
             ];
             
-            foreach ($reviewfields as $field) {
-                $configfield = 'review' . $field;
-                $defaultvalue = $quizconfig->$configfield ?? 69904; // Default to all times enabled
-                
-                // Set individual checkbox fields based on bit flags
-                foreach ($reviewtimes as $time) {
-                    $checkboxfield = $field . $time;
-                    // Check if this time bit is set in the config
-                    if ($defaultvalue & $timebits[$time]) {
-                        $moduleinfo->$checkboxfield = 1;
-                    } else {
-                        $moduleinfo->$checkboxfield = 0;
+            // Check if custom review options are provided in settings
+            if (isset($settings->reviewoptions) && is_array($settings->reviewoptions)) {
+                // Use custom review options from settings
+                foreach ($reviewfields as $field) {
+                    foreach ($reviewtimes as $time) {
+                        $checkboxfield = $field . $time;
+                        // Check if this field is enabled for this time period
+                        if (isset($settings->reviewoptions[$time]) && in_array($field, $settings->reviewoptions[$time])) {
+                            $moduleinfo->$checkboxfield = 1;
+                        } else {
+                            $moduleinfo->$checkboxfield = 0;
+                        }
+                    }
+                }
+            } else {
+                // Use default Moodle config values
+                foreach ($reviewfields as $field) {
+                    $configfield = 'review' . $field;
+                    $defaultvalue = $quizconfig->$configfield ?? 69904; // Default to all times enabled
+                    
+                    // Set individual checkbox fields based on bit flags
+                    foreach ($reviewtimes as $time) {
+                        $checkboxfield = $field . $time;
+                        // Check if this time bit is set in the config
+                        if ($defaultvalue & $timebits[$time]) {
+                            $moduleinfo->$checkboxfield = 1;
+                        } else {
+                            $moduleinfo->$checkboxfield = 0;
+                        }
                     }
                 }
             }
@@ -122,6 +198,13 @@ class quiz_creator {
             $moduleinfo->showblocks = $settings->showblocks ?? $quizconfig->showblocks ?? 0;
             $moduleinfo->completionattemptsexhausted = $settings->completionattemptsexhausted ?? 0;
             $moduleinfo->completionpass = $settings->completionpass ?? 0;
+            
+            // Completion tracking settings
+            if (isset($settings->completionminattemptsenabled) && $settings->completionminattemptsenabled) {
+                $moduleinfo->completion = 2; // COMPLETION_TRACKING_AUTOMATIC
+                $moduleinfo->completionminattempts = $settings->completionminattempts ?? 2;
+                $moduleinfo->completionminattemptsenabled = 1;
+            }
 
             // Create the module
             $moduleinfo = add_moduleinfo($moduleinfo, $course);

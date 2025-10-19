@@ -557,7 +557,9 @@ function process_upload($data) {
                 'course' => $data->course1,
                 'section' => $section1id,
                 'quizname' => $quizname1,
-                'label' => 'Course 1 (Central Question Bank)'
+                'label' => 'Course 1 (Central Question Bank)',
+                'settings' => $data->quizsettings1 ?? 'default',
+                'timelimit' => $data->timelimit1 ?? 45
             ];
         }
 
@@ -581,7 +583,9 @@ function process_upload($data) {
                     'course' => $data->course2,
                     'section' => $section2id,
                     'quizname' => $data->quizname2,
-                    'label' => 'Course 2'
+                    'label' => 'Course 2',
+                    'settings' => $data->quizsettings2 ?? 'default',
+                    'timelimit' => $data->timelimit2 ?? 45
                 ];
             }
         }
@@ -606,7 +610,9 @@ function process_upload($data) {
                     'course' => $data->course3,
                     'section' => $section3id,
                     'quizname' => $data->quizname3,
-                    'label' => 'Course 3'
+                    'label' => 'Course 3',
+                    'settings' => $data->quizsettings3 ?? 'default',
+                    'timelimit' => $data->timelimit3 ?? 45
                 ];
             }
         }
@@ -651,6 +657,14 @@ function process_upload($data) {
 
         foreach ($quiz_destinations as $destination) {
             error_log('Quiz Uploader - Creating quiz "' . $destination['quizname'] . '" in ' . $destination['label'] . ': course=' . $destination['course'] . ', section=' . $destination['section']);
+
+            // Build settings based on quiz settings mode
+            $quizsettingsmode = $destination['settings'] ?? 'default';
+            $questioncount = count($importresult->questionids);
+            $timelimit = $destination['timelimit'] ?? 45;
+            $settings = \local_quiz_uploader\quiz_creator::build_quiz_settings($quizsettingsmode, $questioncount, $timelimit);
+            
+            error_log('Quiz Uploader - Using quiz settings mode: ' . $quizsettingsmode . ' with ' . $questioncount . ' questions and time limit: ' . $timelimit . ' minutes');
 
             // Create quiz
             $quizresult = \local_quiz_uploader\quiz_creator::create_quiz(

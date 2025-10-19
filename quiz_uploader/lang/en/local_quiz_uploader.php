@@ -34,6 +34,16 @@ $string['checkduplicates_help'] = 'Check if quiz or questions already exist befo
 
 // Quiz settings
 $string['quizsettings'] = 'Quiz Settings (Optional)';
+$string['quizsettings1'] = 'Quiz Settings 1';
+$string['quizsettings2'] = 'Quiz Settings 2';
+$string['quizsettings3'] = 'Quiz Settings 3';
+$string['quizsettings_help'] = 'Select quiz behavior mode: Default (Interactive with multiple tries) or Test (Deferred Feedback)';
+$string['timelimit1'] = 'Time Limit (minutes)';
+$string['timelimit1_help'] = 'Time limit in minutes for Test mode. Default is 45 minutes. This field only appears when Test mode is selected.';
+$string['timelimit2'] = 'Time Limit (minutes)';
+$string['timelimit2_help'] = 'Time limit in minutes for Test mode. Default is 45 minutes. This field only appears when Test mode is selected.';
+$string['timelimit3'] = 'Time Limit (minutes)';
+$string['timelimit3_help'] = 'Time limit in minutes for Test mode. Default is 45 minutes. This field only appears when Test mode is selected.';
 $string['timeclose'] = 'Close the quiz';
 $string['timeclose_help'] = 'Date and time when the quiz will close';
 $string['timelimit'] = 'Time limit (minutes)';

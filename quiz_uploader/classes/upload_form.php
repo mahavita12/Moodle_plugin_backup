@@ -83,6 +83,21 @@ class upload_form extends \moodleform {
         $mform->setType('quizname1', PARAM_TEXT);
         $mform->addRule('quizname1', 'Required', 'required', null, 'client');
 
+        // Quiz Settings 1
+        $quizsettings = [
+            'default' => 'Default (Interactive with multiple tries)',
+            'test' => 'Test (Deferred Feedback)'
+        ];
+        $mform->addElement('select', 'quizsettings1', 'Quiz Settings 1', $quizsettings);
+        $mform->setDefault('quizsettings1', 'default');
+        
+        // Time limit for Test mode (in minutes)
+        $mform->addElement('text', 'timelimit1', 'Time Limit (minutes)', ['size' => '10']);
+        $mform->setType('timelimit1', PARAM_INT);
+        $mform->setDefault('timelimit1', 45);
+        $mform->addHelpButton('timelimit1', 'timelimit1', 'local_quiz_uploader');
+        $mform->hideIf('timelimit1', 'quizsettings1', 'eq', 'default');
+
         // Course 2: Optional
         $mform->addElement('static', 'course2_label', '', '<strong>Quiz Copy 2 (Optional)</strong>');
         $mform->addElement('select', 'course2', 'Course 2', ['' => '-- Leave blank to skip --'] + $courses);
@@ -94,6 +109,17 @@ class upload_form extends \moodleform {
         $mform->addElement('text', 'quizname2', 'Quiz Name 2', ['size' => '50']);
         $mform->setType('quizname2', PARAM_TEXT);
 
+        // Quiz Settings 2
+        $mform->addElement('select', 'quizsettings2', 'Quiz Settings 2', $quizsettings);
+        $mform->setDefault('quizsettings2', 'default');
+        
+        // Time limit for Test mode (in minutes)
+        $mform->addElement('text', 'timelimit2', 'Time Limit (minutes)', ['size' => '10']);
+        $mform->setType('timelimit2', PARAM_INT);
+        $mform->setDefault('timelimit2', 45);
+        $mform->addHelpButton('timelimit2', 'timelimit2', 'local_quiz_uploader');
+        $mform->hideIf('timelimit2', 'quizsettings2', 'eq', 'default');
+
         // Course 3: Optional
         $mform->addElement('static', 'course3_label', '', '<strong>Quiz Copy 3 (Optional)</strong>');
         $mform->addElement('select', 'course3', 'Course 3', ['' => '-- Leave blank to skip --'] + $courses);
@@ -104,6 +130,17 @@ class upload_form extends \moodleform {
         // Quiz Name 3
         $mform->addElement('text', 'quizname3', 'Quiz Name 3', ['size' => '50']);
         $mform->setType('quizname3', PARAM_TEXT);
+
+        // Quiz Settings 3
+        $mform->addElement('select', 'quizsettings3', 'Quiz Settings 3', $quizsettings);
+        $mform->setDefault('quizsettings3', 'default');
+        
+        // Time limit for Test mode (in minutes)
+        $mform->addElement('text', 'timelimit3', 'Time Limit (minutes)', ['size' => '10']);
+        $mform->setType('timelimit3', PARAM_INT);
+        $mform->setDefault('timelimit3', 45);
+        $mform->addHelpButton('timelimit3', 'timelimit3', 'local_quiz_uploader');
+        $mform->hideIf('timelimit3', 'quizsettings3', 'eq', 'default');
 
         // 5-Layer Category Structure (System > Subject > Type > ClassCode > TopicName)
         $mform->addElement('header', 'categoryheader', 'Question Bank Category (5-Layer Structure)');
