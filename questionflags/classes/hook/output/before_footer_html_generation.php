@@ -205,48 +205,83 @@ class before_footer_html_generation {
                     var questions = document.querySelectorAll(".que");
                     if (questions.length === 0) return;
                     
-                    // Create the toggle button with Moodle navigation styling
-                    var btnContainer = document.createElement("div");
-                    btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
+                    // Detect quiz display mode: check if we\'re viewing one page at a time
+                    // In "one page at a time" mode, there\'s typically only 1-2 questions visible
+                    // In "show all" mode, there are many questions
+                    var isOnePageMode = questions.length <= 2;
                     
-                    var btn = document.createElement("button");
-                    btn.id = "feedbackToggleBtn";
-                    btn.className = "btn btn-primary";
-                    btn.style.cssText = "padding: 10px 20px; font-size: 14px; font-weight: bold;";
-                    btn.textContent = "Feedback";
+                    console.log("FEEDBACK TOGGLE: Questions count:", questions.length, "Mode:", isOnePageMode ? "one-page-at-a-time" : "show-all");
                     
-                    btnContainer.appendChild(btn);
-                    
-                    // Insert button after the first question (below answer choices)
-                    var firstQuestion = questions[0];
-                    firstQuestion.parentNode.insertBefore(btnContainer, firstQuestion.nextSibling);
-                    
-                    // Default: hide feedback on page load
-                    document.body.classList.add("hide-feedback");
-                    
-                    // Load saved preference (optional - if you want to remember state)
-                    var showFeedback = localStorage.getItem("quiz_show_feedback") === "true";
-                    if (showFeedback) {
-                        document.body.classList.remove("hide-feedback");
-                        btn.textContent = "Hide Feedback";
-                        btn.className = "btn btn-info";
-                    }
-                    
-                    // Toggle on click
-                    btn.addEventListener("click", function() {
-                        var isHidden = document.body.classList.contains("hide-feedback");
-                        if (isHidden) {
-                            document.body.classList.remove("hide-feedback");
-                            btn.textContent = "Hide Feedback";
-                            btn.className = "btn btn-info";
-                            localStorage.setItem("quiz_show_feedback", "true");
-                        } else {
-                            document.body.classList.add("hide-feedback");
+                    if (isOnePageMode) {
+                        // ONE PAGE AT A TIME MODE: Single global button
+                        var btnContainer = document.createElement("div");
+                        btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
+                        
+                        var btn = document.createElement("button");
+                        btn.id = "feedbackToggleBtn";
+                        btn.className = "btn btn-primary";
+                        btn.style.cssText = "padding: 10px 20px; font-size: 14px; font-weight: bold;";
+                        btn.textContent = "Feedback";
+                        
+                        btnContainer.appendChild(btn);
+                        
+                        // Insert button after the first question (below answer choices)
+                        var firstQuestion = questions[0];
+                        firstQuestion.parentNode.insertBefore(btnContainer, firstQuestion.nextSibling);
+                        
+                        // ALWAYS hide feedback on page load (no localStorage persistence)
+                        document.body.classList.add("hide-feedback");
+                        
+                        // Toggle on click
+                        btn.addEventListener("click", function() {
+                            var isHidden = document.body.classList.contains("hide-feedback");
+                            if (isHidden) {
+                                document.body.classList.remove("hide-feedback");
+                                btn.textContent = "Hide Feedback";
+                                btn.className = "btn btn-info";
+                            } else {
+                                document.body.classList.add("hide-feedback");
+                                btn.textContent = "Feedback";
+                                btn.className = "btn btn-primary";
+                            }
+                        });
+                    } else {
+                        // SHOW ALL QUESTIONS MODE: Individual button per question
+                        questions.forEach(function(question, index) {
+                            // Create button container for this question
+                            var btnContainer = document.createElement("div");
+                            btnContainer.className = "question-feedback-toggle";
+                            btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
+                            
+                            var btn = document.createElement("button");
+                            btn.className = "btn btn-primary question-feedback-btn";
+                            btn.style.cssText = "padding: 8px 16px; font-size: 13px; font-weight: bold;";
                             btn.textContent = "Feedback";
-                            btn.className = "btn btn-primary";
-                            localStorage.setItem("quiz_show_feedback", "false");
-                        }
-                    });
+                            btn.dataset.questionIndex = index;
+                            
+                            btnContainer.appendChild(btn);
+                            
+                            // Insert after this question
+                            question.parentNode.insertBefore(btnContainer, question.nextSibling);
+                            
+                            // ALWAYS hide feedback on page load for this question
+                            question.classList.add("hide-question-feedback");
+                            
+                            // Toggle click handler for this specific question
+                            btn.addEventListener("click", function() {
+                                var isHidden = question.classList.contains("hide-question-feedback");
+                                if (isHidden) {
+                                    question.classList.remove("hide-question-feedback");
+                                    btn.textContent = "Hide Feedback";
+                                    btn.className = "btn btn-info question-feedback-btn";
+                                } else {
+                                    question.classList.add("hide-question-feedback");
+                                    btn.textContent = "Feedback";
+                                    btn.className = "btn btn-primary question-feedback-btn";
+                                }
+                            });
+                        });
+                    }
                 });
             })();
             </script>';
@@ -525,7 +560,7 @@ a[aria-label*="Flag"],
     background-color: #27ae60;
 }
 
-/* Hide all feedback-related elements - based on actual Moodle structure */
+/* Hide all feedback-related elements - GLOBAL MODE (one page at a time) */
 body.hide-feedback .specificfeedback,
 body.hide-feedback .generalfeedback,
 body.hide-feedback .rightanswer,
@@ -539,7 +574,7 @@ body.hide-feedback .comment {
     display: none !important;
 }
 
-/* Remove background colors and borders indicating correctness */
+/* Remove background colors and borders indicating correctness - GLOBAL MODE */
 body.hide-feedback .que.correct,
 body.hide-feedback .que.incorrect,
 body.hide-feedback .que.partiallycorrect,
@@ -549,6 +584,33 @@ body.hide-feedback .que.notanswered {
 }
 
 body.hide-feedback .formulation {
+    background-color: transparent !important;
+}
+
+/* Hide feedback for individual questions - PER-QUESTION MODE (show all questions) */
+.que.hide-question-feedback .specificfeedback,
+.que.hide-question-feedback .generalfeedback,
+.que.hide-question-feedback .rightanswer,
+.que.hide-question-feedback .outcome,
+.que.hide-question-feedback .im-feedback,
+.que.hide-question-feedback .feedback,
+.que.hide-question-feedback .state,
+.que.hide-question-feedback .grade,
+.que.hide-question-feedback .gradingdetails,
+.que.hide-question-feedback .comment {
+    display: none !important;
+}
+
+/* Remove background colors and borders indicating correctness - PER-QUESTION MODE */
+.que.hide-question-feedback.correct,
+.que.hide-question-feedback.incorrect,
+.que.hide-question-feedback.partiallycorrect,
+.que.hide-question-feedback.notanswered {
+    background-color: transparent !important;
+    border-left: none !important;
+}
+
+.que.hide-question-feedback .formulation {
     background-color: transparent !important;
 }
 </style>';

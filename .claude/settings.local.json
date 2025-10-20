@@ -52,7 +52,8 @@
       "Bash(copy:*)",
       "Bash(git pull:*)",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\admin\\cli\\upgrade.php\" --non-interactive)",
-      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\":*)"
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\":*)",
+      "Bash(del .\\nul)"
     ],
     "deny": [],
     "ask": []
