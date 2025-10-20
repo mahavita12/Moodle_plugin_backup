@@ -195,6 +195,57 @@ class before_footer_html_generation {
         // Output CSS and JavaScript via hook API (avoid direct echo)
         ob_start();
         self::output_question_flags_assets($user_flags_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey);
+        
+        // Add feedback toggle button HTML directly for review pages  
+        if ($page_type === 'mod-quiz-review') {
+            echo '<script>
+            (function(){
+                document.addEventListener("DOMContentLoaded", function() {
+                    // Find all question containers
+                    var questions = document.querySelectorAll(".que");
+                    if (questions.length === 0) return;
+                    
+                    // Create the toggle button with Moodle navigation styling
+                    var btnContainer = document.createElement("div");
+                    btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
+                    
+                    var btn = document.createElement("button");
+                    btn.id = "feedbackToggleBtn";
+                    btn.className = "btn btn-primary";
+                    btn.style.cssText = "padding: 10px 20px; font-size: 14px; font-weight: bold;";
+                    btn.textContent = "Hide Feedback";
+                    
+                    btnContainer.appendChild(btn);
+                    
+                    // Insert button after the first question (below answer choices)
+                    var firstQuestion = questions[0];
+                    firstQuestion.parentNode.insertBefore(btnContainer, firstQuestion.nextSibling);
+                    
+                    // Load saved preference
+                    var hidden = localStorage.getItem("quiz_hide_feedback") === "true";
+                    if (hidden) {
+                        document.body.classList.add("hide-feedback");
+                        btn.textContent = "Show Feedback";
+                    }
+                    
+                    // Toggle on click
+                    btn.addEventListener("click", function() {
+                        var isHidden = document.body.classList.contains("hide-feedback");
+                        if (isHidden) {
+                            document.body.classList.remove("hide-feedback");
+                            btn.textContent = "Hide Feedback";
+                            localStorage.setItem("quiz_hide_feedback", "false");
+                        } else {
+                            document.body.classList.add("hide-feedback");
+                            btn.textContent = "Show Feedback";
+                            localStorage.setItem("quiz_hide_feedback", "true");
+                        }
+                    });
+                });
+            })();
+            </script>';
+        }
+        
         $hook->add_html(ob_get_clean());
     }
 
@@ -436,6 +487,64 @@ a[aria-label*="Flag"],
     background: #6c757d;
     color: white;
 }
+
+/* FEEDBACK TOGGLE STYLES */
+.feedback-toggle-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1000;
+    background: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.feedback-toggle-btn {
+    padding: 8px 16px;
+    background-color: #f39c12;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.feedback-toggle-btn:hover {
+    background-color: #e67e22;
+}
+
+.feedback-toggle-btn.active {
+    background-color: #27ae60;
+}
+
+/* Hide all feedback-related elements - based on actual Moodle structure */
+body.hide-feedback .specificfeedback,
+body.hide-feedback .generalfeedback,
+body.hide-feedback .rightanswer,
+body.hide-feedback .outcome,
+body.hide-feedback .im-feedback,
+body.hide-feedback .feedback,
+body.hide-feedback .state,
+body.hide-feedback .grade,
+body.hide-feedback .gradingdetails,
+body.hide-feedback .comment {
+    display: none !important;
+}
+
+/* Remove background colors and borders indicating correctness */
+body.hide-feedback .que.correct,
+body.hide-feedback .que.incorrect,
+body.hide-feedback .que.partiallycorrect,
+body.hide-feedback .que.notanswered {
+    background-color: transparent !important;
+    border-left: none !important;
+}
+
+body.hide-feedback .formulation {
+    background-color: transparent !important;
+}
 </style>';
         
         // Output JavaScript with proper formatting function
@@ -451,6 +560,7 @@ a[aria-label*="Flag"],
         console.log("Question flags loaded:", window.questionFlagsData);
         console.log("Structure guides loaded:", window.structureGuidesData);
         console.log("Question mapping loaded:", window.questionMapping);
+        console.log("FEEDBACK TOGGLE: Page type is:", window.moodlePageType);
         
         // Format guide content: convert plain text to HTML with proper formatting
         function formatGuideContent(content) {
@@ -692,6 +802,49 @@ a[aria-label*="Flag"],
 
             applyFlagState(question, questionId, currentFlag);
         });
+        
+        // Setup feedback toggle for quiz review pages
+        if (window.moodlePageType === "mod-quiz-review") {
+            setupFeedbackToggle();
+        }
+        
+        function setupFeedbackToggle() {
+            // Create toggle button container
+            var toggleContainer = document.createElement("div");
+            toggleContainer.className = "feedback-toggle-container";
+            
+            var toggleBtn = document.createElement("button");
+            toggleBtn.className = "feedback-toggle-btn";
+            toggleBtn.textContent = "Hide Feedback";
+            
+            toggleContainer.appendChild(toggleBtn);
+            document.body.appendChild(toggleContainer);
+            
+            // Load saved preference from localStorage
+            var hideFeedback = localStorage.getItem("quiz_hide_feedback") === "true";
+            if (hideFeedback) {
+                document.body.classList.add("hide-feedback");
+                toggleBtn.textContent = "Show Feedback";
+                toggleBtn.classList.add("active");
+            }
+            
+            // Toggle feedback visibility
+            toggleBtn.addEventListener("click", function() {
+                var isHidden = document.body.classList.contains("hide-feedback");
+                
+                if (isHidden) {
+                    document.body.classList.remove("hide-feedback");
+                    toggleBtn.textContent = "Hide Feedback";
+                    toggleBtn.classList.remove("active");
+                    localStorage.setItem("quiz_hide_feedback", "false");
+                } else {
+                    document.body.classList.add("hide-feedback");
+                    toggleBtn.textContent = "Show Feedback";
+                    toggleBtn.classList.add("active");
+                    localStorage.setItem("quiz_hide_feedback", "true");
+                }
+            });
+        }
     });
     </script>';
         // Append safe, isolated script to exclude essay flags and update navigation panel

@@ -25,6 +25,53 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
+ * Add feedback toggle button to quiz review pages
+ */
+function local_questionflags_before_footer() {
+    global $PAGE;
+    
+    // Only on quiz review pages
+    if ($PAGE->pagetype !== 'mod-quiz-review') {
+        return;
+    }
+    
+    // Add the button HTML and JavaScript
+    echo '<div class="feedback-toggle-container" style="position:fixed;top:80px;right:20px;z-index:1000;background:white;padding:10px 15px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+        <button id="feedbackToggleBtn" class="feedback-toggle-btn" style="padding:8px 16px;background-color:#f39c12;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;">Hide Feedback</button>
+    </div>
+    <script>
+    (function() {
+        var btn = document.getElementById("feedbackToggleBtn");
+        if (!btn) return;
+        
+        // Load saved preference
+        var hidden = localStorage.getItem("quiz_hide_feedback") === "true";
+        if (hidden) {
+            document.body.classList.add("hide-feedback");
+            btn.textContent = "Show Feedback";
+            btn.style.backgroundColor = "#27ae60";
+        }
+        
+        // Toggle on click
+        btn.addEventListener("click", function() {
+            var isHidden = document.body.classList.contains("hide-feedback");
+            if (isHidden) {
+                document.body.classList.remove("hide-feedback");
+                btn.textContent = "Hide Feedback";
+                btn.style.backgroundColor = "#f39c12";
+                localStorage.setItem("quiz_hide_feedback", "false");
+            } else {
+                document.body.classList.add("hide-feedback");
+                btn.textContent = "Show Feedback";
+                btn.style.backgroundColor = "#27ae60";
+                localStorage.setItem("quiz_hide_feedback", "true");
+            }
+        });
+    })();
+    </script>';
+}
+
+/**
  * DEPRECATED: Legacy callback function - functionality moved to hook system.
  * 
  * @deprecated since Moodle 4.4+ - use hook system instead
