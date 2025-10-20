@@ -213,7 +213,7 @@ class before_footer_html_generation {
                     btn.id = "feedbackToggleBtn";
                     btn.className = "btn btn-primary";
                     btn.style.cssText = "padding: 10px 20px; font-size: 14px; font-weight: bold;";
-                    btn.textContent = "Hide Feedback";
+                    btn.textContent = "Feedback";
                     
                     btnContainer.appendChild(btn);
                     
@@ -221,11 +221,15 @@ class before_footer_html_generation {
                     var firstQuestion = questions[0];
                     firstQuestion.parentNode.insertBefore(btnContainer, firstQuestion.nextSibling);
                     
-                    // Load saved preference
-                    var hidden = localStorage.getItem("quiz_hide_feedback") === "true";
-                    if (hidden) {
-                        document.body.classList.add("hide-feedback");
-                        btn.textContent = "Show Feedback";
+                    // Default: hide feedback on page load
+                    document.body.classList.add("hide-feedback");
+                    
+                    // Load saved preference (optional - if you want to remember state)
+                    var showFeedback = localStorage.getItem("quiz_show_feedback") === "true";
+                    if (showFeedback) {
+                        document.body.classList.remove("hide-feedback");
+                        btn.textContent = "Hide Feedback";
+                        btn.className = "btn btn-info";
                     }
                     
                     // Toggle on click
@@ -234,11 +238,13 @@ class before_footer_html_generation {
                         if (isHidden) {
                             document.body.classList.remove("hide-feedback");
                             btn.textContent = "Hide Feedback";
-                            localStorage.setItem("quiz_hide_feedback", "false");
+                            btn.className = "btn btn-info";
+                            localStorage.setItem("quiz_show_feedback", "true");
                         } else {
                             document.body.classList.add("hide-feedback");
-                            btn.textContent = "Show Feedback";
-                            localStorage.setItem("quiz_hide_feedback", "true");
+                            btn.textContent = "Feedback";
+                            btn.className = "btn btn-primary";
+                            localStorage.setItem("quiz_show_feedback", "false");
                         }
                     });
                 });
