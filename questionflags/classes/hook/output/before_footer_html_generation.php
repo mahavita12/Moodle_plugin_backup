@@ -808,49 +808,6 @@ body.hide-feedback .formulation {
 
             applyFlagState(question, questionId, currentFlag);
         });
-        
-        // Setup feedback toggle for quiz review pages
-        if (window.moodlePageType === "mod-quiz-review") {
-            setupFeedbackToggle();
-        }
-        
-        function setupFeedbackToggle() {
-            // Create toggle button container
-            var toggleContainer = document.createElement("div");
-            toggleContainer.className = "feedback-toggle-container";
-            
-            var toggleBtn = document.createElement("button");
-            toggleBtn.className = "feedback-toggle-btn";
-            toggleBtn.textContent = "Hide Feedback";
-            
-            toggleContainer.appendChild(toggleBtn);
-            document.body.appendChild(toggleContainer);
-            
-            // Load saved preference from localStorage
-            var hideFeedback = localStorage.getItem("quiz_hide_feedback") === "true";
-            if (hideFeedback) {
-                document.body.classList.add("hide-feedback");
-                toggleBtn.textContent = "Show Feedback";
-                toggleBtn.classList.add("active");
-            }
-            
-            // Toggle feedback visibility
-            toggleBtn.addEventListener("click", function() {
-                var isHidden = document.body.classList.contains("hide-feedback");
-                
-                if (isHidden) {
-                    document.body.classList.remove("hide-feedback");
-                    toggleBtn.textContent = "Hide Feedback";
-                    toggleBtn.classList.remove("active");
-                    localStorage.setItem("quiz_hide_feedback", "false");
-                } else {
-                    document.body.classList.add("hide-feedback");
-                    toggleBtn.textContent = "Show Feedback";
-                    toggleBtn.classList.add("active");
-                    localStorage.setItem("quiz_hide_feedback", "true");
-                }
-            });
-        }
     });
     </script>';
         // Append safe, isolated script to exclude essay flags and update navigation panel
