@@ -187,7 +187,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
     /**
      * Build complete resubmission feedback HTML
      */
-    private function build_resubmission_feedback_html($current_essay_data, $feedback_data, $revision_html, $previous_grading, $submission_number) {
+    private function build_resubmission_feedback_html($current_essay_data, $feedback_data, $revision_html, $previous_grading, $submission_number, $progress_commentary_current = '', $current_initial_essay = null) {
         $ordinal = ucfirst($this->get_ordinal_string($submission_number));
 
         $print_styles = "
@@ -271,6 +271,27 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '</div>';
         }
 
+        // Initial Draft for THIS resubmission (if available)
+        if (!empty($current_initial_essay)) {
+            $html .= '<div class="feedback-section">';
+            $html .= '<h2 class="section-header" style="color: #9c27b0;">Initial Draft - ' . $ordinal . ' Submission</h2>';
+            $html .= '<hr>';
+            // Optional markers if needed later
+            $html .= '<!-- EXTRACT_INITIAL_START -->';
+            $html .= '<div style="background: #f3e5f5; padding: 20px; border-radius: 8px; border-left: 4px solid #9c27b0; margin: 10px 0;">';
+            $clean_initial = method_exists($this, 'sanitize_original_essay_text') ? $this->sanitize_original_essay_text($current_initial_essay) : trim(strip_tags($current_initial_essay));
+            $paras = preg_split("/\r\n|\n|\r/", trim($clean_initial));
+            foreach ($paras as $p) {
+                if (!empty(trim($p))) {
+                    $html .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #4a148c;">' . htmlspecialchars($p) . '</p>';
+                }
+            }
+            $html .= '</div>';
+            $html .= '<!-- EXTRACT_INITIAL_END -->';
+            $html .= '<hr>';
+            $html .= '</div>';
+        }
+
         // Current essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
         $html .= '<div class="feedback-section">';
         $html .= '<h2 class="section-header" style="color: #17a2b8;">Current Essay - ' . $ordinal . ' Submission</h2>';
@@ -291,6 +312,16 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '</div>';
         $html .= '<hr>';
         $html .= '</div>';
+
+        // Your Writing Journey for THIS resubmission (against its own initial draft)
+        if (!empty($progress_commentary_current)) {
+            $html .= '<div class="feedback-section">';
+            $html .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft</h2>';
+            $html .= '<hr>';
+            $html .= $progress_commentary_current;
+            $html .= '<hr>';
+            $html .= '</div>';
+        }
 
         // Revision section (with consistent styling)
         if (!empty($revision_html)) {
@@ -324,12 +355,13 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '</div>';
 
         // Previous feedback (for reference) - include ONLY the first submission's
-        // Revision and Feedback sections. Strip student header, question and original essay.
+        // Revision and Feedback sections (omit Initial Draft, Original Essay, Journey)
         if (!empty($previous_grading->feedback_html)) {
             $prev = $this->remove_homework_from_html($previous_grading->feedback_html);
             if (!empty($prev)) {
-                // Extract only the revision and feedback sections using markers
+                // Extract ONLY Revision and Feedback sections using markers
                 $extract = '';
+                
                 if (preg_match('/<!--\s*EXTRACT_REVISION_START\s*-->(.*?)<!--\s*EXTRACT_REVISION_END\s*-->/si', $prev, $m1)) {
                     $extract .= '<div class="feedback-section page-break-before">'
                              . '<h2 style="font-size:16px; color:#003366;">First Submission Revision</h2><hr>'
@@ -482,7 +514,27 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
     }
         return '';
     }
-    private function extract_key_feedback_points($feedback_html) {
+    private function extract_initial_essay_from_feedback($feedback_html) {
+        // Extract using strategic markers
+        if (preg_match('/<!-- EXTRACT_INITIAL_START -->(.*?)<!-- EXTRACT_INITIAL_END -->/s', $feedback_html, $matches)) {
+            return trim(strip_tags($matches[1]));
+        }
+        // Fallback to heading-based extraction
+        if (preg_match('/<h2[^>]*>.*?Initial Draft.*?<\/h2>(.*?)(?=<h2|<hr)/si', $feedback_html, $matches)) {
+            return trim(strip_tags($matches[1]));
+        }
+        return '';
+    }
+    
+    private function extract_progress_commentary_from_feedback($feedback_html) {
+        // Extract the Your Writing Journey section
+        if (preg_match('/<h2[^>]*>.*?Your Writing Journey from Initial Draft.*?<\/h2>.*?<hr>(.*?)<hr>/si', $feedback_html, $matches)) {
+            return trim($matches[1]);
+        }
+        return '';
+    }
+    
+        private function extract_key_feedback_points($feedback_html) {
         $key_points = '';
         $sections = [
             'Content and Ideas' => 'CONTENT_IDEAS',
@@ -735,8 +787,28 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 return ['success' => false, 'message' => 'Could not extract scores from previous submission. Please check if previous submission was graded properly.'];
             }
 
-            // 5) AI likelihood
-            $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
+            // 5) AI likelihood: use THIS resubmission's Initial Draft (sequencenumber=1) if available
+            $ai_likelihood = 'N/A';
+            if (!empty($current_essay_data['attempt_id'])) {
+                // Reuse parent's method to fetch initial draft for this attempt's usage id
+                $initial_for_ai = null;
+                try {
+                    if (method_exists($this, 'get_initial_essay_submission') && !empty($current_essay_data['attempt_uniqueid'])) {
+                        $initial_for_ai = $this->get_initial_essay_submission($current_essay_data['attempt_uniqueid']);
+                    }
+                } catch (\Throwable $e) {
+                    error_log('DEBUG: get_initial_essay_submission failed in resubmission grader: ' . $e->getMessage());
+                }
+                if ($initial_for_ai) {
+                    $ai_likelihood = $this->detect_ai_assistance($initial_for_ai);
+                    error_log("[Resubmission] AI detection on THIS submission INITIAL DRAFT - Likelihood: " . $ai_likelihood);
+                } else {
+                    $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
+                    error_log("[Resubmission] AI detection on CURRENT FINAL submission (fallback) - Likelihood: " . $ai_likelihood);
+                }
+            } else {
+                $ai_likelihood = $this->detect_ai_assistance($current_essay_data['answer_text']);
+            }
 
             // 6) Copy detection vs previous revision
             error_log("DEBUG: About to perform similarity check for attempt $attempt_id");
@@ -775,8 +847,29 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // 8) Revision of the current essay
             $revision_html = $this->generate_essay_revision($current_essay_data['answer_text'], $level, $feedback_result['data']);
 
+            // 8.5) Generate "Your Writing Journey" commentary for THIS resubmission
+            $progress_commentary_current = '';
+            try {
+                if (method_exists($this, 'get_initial_essay_submission') && !empty($current_essay_data['attempt_uniqueid'])) {
+                    $current_initial = $this->get_initial_essay_submission($current_essay_data['attempt_uniqueid']);
+                    if (!empty($current_initial) && method_exists($this, 'generate_progress_commentary')) {
+                        $progress_commentary_current = $this->generate_progress_commentary($current_initial, $current_essay_data['answer_text']);
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('DEBUG: Progress commentary generation failed for resubmission: ' . $e->getMessage());
+            }
+
             // 9) Build complete HTML (resubmission-flavoured)
-            $complete_html = $this->build_resubmission_feedback_html($current_essay_data, $feedback_result['data'], $revision_html, $previous_grading, $submission_number);
+            $complete_html = $this->build_resubmission_feedback_html(
+                $current_essay_data,
+                $feedback_result['data'],
+                $revision_html,
+                $previous_grading,
+                $submission_number,
+                $progress_commentary_current,
+                isset($current_initial) ? $current_initial : (isset($initial_for_ai) ? $initial_for_ai : null)
+            );
 
             // 10) Extract current (NEW) subcategory scores from comparative feedback
             $current_scores = $this->extract_resubmission_scores($feedback_result['data']['feedback_html'] ?? '');

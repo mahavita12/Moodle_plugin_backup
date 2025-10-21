@@ -173,11 +173,29 @@ class essay_grader {
                 return $feedback_result;
             }
 
-            // 3. Detect AI likelihood
-            $ai_likelihood = $this->detect_ai_assistance($essay_data['answer_text']);
+            // 3. Detect AI likelihood on INITIAL DRAFT (not final submission)
+            // This makes more sense as we want to check if the ORIGINAL work was AI-generated
+            // Get initial essay first for AI detection
+            $initial_essay_for_ai = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
+            $ai_likelihood = 'N/A';
+            if ($initial_essay_for_ai) {
+                $ai_likelihood = $this->detect_ai_assistance($initial_essay_for_ai);
+                error_log("Essays Master: AI detection on INITIAL DRAFT - Likelihood: " . $ai_likelihood);
+            } else {
+                // Fallback to final submission if initial draft not found
+                $ai_likelihood = $this->detect_ai_assistance($essay_data['answer_text']);
+                error_log("Essays Master: AI detection on FINAL submission (fallback) - Likelihood: " . $ai_likelihood);
+            }
 
             // 4. Generate revision
             $revision_html = $this->generate_essay_revision($essay_data['answer_text'], $level, $feedback_result['data']);
+            
+            // 4.5. Get initial essay and generate progress commentary
+            $initial_essay = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
+            $progress_commentary = '';
+            if ($initial_essay) {
+                $progress_commentary = $this->generate_progress_commentary($initial_essay, $essay_data['answer_text']);
+            }
             
             // 5. Generate homework if requested
             $homework_html = '';
@@ -193,7 +211,9 @@ class essay_grader {
                 $feedback_result['data'], 
                 $revision_html, 
                 $essay_data,
-                $homework_html
+                $homework_html,
+                $initial_essay,
+                $progress_commentary
             );
 
             // 7. Save results
@@ -282,7 +302,111 @@ class essay_grader {
         ];
     }
 
-        /**
+        
+    /**
+     * Get initial essay submission (before Essays Master Round 1)
+     */
+    protected function get_initial_essay_submission($attempt_uniqueid) {
+        global $DB;
+        
+        $sql = "SELECT qasd.value as answer
+                FROM {question_attempts} qa
+                JOIN {question} q ON q.id = qa.questionid
+                JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                JOIN {question_attempt_step_data} qasd ON qasd.attemptstepid = qas.id
+                WHERE qa.questionusageid = ?
+                AND q.qtype = 'essay'
+                AND qasd.name = 'answer'
+                AND qas.sequencenumber = 1
+                ORDER BY qa.slot ASC
+                LIMIT 1";
+        
+        $result = $DB->get_record_sql($sql, [$attempt_uniqueid]);
+        return $result ? $result->answer : null;
+    }
+
+    /**
+     * Generate progress commentary comparing initial draft to final submission
+     */
+    protected function generate_progress_commentary($initial_text, $final_text) {
+        // Clean both texts
+        $clean_initial = strip_tags($initial_text);
+        $clean_final = strip_tags($final_text);
+        
+        // If texts are identical or very similar, return warning
+        similar_text($clean_initial, $clean_final, $similarity);
+        
+        if ($similarity > 95) {
+            return '<div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin: 15px 0;">' .
+                   '<p style="color: #856404; margin: 0;"><strong>Limited Progress Detected:</strong> Your final submission is very similar to your initial draft. ' .
+                   'It appears minimal revisions were made during the Essays Master process. Consider using the feedback from each round to make more substantial improvements.</p>' .
+                   '</div>';
+        }
+        
+        $provider = $this->get_provider();
+        
+        $system_prompt = "You are an encouraging writing coach at GrowMinds Academy. Compare the student's initial draft with their final submission after going through the Essays Master 6-round revision process.
+
+Write a moderate-length paragraph (4-6 sentences) that:
+1. Acknowledges specific improvements made (grammar, vocabulary, sentence structure, content depth)
+2. Is encouraging but factual
+3. Highlights measurable progress
+4. Uses Australian English
+5. Keeps a positive, motivational tone
+
+If there are NO significant improvements, you MUST note this and provide a constructive warning.
+
+Format your response as plain text (no HTML tags, no markdown). Be specific about what improved.";
+
+        $user_prompt = "Initial Draft:
+{$clean_initial}
+
+Final Submission:
+{$clean_final}
+
+Provide an encouraging but factual commentary about the student's writing journey from initial draft to final submission.";
+        
+        try {
+            if ($provider === 'anthropic') {
+                $data = [
+                    'model' => $this->get_anthropic_model(),
+                    'system' => $system_prompt,
+                    'messages' => [
+                        ['role' => 'user', 'content' => [['type' => 'text', 'text' => $user_prompt]]]
+                    ],
+                    'max_tokens' => 500
+                ];
+                $result = $this->make_anthropic_api_call($data, 'generate_progress_commentary');
+            } else {
+                $data = [
+                    'model' => $this->get_openai_model(),
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system_prompt],
+                        ['role' => 'user', 'content' => $user_prompt]
+                    ],
+                    'max_completion_tokens' => 500
+                ];
+                $result = $this->make_openai_api_call($data, 'generate_progress_commentary');
+            }
+            
+            if ($result['success']) {
+                return '<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">' .
+                       '<p style="color: #2e7d32; margin: 0; line-height: 1.6;">' . htmlspecialchars($result['response']) . '</p>' .
+                       '</div>';
+            } else {
+                return '<div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin: 15px 0;">' .
+                       '<p style="color: #856404; margin: 0;">Progress commentary temporarily unavailable.</p>' .
+                       '</div>';
+            }
+        } catch (Exception $e) {
+            error_log("Progress commentary error: " . $e->getMessage());
+            return '<div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin: 15px 0;">' .
+                   '<p style="color: #856404; margin: 0;">Progress commentary temporarily unavailable.</p>' .
+                   '</div>';
+        }
+    }
+
+    /**
          * Generate homework exercises for an already graded essay
          */
         public function generate_homework_for_attempt($attempt_id, $level = 'general') {
@@ -1035,7 +1159,7 @@ class essay_grader {
         /**
      * Build complete feedback HTML with optional homework
      */
-    protected function build_complete_feedback_html($feedback_result, $revision_html, $essay_data, $homework_html = '') {
+    protected function build_complete_feedback_html($feedback_result, $revision_html, $essay_data, $homework_html = '', $initial_essay = null, $progress_commentary = '') {
         // IMPROVED: Much better print styles
         $print_styles = "
         <style>
@@ -1237,6 +1361,28 @@ class essay_grader {
             $html_output .= '</div>';
         }
         
+        // Initial Draft section (if available) - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
+        if (!empty($initial_essay)) {
+            $html_output .= '<div class="feedback-section">';
+            $html_output .= '<h2 class="section-header" style="color: #9c27b0;">Initial Draft</h2>';
+            $html_output .= '<hr>';
+            // START MARKER for initial draft extraction
+            $html_output .= '<!-- EXTRACT_INITIAL_START -->';
+            $html_output .= '<div style="background: #f3e5f5; padding: 20px; border-radius: 8px; border-left: 4px solid #9c27b0; margin: 10px 0;">';
+            $clean_initial_text = $this->sanitize_original_essay_text($initial_essay);
+            $initial_paragraphs = preg_split("/\r\n|\n|\r/", trim($clean_initial_text));
+            foreach ($initial_paragraphs as $p) {
+                if (!empty(trim($p))) {
+                    $html_output .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #4a148c;">' . htmlspecialchars($p) . '</p>';
+                }
+            }
+            $html_output .= '</div>';
+            // END MARKER for initial draft extraction
+            $html_output .= '<!-- EXTRACT_INITIAL_END -->';
+            $html_output .= '<hr>';
+            $html_output .= '</div>';
+        }
+
         // Original essay section - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
         $html_output .= '<div class="feedback-section">';
         $html_output .= '<h2 class="section-header" style="color: #17a2b8;">Original Essay</h2>';
@@ -1258,6 +1404,16 @@ class essay_grader {
         $html_output .= '<hr>';
         $html_output .= '</div>';
         
+        // Your Writing Journey (progress commentary) - AFTER Original Essay
+        if (!empty($progress_commentary)) {
+            $html_output .= '<div class="feedback-section">';
+            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft</h2>';
+            $html_output .= '<hr>';
+            $html_output .= $progress_commentary;
+            $html_output .= '<hr>';
+            $html_output .= '</div>';
+        }
+
         // Revision section (if exists) - WITH STRATEGIC MARKERS
         if (!empty($revision_html)) {
             $html_output .= '<div class="feedback-section page-break-before">';
