@@ -1534,7 +1534,13 @@ define([], function () {
                         6: "Polish & Perfect"
                     };
                     
-                    startAmberDelay(btn, buttonTexts[round], 30, () => {
+                    const buttonDelayValidation = {
+                        2: 30,
+                        4: 30,
+                        6: 10
+                    };
+                    
+                    startAmberDelay(btn, buttonTexts[round], buttonDelayValidation[round] || 30, () => {
                         // Button ready for retry
                     });
                 }

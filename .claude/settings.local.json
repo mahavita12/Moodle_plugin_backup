@@ -53,7 +53,8 @@
       "Bash(git pull:*)",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\admin\\cli\\upgrade.php\" --non-interactive)",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\":*)",
-      "Bash(del .\\nul)"
+      "Bash(del .\\nul)",
+      "Read(//c/MCP_servers/moodle_backups/**)"
     ],
     "deny": [],
     "ask": []

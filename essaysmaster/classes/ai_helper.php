@@ -125,11 +125,11 @@ class ai_helper {
     /**
      * Generate AI validation for rounds 2, 4, 6  
      */
-    public function generate_validation($round, $original_text, $current_text, $question_prompt = '') {
+    public function generate_validation($round, $original_text, $current_text, $question_prompt = '', $previous_feedback = '') {
         error_log("🔍 Helper: Generating validation for round $round");
         
         // Get the validation prompt based on round
-        $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt);
+        $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback);
 
         $provider = $this->get_provider();
         if ($provider === 'anthropic') {
@@ -273,9 +273,9 @@ DO NOT use emojis, asterisks, hashtags, or markdown formatting.',
     }
 
     /**
-     * Get validation prompts for rounds 2, 4, 6 (same as frontend)
+     * Get validation prompts for rounds 2, 4, 6 (with context awareness for Round 4)
      */
-    private function get_validation_prompt($round, $original_text, $current_text, $question_prompt) {
+    private function get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback = '') {
         $prompts = [
             2 => [
                 'system' => 'You are a writing tutor from GrowMinds Academy validating proofreading improvements. Compare original vs revised text.
@@ -325,6 +325,8 @@ DO NOT use emojis, asterisks, hashtags, or markdown formatting.',
             4 => [
                 'system' => 'You are a writing tutor from GrowMinds Academy validating vocabulary and language improvements. Compare original vs revised text.
 
+CONTEXT AWARENESS: The student received Round 3 feedback with specific vocabulary suggestions. DO NOT flag words that the student already changed based on Round 3 feedback. Only suggest NEW vocabulary improvements that were not mentioned in Round 3.
+
 SCORING CRITERIA (0-100 points):
 - Upgraded basic vocabulary: 50 points (very important)
 - Improved sentence variety: 30 points (important)
@@ -333,9 +335,10 @@ SCORING CRITERIA (0-100 points):
 THRESHOLD: Score ≥50 = PASS, Score <50 = FAIL
 
 TASK:
-1) Analyze vocabulary and language sophistication improvements
-2) Calculate numerical score (0-100) based on criteria above  
-3) MANDATORY: Provide remaining vocabulary improvements from the REVISED TEXT ONLY in "original => improved" format and highlight basic words with [HIGHLIGHT]word[/HIGHLIGHT] tags (regardless of PASS/FAIL). CRITICAL: Only show words that exist in the REVISED TEXT, not the original text.
+1) Review the Round 3 feedback to understand what vocabulary changes were already suggested
+2) Analyze vocabulary and language sophistication improvements made by student
+3) Calculate numerical score (0-100) based on criteria above  
+4) MANDATORY: Provide ONLY NEW vocabulary improvements from the REVISED TEXT that were NOT mentioned in Round 3 feedback. Use "original => improved" format and highlight basic words with [HIGHLIGHT]word[/HIGHLIGHT] tags (regardless of PASS/FAIL). CRITICAL: Only show words that exist in the REVISED TEXT, not the original text. DO NOT repeat suggestions from Round 3.
 4) If PASS (score ≥50): Add humorous praise about language elevation
 5) Minimum 2 improvements required, maximum 9
 6) DO NOT use any emojis, asterisks, hashtags, or markdown formatting
@@ -346,7 +349,7 @@ RESPONSE FORMAT:
 Score: [number 0-100]
 Status: [PASS or FAIL] 
 Analysis: [brief analysis of language improvements - mention what has been improved, and what still needs attention]
-Feedback: [humorous message]. Here are opportunities to elevate your language:
+Feedback: [humorous message]. Here are NEW opportunities to elevate your language (not mentioned in Round 3):
 
 [Multiple examples in this format:]
 [HIGHLIGHT]good[/HIGHLIGHT] => excellent  
@@ -356,11 +359,15 @@ Feedback: [humorous message]. Here are opportunities to elevate your language:
 [End with specific encouragement about language sophistication]
 
 DO NOT use emojis, asterisks, hashtags, or markdown formatting.',
-                'user' => "ORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
+                'user' => !empty($previous_feedback) 
+                    ? "ROUND 3 FEEDBACK (what student was already told):\n{$previous_feedback}\n\nORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
+                    : "ORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
             ],
 
             6 => [
                 'system' => 'You are a writing tutor from GrowMinds Academy doing final validation of relevance and sentence structure.
+
+CONTEXT AWARENESS: The student received Round 5 feedback with specific sentence improvements and relevance suggestions. DO NOT flag sentences that the student already changed based on Round 5 feedback. Only suggest NEW sentence improvements that were not mentioned in Round 5.
 
 MANDATORY REQUIREMENT: You MUST provide at least 3-5 specific improvements in [HIGHLIGHT]original[/HIGHLIGHT] => improved format for BOTH PASS and FAIL results. This is absolutely required - do not just give general feedback.
 
@@ -375,10 +382,11 @@ SCORING CRITERIA (0-100 points):
 THRESHOLD: Score ≥50 = PASS, Score <50 = FAIL
 
 TASK:
-1) Evaluate how well essay answers the original question
-2) Assess sentence clarity and structure improvements
-3) Calculate numerical score (0-100) based on criteria above
-4) MANDATORY: Provide 3-5 specific remaining sentence improvements from the REVISED TEXT ONLY in "original => improved" format (regardless of PASS/FAIL). CRITICAL: Only show sentences that exist in the REVISED TEXT, not the original text.
+1) Review the Round 5 feedback to understand what sentence improvements were already suggested
+2) Evaluate how well essay answers the original question
+3) Assess sentence clarity and structure improvements made by student
+4) Calculate numerical score (0-100) based on criteria above
+5) MANDATORY: Provide ONLY NEW sentence improvements from the REVISED TEXT that were NOT mentioned in Round 5 feedback. Use "original => improved" format (regardless of PASS/FAIL). CRITICAL: Only show sentences that exist in the REVISED TEXT, not the original text. DO NOT repeat suggestions from Round 5.
 5) If PASS (score ≥50): Add celebratory message about readiness for submission
 6) Minimum 2 improvements required, maximum 9
 7) DO NOT use any emojis, asterisks, hashtags, or markdown formatting
@@ -389,7 +397,7 @@ RESPONSE FORMAT:
 Score: [number 0-100]
 Status: [PASS or FAIL]
 Analysis: [brief analysis of relevance and structure]
-Feedback: Brief introduction, then MANDATORY list of improvements:
+Feedback: Brief introduction, then MANDATORY list of NEW improvements (not mentioned in Round 5):
 
 [HIGHLIGHT]sentence_from_revised_essay_only[/HIGHLIGHT] => improved version
 [HIGHLIGHT]another_sentence_from_revised_essay_only[/HIGHLIGHT] => improved version
@@ -402,7 +410,9 @@ CRITICAL: Every "original" sentence must exist exactly as written in the REVISED
 [End with specific encouragement about essary writing]
 
 DO NOT use section headers - just list improvements directly. DO NOT use emojis, asterisks, hashtags, or markdown formatting.',
-                'user' => "ORIGINAL QUESTION: {$question_prompt}\nORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
+                'user' => !empty($previous_feedback) 
+                    ? "ROUND 5 FEEDBACK (what student was already told):\n{$previous_feedback}\n\nORIGINAL QUESTION: {$question_prompt}\nORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
+                    : "ORIGINAL QUESTION: {$question_prompt}\nORIGINAL TEXT: {$original_text}\nREVISED TEXT: {$current_text}"
             ]
         ];
 

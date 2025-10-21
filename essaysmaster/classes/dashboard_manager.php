@@ -458,9 +458,9 @@ class dashboard_manager {
                 $config->course_id = $quiz->course;
                 $config->is_enabled = $enabled ? 1 : 0;
                 $config->validation_thresholds = json_encode([
-                    'round_2' => 50,
-                    'round_4' => 50,
-                    'round_6' => 50
+                    'round_2' => 40,
+                    'round_4' => 40,
+                    'round_6' => 30
                 ]);
                 $config->max_attempts_per_round = 3;
                 $config->created_by = $USER->id;

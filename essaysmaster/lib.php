@@ -333,9 +333,9 @@ function local_essaysmaster_is_quiz_enabled($quizid) {
             $config->course_id = $quiz->course;
             $config->is_enabled = 1; // DEFAULT: ENABLED
             $config->validation_thresholds = json_encode([
-                'round_2' => 50,
-                'round_4' => 50, 
-                'round_6' => 50
+                'round_2' => 40,
+                'round_4' => 40, 
+                'round_6' => 30
             ]);
             $config->max_attempts_per_round = 3;
             $config->created_by = get_admin()->id;

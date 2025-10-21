@@ -212,9 +212,33 @@ try {
             // VALIDATION ROUNDS (2, 4, 6) - Real AI validation
             error_log("Essays Master: Calling AI validation for round $round");
             
+            // ðŸ”„ CONTEXT AWARENESS: Retrieve previous feedback round to avoid contradictions
+            $previous_feedback_text = '';
+            if ($round == 4) {
+                // Get Round 3 feedback for context
+                $round3_feedback = $DB->get_record('local_essaysmaster_feedback', [
+                    'version_id' => $attemptid,
+                    'level_type' => 'round_3'
+                ]);
+                if ($round3_feedback && !empty($round3_feedback->feedback_html)) {
+                    $previous_feedback_text = $round3_feedback->feedback_html;
+                    error_log("Essays Master: Retrieved Round 3 feedback for Round 4 context (length: " . strlen($previous_feedback_text) . ")");
+                }
+            } elseif ($round == 6) {
+                // Get Round 5 feedback for context
+                $round5_feedback = $DB->get_record('local_essaysmaster_feedback', [
+                    'version_id' => $attemptid,
+                    'level_type' => 'round_5'
+                ]);
+                if ($round5_feedback && !empty($round5_feedback->feedback_html)) {
+                    $previous_feedback_text = $round5_feedback->feedback_html;
+                    error_log("Essays Master: Retrieved Round 5 feedback for Round 6 context (length: " . strlen($previous_feedback_text) . ")");
+                }
+            }
+            
             if (!empty($original_text) && !empty($essay_text)) {
                 try {
-                    $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt);
+                    $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt, $previous_feedback_text);
                     
                     // CRITICAL FIX: Check actual score, not just API success
                     $validation_passed = ($ai_result['score'] >= 50);

@@ -269,9 +269,9 @@ function xmldb_local_essaysmaster_upgrade($oldversion) {
                 $config->course_id = $quiz->course;
                 $config->is_enabled = 1; // DEFAULT: ENABLED
                 $config->validation_thresholds = json_encode([
-                    'round_2' => 50, // Grammar/Spelling threshold
-                    'round_4' => 50, // Vocabulary threshold  
-                    'round_6' => 50  // Structure threshold
+                    'round_2' => 40, // Grammar/Spelling threshold
+                    'round_4' => 40, // Vocabulary threshold  
+                    'round_6' => 30  // Structure threshold
                 ]);
                 $config->max_attempts_per_round = 3;
                 $config->created_by = $admin_id;
