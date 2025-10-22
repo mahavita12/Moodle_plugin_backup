@@ -306,24 +306,69 @@ class essay_grader {
     /**
      * Get initial essay submission (before Essays Master Round 1)
      */
-    protected function get_initial_essay_submission($attempt_uniqueid) {
-        global $DB;
-        
-        $sql = "SELECT qasd.value as answer
-                FROM {question_attempts} qa
-                JOIN {question} q ON q.id = qa.questionid
-                JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
-                JOIN {question_attempt_step_data} qasd ON qasd.attemptstepid = qas.id
-                WHERE qa.questionusageid = ?
-                AND q.qtype = 'essay'
-                AND qasd.name = 'answer'
-                AND qas.sequencenumber = 1
-                ORDER BY qa.slot ASC
-                LIMIT 1";
-        
-        $result = $DB->get_record_sql($sql, [$attempt_uniqueid]);
-        return $result ? $result->answer : null;
-    }
+	protected function get_initial_essay_submission($attempt_uniqueid) {
+		global $DB;
+
+		// 1) Preferred: Use Essays Master snapshot saved for Level 1 (or earliest)
+		try {
+			$attempt = $DB->get_record('quiz_attempts', ['uniqueid' => $attempt_uniqueid]);
+			if ($attempt) {
+				// Find Essays Master session for this attempt/user
+				$session = $DB->get_record('local_essaysmaster_sessions', [
+					'attempt_id' => $attempt->id,
+					'user_id' => $attempt->userid
+				]);
+				if (!$session) {
+					$session = $DB->get_record('local_essaysmaster_sessions', ['attempt_id' => $attempt->id]);
+				}
+				if ($session) {
+					// Prefer the Level 1 version; otherwise take the earliest version
+					$version = $DB->get_record_sql(
+						"SELECT *
+						   FROM {local_essaysmaster_versions}
+						  WHERE session_id = ? AND level_number = 1
+						  ORDER BY version_number ASC
+						  LIMIT 1",
+						[$session->id]
+					);
+					if (!$version) {
+						$version = $DB->get_record_sql(
+							"SELECT *
+							   FROM {local_essaysmaster_versions}
+							  WHERE session_id = ?
+							  ORDER BY version_number ASC
+							  LIMIT 1",
+							[$session->id]
+						);
+					}
+					if ($version) {
+						$text = $version->original_text ?: $version->revised_text;
+						if (!empty($text)) {
+							return $text;
+						}
+					}
+				}
+			}
+		} catch (\Throwable $e) {
+			error_log('Quiz Dashboard: Failed EM initial draft lookup - ' . $e->getMessage());
+		}
+
+		// 2) Fallback: Earliest essay answer from question attempt steps
+		$sql = "SELECT qasd.value as answer
+				FROM {question_attempts} qa
+				JOIN {question} q ON q.id = qa.questionid
+				JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+				JOIN {question_attempt_step_data} qasd ON qasd.attemptstepid = qas.id
+				WHERE qa.questionusageid = ?
+				AND q.qtype = 'essay'
+				AND qasd.name = 'answer'
+				AND qas.sequencenumber = 1
+				ORDER BY qa.slot ASC
+				LIMIT 1";
+
+		$result = $DB->get_record_sql($sql, [$attempt_uniqueid]);
+		return $result ? $result->answer : null;
+	}
 
     /**
      * Generate progress commentary comparing initial draft to final submission
