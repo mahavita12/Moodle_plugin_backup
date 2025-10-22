@@ -239,6 +239,34 @@ try {
             if (!empty($original_text) && !empty($essay_text)) {
                 try {
                     $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt, $previous_feedback_text);
+
+                    // Save version snapshot (rounds 1-5) right after sending to AI
+                    if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {
+                        try {
+                            $max_version = $DB->get_field_sql(
+                                "SELECT MAX(version_number) FROM {local_essaysmaster_versions} WHERE session_id = ?",
+                                [$session->id]
+                            );
+                            $next_version = ($max_version !== null) ? ((int)$max_version + 1) : 1;
+
+                            $version = new stdClass();
+                            $version->session_id = $session->id;
+                            $version->version_number = $next_version;
+                            $version->level_number = $round;
+                            $version->original_text = $original_text; // validation includes original vs revised
+                            $version->revised_text = $essay_text;
+                            $version->word_count = str_word_count($essay_text);
+                            $version->character_count = strlen($essay_text);
+                            $version->submission_time = time();
+                            $version->is_initial = ($next_version === 1) ? 1 : 0;
+                            $version->timecreated = time();
+
+                            $DB->insert_record('local_essaysmaster_versions', $version);
+                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}");
+                        } catch (Exception $e) {
+                            error_log("Essays Master: Failed to save version snapshot - " . $e->getMessage());
+                        }
+                    }
                     
                     // CRITICAL FIX: Check actual score, not just API success
                     $validation_passed = ($ai_result['score'] >= 50);
@@ -274,6 +302,35 @@ try {
             if (!empty($essay_text)) {
                 try {
                     $ai_result = $ai_helper->generate_feedback($round, $essay_text, $question_prompt);
+
+                    // Save version snapshot (rounds 1-5) right after sending to AI
+                    if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {
+                        try {
+                            $max_version = $DB->get_field_sql(
+                                "SELECT MAX(version_number) FROM {local_essaysmaster_versions} WHERE session_id = ?",
+                                [$session->id]
+                            );
+                            $next_version = ($max_version !== null) ? ((int)$max_version + 1) : 1;
+
+                            $version = new stdClass();
+                            $version->session_id = $session->id;
+                            $version->version_number = $next_version;
+                            $version->level_number = $round;
+                            // For feedback rounds, store current essay as original_text (revised_text left null)
+                            $version->original_text = $essay_text;
+                            $version->revised_text = null;
+                            $version->word_count = str_word_count($essay_text);
+                            $version->character_count = strlen($essay_text);
+                            $version->submission_time = time();
+                            $version->is_initial = ($next_version === 1) ? 1 : 0;
+                            $version->timecreated = time();
+
+                            $DB->insert_record('local_essaysmaster_versions', $version);
+                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}");
+                        } catch (Exception $e) {
+                            error_log("Essays Master: Failed to save version snapshot - " . $e->getMessage());
+                        }
+                    }
                     
                     // For feedback rounds, just check if API call succeeded
                     if ($ai_result['success']) {
