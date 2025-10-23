@@ -1017,22 +1017,35 @@ Provide an encouraging but factual commentary about the student's writing journe
         ];
     }
 
-    protected function generate_essay_revision($essay_text, $level, $feedback_data) {
-        // This function's logic remains the same.
-        $clean_revision = $this->get_clean_revision($essay_text, $level, $feedback_data);
+	protected function generate_essay_revision($essay_text, $level, $feedback_data) {
+		// Sanitize inputs to prevent editor HTML leaking into the LLM/diff
+		$original_for_llm = $this->sanitize_original_essay_text($essay_text);
+		$clean_revision = $this->get_clean_revision($original_for_llm, $level, $feedback_data);
         if (strpos($clean_revision, 'Error:') === 0) {
-            return format_text($essay_text, FORMAT_HTML, ['trusted' => true]);
+			return format_text($essay_text, FORMAT_HTML, ['trusted' => true]);
         }
-        $formatted_revision = $this->get_formatted_diff($essay_text, $clean_revision);
+		// Sanitize revised text before diff
+		$revised_for_diff = $this->sanitize_original_essay_text($clean_revision);
+		$formatted_revision = $this->get_formatted_diff($original_for_llm, $revised_for_diff);
         if (strpos($formatted_revision, 'Error:') === 0) {
-            return format_text($clean_revision, FORMAT_HTML, ['trusted' => true]);
+			return format_text($clean_revision, FORMAT_HTML, ['trusted' => true]);
         }
-        $revision_html = preg_replace_callback('/\[\*(.*?)\*\]/s', function($m) {
-            return '<strong>[' . htmlspecialchars($m[1]) . ']</strong>';
-        }, $formatted_revision);
-        $revision_html = preg_replace_callback('/\~(.*?)\~/s', function($m) {
-            return '<del style="color:#3399cc;">' . htmlspecialchars($m[1]) . '</del>';
-        }, $revision_html);
+		// Render additions/removals cleanly without literal bracket artifacts
+		$revision_html = preg_replace_callback('/\[\*(.*?)\*\]/s', function($m) {
+			$seg = $m[1];
+			// Strip any HTML/markdown inside inserted segment
+			$seg = strip_tags($seg);
+			$seg = preg_replace('/\*\*|__|`{1,3}|#+|>+|\[|\]|\(|\)|~~/u', '', $seg);
+			$seg = trim($seg);
+			return '<ins class="rev-add">' . htmlspecialchars($seg) . '</ins>';
+		}, $formatted_revision);
+		$revision_html = preg_replace_callback('/\~(.*?)\~/s', function($m) {
+			$seg = $m[1];
+			$seg = strip_tags($seg);
+			$seg = preg_replace('/\*\*|__|`{1,3}|#+|>+|\[|\]|\(|\)|~~/u', '', $seg);
+			$seg = trim($seg);
+			return '<del class="rev-del" style="color:#3399cc;">' . htmlspecialchars($seg) . '</del>';
+		}, $revision_html);
         return $revision_html;
     }
 
@@ -1067,6 +1080,10 @@ Provide an encouraging but factual commentary about the student's writing journe
     2.  **Word Choice:** Replace simple or repetitive words with more precise and engaging vocabulary.
     3.  **Correction:** Fix all grammar, spelling (Australian English), and punctuation errors.
     4.  **Punctuation Constraint:** you MUST NEVER use colons (:) or semicolons (;) in your revision. 
+
+    **Formatting Restrictions (STRICT):**
+    - Do NOT include any HTML tags or angle brackets (< or >) in your output.
+    - Do NOT include any markdown symbols such as **, __, `, ##, >>>, ~~, or code blocks.
 
     Your final output MUST ONLY be the revised essay text. Do not add any commentary or explanation.";
             
@@ -1152,6 +1169,7 @@ Provide an encouraging but factual commentary about the student's writing journe
             - Your final output must be the single, fully formatted text inside <p>...</p> tags
             - Do not provide any commentary, explanation, or markdown code blocks
             - Do not use any ** ## $$ ^^^ *** --- === symbols anywhere in your output
+            - Do NOT include any HTML tags (no < or >) inside the added/removed content segments
             - Ensure natural flow and readability for students aged 11-16
             - Compare sentence by sentence to catch all differences accurately";
 
