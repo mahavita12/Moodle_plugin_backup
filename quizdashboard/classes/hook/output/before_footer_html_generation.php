@@ -1,0 +1,428 @@
+<?php
+namespace local_quizdashboard\hook\output;
+
+defined('MOODLE_INTERNAL') || die();
+
+class before_footer_html_generation {
+    /**
+     * Inject previous feedback summary for resubmission attempts.
+     */
+    public static function callback(\core\hook\output\before_footer_html_generation $hook): void {
+        global $PAGE, $DB, $USER;
+
+        if ($PAGE->pagetype !== 'mod-quiz-attempt') {
+            return;
+        }
+
+        // Find attempt id
+        $attemptid = 0;
+        if (isset($PAGE->url) && $PAGE->url->get_param('attempt')) {
+            $attemptid = (int)$PAGE->url->get_param('attempt');
+        } else if (optional_param('attempt', 0, PARAM_INT)) {
+            $attemptid = optional_param('attempt', 0, PARAM_INT);
+        } else if (isset($_GET['attempt'])) {
+            $attemptid = (int)$_GET['attempt'];
+        }
+        if (!$attemptid) { return; }
+
+        $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
+        if (!$attempt) { return; }
+        if ((int)$attempt->userid !== (int)$USER->id) { return; }
+
+        // Determine submission number for this user+quiz
+        $count = $DB->count_records_select('quiz_attempts',
+            'userid = ? AND quiz = ? AND timestart <= ? AND state IN (?, ?)',
+            [$attempt->userid, $attempt->quiz, $attempt->timestart, 'finished', 'inprogress']
+        );
+        $submissionnum = max(1, (int)$count);
+        if ($submissionnum < 2) { return; } // only resubmissions
+
+        // Find immediate previous attempt
+        $prev = $DB->get_record_sql(
+            "SELECT id, timestart FROM {quiz_attempts}
+             WHERE userid = ? AND quiz = ? AND timestart < ? AND state IN ('finished','inprogress')
+             ORDER BY timestart DESC", [ $attempt->userid, $attempt->quiz, $attempt->timestart ]);
+        if (!$prev) { return; }
+
+        // Load previous grading (fallback to FIRST submission if previous is not graded)
+        $fallbackfirst = false;
+        $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $prev->id]);
+        if (!$grading || empty($grading->feedback_html)) {
+            // Find first submission for this user+quiz
+            $first = $DB->get_record_sql(
+                "SELECT id, timestart FROM {quiz_attempts}
+                 WHERE userid = ? AND quiz = ?
+                 ORDER BY timestart ASC LIMIT 1",
+                [$attempt->userid, $attempt->quiz]
+            );
+            if ($first) {
+                $firstgrading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $first->id]);
+                if ($firstgrading && !empty($firstgrading->feedback_html)) {
+                    $prev = $first; // use first submission as the source
+                    $grading = $firstgrading;
+                    $fallbackfirst = true;
+                } else {
+                    return; // nothing to render
+                }
+            } else {
+                return; // nothing to render
+            }
+        }
+
+        $html = (string)$grading->feedback_html;
+
+        // Extract summaries using lightweight regex fallbacks
+        $meta = [
+            'score' => self::extract_final_score($grading, $html),
+            'submitted' => userdate($prev->timestart)
+        ];
+
+        $items = [
+            'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
+            'Structure and Organization (25%)' => self::extract_improvement_items($html, 'Structure\s+and\s+Organi[sz]ation', 3),
+            'Language Use (20%)' => self::extract_improvement_items($html, 'Language\s+Use', 3),
+            'Creativity and Originality (20%)' => self::extract_improvement_items($html, 'Creativity\s+and\s+Originality', 3),
+            'Mechanics (10%)' => self::extract_mechanics_items($html, 3)
+        ];
+        $relevance = self::extract_relevance_from_content($html);
+        $overall = self::extract_overall_html($html);
+
+        $ordinal = $fallbackfirst ? 'First' : self::ordinal_label($submissionnum - 1); // previous or first
+        $card = self::render_card($prev->id, $ordinal, $meta, $items, $relevance, $overall);
+        $hook->add_html($card);
+    }
+
+    private static function extract_between($html, $startRegex, $endRegex) {
+        if (preg_match($startRegex, $html, $m, PREG_OFFSET_CAPTURE)) {
+            $start = $m[0][1] + strlen($m[0][0]);
+            if (preg_match($endRegex, $html, $n, PREG_OFFSET_CAPTURE, $start)) {
+                return substr($html, $start, $n[0][1] - $start);
+            }
+        }
+        return '';
+    }
+
+    private static function summarize_section($html, $titlePattern) : string {
+        // Try strategic markers first
+        $map = [
+            'Content\s+and\s+Ideas' => 'CONTENT_IDEAS',
+            'Structure\s+and\s+Organi[sz]ation' => 'STRUCTURE_ORG',
+            'Language\s+Use' => 'LANGUAGE_USE',
+            'Creativity\s+and\s+Originality' => 'CREATIVITY_ORIG',
+            'Mechanics' => 'MECHANICS'
+        ];
+        foreach ($map as $title => $marker) {
+            if (preg_match('/' . $title . '/i', $titlePattern)) {
+                if (preg_match('/<!--\s*EXTRACT_' . $marker . '_START\s*-->(.*?)<!--\s*EXTRACT_' . $marker . '_END\s*-->/si', $html, $mm)) {
+                    $segment = $mm[1];
+                    if (preg_match('/<li><strong>Analysis of Changes:\\/*strong><\\/?[^>]*>(.*?)<\\/li>/si', $segment, $an)) {
+                        return trim(strip_tags($an[1]));
+                    }
+                    return self::first_sentences(strip_tags($segment), 2);
+                }
+            }
+        }
+        // Fallback by heading
+        if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
+            $segment = $m[1];
+            if (preg_match('/<li><strong>Analysis of Changes[^<]*<\\/strong>:\s*<[^>]*>(.*?)<\\/li>/si', $segment, $an)) {
+                return trim(strip_tags($an[1]));
+            }
+            return self::first_sentences(strip_tags($segment), 2);
+        }
+        return '';
+    }
+
+    private static function summarize_relevance($html) : string {
+        // Look inside Content & Ideas first
+        $sec = self::summarize_section($html, 'Content\s+and\s+Ideas');
+        if (!empty($sec)) { return $sec; }
+        // Fallback to overall
+        return self::summarize_overall($html);
+    }
+
+    private static function extract_overall_html($html) : string {
+        if (preg_match('/<div[^>]+id=["\']overall-comments["\'][^>]*>(.*?)<\\/div>/si', $html, $m)) {
+            return trim($m[1]);
+        }
+        return '';
+    }
+
+    /**
+     * Extract up to $limit items from Areas for Improvement in a section.
+     */
+    private static function extract_improvement_items($html, $titlePattern, $limit = 3) : array {
+        $segment = '';
+        // Strictly slice between this section header and the next h2
+        if (preg_match('/<h2[^>]*>[^<]*' . $titlePattern . '[^<]*<\\/h2>/si', $html, $mh, PREG_OFFSET_CAPTURE)) {
+            $start = $mh[0][1] + strlen($mh[0][0]);
+            // Find next h2 after this start
+            if (preg_match('/<h2[^>]*>/si', $html, $nx, PREG_OFFSET_CAPTURE, $start)) {
+                $segment = substr($html, $start, $nx[0][1] - $start);
+            } else {
+                $segment = substr($html, $start);
+            }
+        }
+        if ($segment === '') {
+            // try markers
+            $map = [
+                'Content\\s+and\\s+Ideas' => 'CONTENT_IDEAS',
+                'Structure\\s+and\\s+Organi[sz]ation' => 'STRUCTURE_ORG',
+                'Language\\s+Use' => 'LANGUAGE_USE',
+                'Creativity\\s+and\\s+Originality' => 'CREATIVITY_ORIG',
+                'Mechanics' => 'MECHANICS'
+            ];
+            foreach ($map as $title => $marker) {
+                if (preg_match('/' . $title . '/i', $titlePattern)) {
+                    if (preg_match('/<!--\s*EXTRACT_' . $marker . '_START\s*-->(.*?)<!--\s*EXTRACT_' . $marker . '_END\s*-->/si', $html, $mm)) {
+                        $segment = $mm[1];
+                    }
+                }
+            }
+        }
+        $items = [];
+        if ($segment) {
+            // Find list after Areas for Improvement label
+            if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
+                $start = $ai[0][1] + strlen($ai[0][0]);
+                if (preg_match('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ul, 0, $start)) {
+                    if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $ul[1], $lis)) {
+                        foreach ($lis[1] as $li) {
+                            $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                            if ($text !== '') { $items[] = $text; }
+                            if (count($items) >= $limit) break;
+                        }
+                    }
+                }
+            }
+        }
+        return $items;
+    }
+
+    private static function extract_mechanics_items($html, $limit = 3) : array {
+        // Prefer mechanics section by heading
+        $segment = '';
+        if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
+            $segment = $m[1];
+        }
+        // Fallback to markers
+        if ($segment === '' && preg_match('/<!--\s*EXTRACT_MECHANICS_START\s*-->(.*?)<!--\s*EXTRACT_MECHANICS_END\s*-->/si', $html, $mm)) {
+            $segment = $mm[1];
+        }
+        $items = [];
+        if ($segment) {
+            // Primary: list immediately after "Areas for Improvement" label in Mechanics
+            if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
+                $start = $ai[0][1] + strlen($ai[0][0]);
+                if (preg_match('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ul, 0, $start)) {
+                    if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $ul[1], $lis)) {
+                        foreach ($lis[1] as $li) {
+                            $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                            if ($text !== '') { $items[] = $text; }
+                            if (count($items) >= $limit) break;
+                        }
+                    }
+                }
+            }
+            // Secondary: harvest mechanics-like bullets by keyword from any UL inside section
+            if (empty($items)) {
+                if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $segment, $lis2)) {
+                    foreach ($lis2[1] as $li) {
+                        $plain = strtolower(trim(strip_tags($li)));
+                        if (preg_match('/spelling|capital|punctuation|comma|proofread|tense|grammar/i', $plain)) {
+                            $items[] = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                        }
+                        if (count($items) >= $limit) break;
+                    }
+                }
+            }
+        }
+        // Final fallback: standard mechanics reminders
+        if (empty($items)) {
+            $items = [
+                'Check spelling carefully, especially common words',
+                'Use capital letters for the pronoun "I" throughout',
+                'Review punctuation, particularly commas in compound sentences'
+            ];
+        }
+        return $items;
+    }
+
+    private static function extract_relevance_from_content($html) : string {
+        // Look inside Content & Ideas block for a line beginning with Relevance to Question
+        if (preg_match('/<h2[^>]*>.*?Content\s+and\s+Ideas.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
+            $segment = $m[1];
+            if (preg_match('/Relevance\s*to\s*Question:\s*(.*?)<\/li>|Relevance\s*to\s*Question:\s*(.*?)(?:<br|<p|<ul)/si', $segment, $rm)) {
+                $val = $rm[1] ?: $rm[2];
+                return trim(strip_tags($val));
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Extract full HTML lists for a criterion: Areas for Improvement and Examples.
+     */
+    private static function extract_section_lists($html, $titlePattern) : array {
+        $segment = '';
+        // Try strategic markers first based on title mapping
+        $map = [
+            'Content\\s+and\\s+Ideas' => 'CONTENT_IDEAS',
+            'Structure\\s+and\\s+Organi[sz]ation' => 'STRUCTURE_ORG',
+            'Language\\s+Use' => 'LANGUAGE_USE',
+            'Creativity\\s+and\\s+Originality' => 'CREATIVITY_ORIG',
+            'Mechanics' => 'MECHANICS'
+        ];
+        foreach ($map as $title => $marker) {
+            if (preg_match('/' . $title . '/i', $titlePattern)) {
+                if (preg_match('/<!--\s*EXTRACT_' . $marker . '_START\s*-->(.*?)<!--\s*EXTRACT_' . $marker . '_END\s*-->/si', $html, $mm)) {
+                    $segment = $mm[1];
+                }
+            }
+        }
+        // Fallback: capture section content by heading
+        if ($segment === '') {
+            if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
+                $segment = $m[1];
+            }
+        }
+
+        $improvements = '';
+        $examples = '';
+        if ($segment) {
+            // Prefer labeled lists
+            if (preg_match('/Areas\s*for\s*Improvement:?\s*<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ai)) {
+                $improvements = '<ul>' . $ai[1] . '</ul>';
+            }
+            if (preg_match('/Examples:?\s*<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ex)) {
+                $examples = '<ul>' . $ex[1] . '</ul>';
+            }
+            // Fallback: take first and second ULs in the section if labels missing
+            if ($improvements === '' || $examples === '') {
+                if (preg_match_all('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $alls)) {
+                    if ($improvements === '' && !empty($alls[1][0])) {
+                        $improvements = '<ul>' . $alls[1][0] . '</ul>';
+                    }
+                    if ($examples === '' && !empty($alls[1][1])) {
+                        $examples = '<ul>' . $alls[1][1] . '</ul>';
+                    }
+                }
+            }
+        }
+        return ['improvements' => $improvements, 'examples' => $examples];
+    }
+
+    private static function extract_improvement_bullets($html, $limit = 5) : array {
+        $bullets = [];
+        if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $html, $m)) {
+            foreach ($m[1] as $item) {
+                $line = trim(preg_replace('/\s+/', ' ', strip_tags($item)));
+                if ($line !== '' && !preg_match('/Score|Final\s+Score/i', $line)) {
+                    $bullets[] = $line;
+                }
+                if (count($bullets) >= $limit) break;
+            }
+        }
+        return $bullets;
+    }
+
+    private static function first_sentences($text, $max = 2) : string {
+        $text = trim(preg_replace('/\s+/', ' ', $text));
+        $parts = preg_split('/(?<=[.!?])\s+/', $text);
+        return trim(implode(' ', array_slice($parts, 0, $max)));
+    }
+
+    private static function extract_final_score($grading, $html) : string {
+        if (!empty($grading->score_content_ideas)) {
+            $total = (int)$grading->score_content_ideas + (int)$grading->score_structure_organization
+                   + (int)$grading->score_language_use + (int)$grading->score_creativity_originality
+                   + (int)$grading->score_mechanics;
+            return $total . ' / 100';
+        }
+        if (preg_match('/Final\s+Score[^:]*:\s*(\d+)\s*\/\s*100/i', $html, $m)) {
+            return ((int)$m[1]) . ' / 100';
+        }
+        return '';
+    }
+
+    private static function ordinal_label($n) : string {
+        $map = [1=>'First',2=>'Second',3=>'Third',4=>'Fourth',5=>'Fifth'];
+        return $map[$n] ?? ($n . 'th');
+    }
+
+    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall) : string {
+        $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
+        $sec = '';
+        $mkBullets = function($title, $arr, $color, $relevanceText = '') use ($esc) {
+            if (empty($arr) && $relevanceText === '') return '';
+            $html = '<div class="qd-criteria__item" style="border-left-color:' . $color . ';">'
+                 . '<h4 class="qd-criteria__title">' . $esc($title) . '</h4>';
+            if ($relevanceText !== '') {
+                $html .= '<div class="qd-criteria__body"><strong>Relevance to Question:</strong> ' . '<span style="color:#87CEEB;font-weight:700">' . $esc($relevanceText) . '</span>' . '</div>';
+            }
+            if (!empty($arr)) {
+                $html .= '<div class="qd-criteria__body"><ul>';
+                foreach ($arr as $b) { $html .= '<li>' . $esc($b) . '</li>'; }
+                $html .= '</ul></div>';
+            }
+            $html .= '</div>';
+            return $html;
+        };
+        $colors = ['#0b69c7','#0b69c7','#0b69c7','#0b69c7','#0b69c7'];
+        $i = 0;
+        foreach ($items as $title => $arr) {
+            $rel = ($i === 0) ? ($relevance ?? '') : '';
+            $sec .= $mkBullets($title, $arr, $colors[min($i,4)], $rel);
+            $i++;
+        }
+        $overallhtml = '';
+        if (!empty($overall)) {
+            $overallhtml = '<div class="qd-criteria__item" style="border-left-color:#6f42c1;"><h4 class="qd-criteria__title">Overall Comments</h4>' . $overall . '</div>';
+        }
+
+        $score = $esc($meta['score'] ?? '');
+        $submitted = $esc($meta['submitted'] ?? '');
+
+        $html = '<div id="qd-prev-summary" class="qd-prev-summary" data-prev-attempt="' . (int)$previd . '">'
+            . '<style>'
+            . '.qd-prev-summary{margin:16px 0 20px;border:1px solid #d0d7de;border-left:4px solid #6f42c1;border-radius:6px;background:#fbfbfe;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}'
+            . '.qd-prev-summary__header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;cursor:pointer}'
+            . '.qd-prev-summary__title{display:flex;align-items:center;gap:8px;font-weight:600;color:#3b3b3b;margin:0;font-size:15px}'
+            . '.qd-prev-summary__chip{background:#6f42c1;color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600}'
+            . '.qd-prev-summary__toggle{background:transparent;border:1px solid #c8c8d0;border-radius:6px;color:#6f42c1;font-weight:700;font-size:14px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-align:center}'
+            . '.qd-prev-summary__body{display:none;padding:8px 12px 12px;border-top:1px dashed #e5e5e5}'
+            . '.qd-prev-summary__meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 10px}'
+            . '.qd-prev-summary__meta-item{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;font-size:12px;color:#444}'
+            . '.qd-criteria{display:grid;grid-template-columns:1fr;gap:10px}'
+            . '.qd-criteria__item{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #0b69c7;border-radius:6px;padding:10px 12px}'
+            . '.qd-criteria__title{margin:0 0 6px 0;font-weight:700;color:#0b69c7;font-size:14px}'
+            . '.qd-criteria__body{margin:0;color:#2f2f2f;font-size:13px;line-height:1.4}'
+            . '.qd-prev-summary__bullets{margin:10px 0 12px 18px;padding:0}'
+            . '.qd-prev-summary__bullets li{margin:6px 0;line-height:1.35;color:#2f2f2f;font-size:14px}'
+            . '.qd-prev-summary__footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}'
+            . '.qd-prev-summary__link{font-size:13px;font-weight:700;text-decoration:none;display:inline-block;background:#0b69c7;color:#ffffff;padding:8px 12px;border-radius:6px;border:1px solid #0a5fb0}'
+            . '.qd-prev-summary__link:hover{filter:brightness(0.95)}'
+            . '@media print{.qd-prev-summary{page-break-inside:avoid}.qd-prev-summary__body{display:block!important}.qd-prev-summary__toggle{display:none}}'
+            . '</style>'
+            . '<div class="qd-prev-summary__header" role="button" aria-expanded="false" aria-controls="qd-prev-summary-body">'
+            . '<h3 class="qd-prev-summary__title">Previous Feedback Summary <span class="qd-prev-summary__chip">' . $esc($ordinal) . ' Submission</span></h3>'
+            . '<button class="qd-prev-summary__toggle" type="button" aria-label="Toggle summary">▾</button>'
+            . '</div>'
+            . '<div id="qd-prev-summary-body" class="qd-prev-summary__body" aria-hidden="true">'
+            .   '<div class="qd-prev-summary__meta">'
+            .     '<div class="qd-prev-summary__meta-item"><strong>Final Score:</strong> ' . $score . '</div>'
+            .     '<div class="qd-prev-summary__meta-item"><strong>Submitted:</strong> ' . $submitted . '</div>'
+            .   '</div>'
+            .   $sec
+            .   $overallhtml
+            .   '<div class="qd-prev-summary__footer">'
+            .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">View full feedback from ' . $esc($ordinal) . ' Submission</a>'
+            .   '</div>'
+            . '</div>'
+            . '<script>(function(){var h=document.querySelector("#qd-prev-summary .qd-prev-summary__header");if(!h)return;var b=document.getElementById("qd-prev-summary-body"),t=h.querySelector(".qd-prev-summary__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
+            . '</div>';
+        return $html;
+    }
+}
+
+
