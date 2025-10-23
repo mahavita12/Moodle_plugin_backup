@@ -393,7 +393,7 @@ class before_footer_html_generation {
             $html = '<div class="qd-criteria__item" style="border-left-color:' . $color . ';">'
                  . '<h4 class="qd-criteria__title">' . $esc($title) . '</h4>';
             if ($relevanceText !== '') {
-                $html .= '<div class="qd-criteria__body"><strong>Relevance to Question:</strong> ' . '<span style="color:#87CEEB;font-weight:700">' . $esc($relevanceText) . '</span>' . '</div>';
+                $html .= '<div class="qd-criteria__body"><strong>Relevance to Question:</strong> ' . '<span style="color:#0b69c7;font-weight:700">' . $esc($relevanceText) . '</span>' . '</div>';
             }
             if (!empty($arr)) {
                 $html .= '<div class="qd-criteria__body"><ul>';
@@ -422,8 +422,8 @@ class before_footer_html_generation {
             . '<style>'
             . '.qd-prev-summary{margin:16px 0 20px;border:1px solid #d0d7de;border-left:4px solid #6f42c1;border-radius:6px;background:#fbfbfe;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}'
             . '.qd-prev-summary__header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;cursor:pointer}'
-            . '.qd-prev-summary__title{display:flex;align-items:center;gap:8px;font-weight:600;color:#3b3b3b;margin:0;font-size:15px}'
-            . '.qd-prev-summary__chip{background:#6f42c1;color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:600}'
+            . '.qd-prev-summary__title{display:flex;align-items:center;gap:8px;font-weight:600;color:#0b69c7;margin:0;font-size:16px}'
+            . '.qd-prev-summary__chip{display:none}'
             . '.qd-prev-summary__toggle{background:transparent;border:1px solid #c8c8d0;border-radius:6px;color:#6f42c1;font-weight:700;font-size:14px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-align:center}'
             . '.qd-prev-summary__body{display:none;padding:8px 12px 12px;border-top:1px dashed #e5e5e5}'
             . '.qd-prev-summary__meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 10px}'
@@ -440,7 +440,7 @@ class before_footer_html_generation {
             . '@media print{.qd-prev-summary{page-break-inside:avoid}.qd-prev-summary__body{display:block!important}.qd-prev-summary__toggle{display:none}}'
             . '</style>'
             . '<div class="qd-prev-summary__header" role="button" aria-expanded="false" aria-controls="qd-prev-summary-body">'
-            . '<h3 class="qd-prev-summary__title">Previous Feedback Summary <span class="qd-prev-summary__chip">' . $esc($ordinal) . ' Submission</span></h3>'
+            . '<h3 class="qd-prev-summary__title">Previous Feedback Summary - ' . $esc($ordinal) . ' Submission</h3>'
             . '<button class="qd-prev-summary__toggle" type="button" aria-label="Toggle summary">▾</button>'
             . '</div>'
             . '<div id="qd-prev-summary-body" class="qd-prev-summary__body" aria-hidden="true">'

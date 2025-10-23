@@ -5,6 +5,202 @@
 define([], function () {
     "use strict";
 
+    // Store attempt id for popup usage
+    let __EM_ATTEMPT_ID__ = null;
+
+    // Create a small external-link icon button and open a popup that mirrors the panel
+    function addOpenWindowButton(panel, round, attemptId) {
+        try {
+            if (!panel || !round) return;
+            // Avoid duplicates
+            if (panel.querySelector('.em-openwin')) return;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'em-openwin';
+            btn.setAttribute('aria-label', 'Open in new window');
+            btn.style.cssText = [
+                'position:absolute','top:8px','right:8px','width:18px','height:18px',
+                'border:0','background:rgba(255,255,255,0.0)','cursor:pointer','opacity:0.85',
+                'padding:0','line-height:0'
+            ].join(';');
+            // Minimal external-link SVG icon (overlay)
+            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f6cbf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
+            // New window button (shown to the left)
+            const popupBtn = document.createElement('button');
+            popupBtn.type = 'button';
+            popupBtn.className = 'em-openpopup';
+            popupBtn.setAttribute('aria-label', 'Open in new window');
+            popupBtn.style.cssText = [
+                'position:absolute','top:8px','right:30px','width:18px','height:18px',
+                'border:0','background:rgba(255,255,255,0.0)','cursor:pointer','opacity:0.85',
+                'padding:0','line-height:0'
+            ].join(';');
+            // Two windows icon
+            popupBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f6cbf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12" height="12" rx="2"/><rect x="9" y="3" width="12" height="12" rx="2"/></svg>';
+
+            btn.addEventListener('click', function(ev){
+                ev.preventDefault();
+                ev.stopPropagation();
+
+				// Create an in-page floating panel (overlay) that stays above
+				try { if (window.__EM_FLOAT_PANEL__ && window.__EM_FLOAT_PANEL__.parentNode) { window.__EM_FLOAT_PANEL__.parentNode.removeChild(window.__EM_FLOAT_PANEL__); } } catch(_) {}
+				const rect = panel.getBoundingClientRect();
+				const width = Math.max(480, Math.round(rect.width * 0.8));
+				const container = document.createElement('div');
+				container.id = 'em-floating-panel';
+				container.style.cssText = [
+					'position:fixed','top:10px','right:10px','width:'+width+'px','max-height:85vh','background:#fff',
+					'border:2px solid #0f6cbf','border-radius:8px','box-shadow:0 8px 24px rgba(0,0,0,0.2)','z-index:999999',
+					'display:flex','flex-direction:column','overflow:hidden','font-family: Arial, Helvetica, sans-serif','font-size:14px'
+				].join(';');
+				const header = document.createElement('div');
+				header.style.cssText = 'cursor:move;background:#0f6cbf;color:#fff;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;';
+				header.innerHTML = '<span>Feedback Round ' + round + '</span>';
+				const closeBtn = document.createElement('button');
+				closeBtn.type = 'button';
+				closeBtn.textContent = '×';
+				closeBtn.style.cssText = 'background:transparent;border:0;color:#fff;font-size:18px;line-height:1;cursor:pointer';
+				header.appendChild(closeBtn);
+				const tools = document.createElement('div');
+				tools.style.cssText = 'margin-left:auto;display:flex;gap:6px;align-items:center;';
+				const maxBtn = document.createElement('button');
+				maxBtn.type='button'; maxBtn.textContent='▢';
+				maxBtn.title='Maximize/Restore';
+				maxBtn.style.cssText='background:transparent;border:1px solid rgba(255,255,255,.7);color:#fff;font-size:12px;line-height:1;padding:2px 6px;border-radius:3px;cursor:pointer';
+				header.insertBefore(tools, closeBtn);
+				tools.appendChild(maxBtn);
+
+				const body = document.createElement('div');
+				body.style.cssText = 'padding:10px;overflow:auto;';
+				const clone = panel.cloneNode(true);
+				const existingBtn = clone.querySelector('.em-openwin'); if (existingBtn) existingBtn.remove();
+				body.appendChild(clone);
+				container.appendChild(header);
+				container.appendChild(body);
+				document.body.appendChild(container);
+				window.__EM_FLOAT_PANEL__ = container;
+
+				// Restore persisted size/position
+				const skey = 'em_fp_' + (__EM_ATTEMPT_ID__ || attemptId || '0');
+				(function restore(){
+					try {
+						const raw = sessionStorage.getItem(skey);
+						if (!raw) return;
+						const st = JSON.parse(raw);
+						if (st && typeof st === 'object') {
+							if (st.width) container.style.width = Math.max(360, parseInt(st.width)) + 'px';
+							if (st.height) container.style.height = Math.max(240, parseInt(st.height)) + 'px';
+							if (typeof st.top === 'number') container.style.top = st.top + 'px';
+							if (typeof st.right === 'number') container.style.right = st.right + 'px';
+						}
+					} catch(_) {}
+				})();
+
+				function persist() {
+					try {
+						const st = {
+							top: container.offsetTop,
+							right: parseInt(container.style.right) || 10,
+							width: container.offsetWidth,
+							height: container.offsetHeight
+						};
+						sessionStorage.setItem(skey, JSON.stringify(st));
+					} catch(_) {}
+				}
+				// Drag handling
+				(function(){
+					let dragging=false, sx=0, sy=0, startTop=0, startRight=0;
+					header.addEventListener('mousedown', function(e){ dragging=true; sx=e.clientX; sy=e.clientY; startTop=container.offsetTop; startRight=parseInt(container.style.right)||10; e.preventDefault(); });
+					document.addEventListener('mousemove', function(e){ if(!dragging) return; const dy=e.clientY-sy; const dx=e.clientX-sx; container.style.top=(startTop+dy)+'px'; container.style.right=(Math.max(0,startRight-dx))+'px'; });
+					document.addEventListener('mouseup', function(){ if(dragging) persist(); dragging=false; });
+				})();
+				// Multi-side resize handles (corners + edges)
+				function addHandle(dir, css, cursor){
+					const h=document.createElement('div');
+					h.style.cssText='position:absolute;'+css+';cursor:'+cursor+';';
+					container.appendChild(h);
+
+					let resizing=false, sx=0, sy=0, startW=0, startH=0, startTop=0, startRight=0;
+					h.addEventListener('mousedown', function(e){
+						resizing=true; sx=e.clientX; sy=e.clientY; startW=container.offsetWidth; startH=container.offsetHeight; startTop=container.offsetTop; startRight=parseInt(container.style.right)||10; e.preventDefault();
+					});
+					document.addEventListener('mousemove', function(e){
+						if(!resizing) return;
+						const dx=e.clientX-sx; const dy=e.clientY-sy;
+						let w=startW, h=startH, t=startTop, r=startRight;
+						if(dir.indexOf('e')!==-1){ w=Math.max(360, startW+dx); r=Math.max(0, startRight-dx); }
+						if(dir.indexOf('s')!==-1){ h=Math.max(240, startH+dy); }
+						if(dir.indexOf('w')!==-1){ w=Math.max(360, startW-dx); r=Math.max(0, startRight+dx); }
+						if(dir.indexOf('n')!==-1){ h=Math.max(240, startH-dy); t=startTop+dy; }
+						container.style.width=w+'px'; container.style.height=h+'px'; container.style.top=t+'px'; container.style.right=r+'px';
+					});
+					document.addEventListener('mouseup', function(){ if(resizing) persist(); resizing=false; });
+				}
+				// corners
+				addHandle('se','width:14px;height:14px;right:2px;bottom:2px;background:linear-gradient(135deg, transparent 0 50%, rgba(15,108,191,.6) 50% 100%);border-radius:2px','nwse-resize');
+				addHandle('ne','width:14px;height:14px;right:2px;top:2px;background:linear-gradient(225deg, transparent 0 50%, rgba(15,108,191,.6) 50% 100%);border-radius:2px','nesw-resize');
+				addHandle('sw','width:14px;height:14px;left:2px;bottom:2px;background:linear-gradient(45deg, transparent 0 50%, rgba(15,108,191,.6) 50% 100%);border-radius:2px','nesw-resize');
+				addHandle('nw','width:14px;height:14px;left:2px;top:2px;background:linear-gradient(315deg, transparent 0 50%, rgba(15,108,191,.6) 50% 100%);border-radius:2px','nwse-resize');
+				// edges
+				addHandle('e','width:6px;height:40px;right:-2px;top:50%;transform:translateY(-50%);background:transparent','ew-resize');
+				addHandle('w','width:6px;height:40px;left:-2px;top:50%;transform:translateY(-50%);background:transparent','ew-resize');
+				addHandle('n','width:40px;height:6px;left:50%;top:-2px;transform:translateX(-50%);background:transparent','ns-resize');
+				addHandle('s','width:40px;height:6px;left:50%;bottom:-2px;transform:translateX(-50%);background:transparent','ns-resize');
+
+				// Maximize/restore
+				let maximized=false, prev={ top:0, right:0, width:0, height:0 };
+				maxBtn.addEventListener('click', function(){
+					if(!maximized){ prev.top=container.offsetTop; prev.right=parseInt(container.style.right)||10; prev.width=container.offsetWidth; prev.height=container.offsetHeight; container.style.top='10px'; container.style.right='10px'; container.style.width=Math.min(window.innerWidth-20, 1000)+'px'; container.style.height=Math.min(window.innerHeight-20, 700)+'px'; maximized=true; maxBtn.textContent='❐'; }
+					else { container.style.top=prev.top+'px'; container.style.right=prev.right+'px'; container.style.width=prev.width+'px'; container.style.height=prev.height+'px'; maximized=false; maxBtn.textContent='▢'; }
+					persist();
+				});
+
+				closeBtn.addEventListener('click', function(){ if (container.parentNode) container.parentNode.removeChild(container); window.__EM_FLOAT_PANEL__ = null; });
+				document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && window.__EM_FLOAT_PANEL__) { try { window.__EM_FLOAT_PANEL__.parentNode.removeChild(window.__EM_FLOAT_PANEL__); } catch(_) {} window.__EM_FLOAT_PANEL__ = null; } }, { once: true });
+            });
+
+            // Open in separate window (split-screen)
+            popupBtn.addEventListener('click', function(ev){
+                ev.preventDefault(); ev.stopPropagation();
+                const rect = panel.getBoundingClientRect();
+                const width = Math.max(480, Math.round(rect.width * 0.8));
+                const availH = (window.screen && (window.screen.availHeight || window.screen.height)) || 800;
+                const height = Math.max(400, Math.min(availH - 20, (window.innerHeight || availH) - 10));
+                const availW = (window.screen && (window.screen.availWidth || window.screen.width)) || 1200;
+                const left = Math.max(0, Math.round(availW - width - 10));
+                const top = 10;
+                const name = 'em_fb_' + (attemptId || __EM_ATTEMPT_ID__ || 'x') + '_' + round;
+                const features = 'width=' + width + ',height=' + height + ',left=' + left + ',top=' + top + ',scrollbars=yes,resizable=yes,noopener';
+                const base = (typeof M !== 'undefined' && M.cfg && M.cfg.wwwroot) ? M.cfg.wwwroot : '';
+                const url = base + '/local/essaysmaster/view_feedback.php?attemptid=' + encodeURIComponent(attemptId || __EM_ATTEMPT_ID__ || '') + '&round=' + encodeURIComponent(round) + '&clean=1';
+                const w = window.open(url, name, features);
+                if (w) {
+                    try { w.focus(); } catch(_) {}
+                    try { window.__EM_FEEDBACK_WIN__ = w; } catch(_) {}
+                    const styles = (function(){ const el = document.getElementById('essays-master-styles'); return el ? el.textContent : ''; })();
+                    const clone = panel.cloneNode(true);
+                    const existingBtn = clone.querySelector('.em-openwin'); if (existingBtn) existingBtn.remove();
+                    const html = clone.outerHTML;
+                    const payload = { type: 'em_feedback_clone', title: 'Feedback Round ' + round, styles: styles, html: html };
+                    const send = () => { try { w.postMessage(payload, '*'); } catch(_){} };
+                    setTimeout(send, 250);
+                    const onReady = function(e){ if (e && e.data && e.data.type === 'em_feedback_ready') { send(); window.removeEventListener('message', onReady); } };
+                    window.addEventListener('message', onReady);
+                }
+            });
+
+            // Attach button to panel
+            panel.style.position = panel.style.position || 'relative';
+            panel.appendChild(popupBtn);
+            panel.appendChild(btn);
+        } catch (e) {
+            // Non-fatal
+            console.warn('Essays Master: open window button failed', e);
+        }
+    }
+
     // Page gate: only run on quiz attempt pages
     function onQuizAttemptPage() {
         return location.pathname.indexOf('/mod/quiz/attempt.php') !== -1;
@@ -1364,6 +1560,10 @@ define([], function () {
         if (config.type === 'validation') {
             rasterizeFeedbackToCanvas(panel);
         }
+        // Show open-in-window only after real feedback exists for feedback rounds
+        if (config.type === 'feedback' && feedback && (feedback.feedback || feedback.improvements)) {
+            addOpenWindowButton(panel, round, __EM_ATTEMPT_ID__);
+        }
     }
 
     // Parse AI validation response with scoring
@@ -1552,6 +1752,8 @@ define([], function () {
                 `;
                 
                 panel.innerHTML = validationContent;
+                // After validation content is set, add the open-in-window button
+                addOpenWindowButton(panel, round, __EM_ATTEMPT_ID__);
             })
             .catch(error => {
                 console.error('Validation error:', error);
@@ -1583,6 +1785,7 @@ define([], function () {
         window.__EM_ACTIVE__ = true;
 
         const attemptId = (options && options.attemptId) || extractAttemptIdFromURL() || 1;
+        __EM_ATTEMPT_ID__ = attemptId;
         
         // Extract attemptId from URL if not provided
         function extractAttemptIdFromURL() {
@@ -1659,12 +1862,19 @@ define([], function () {
                 }
                 
                 processing = true;
+                // Close previously opened popup when advancing to the next round
+                try { if (window.__EM_FEEDBACK_WIN__ && !window.__EM_FEEDBACK_WIN__.closed) { window.__EM_FEEDBACK_WIN__.close(); } } catch(_) {}
+                try { window.__EM_FEEDBACK_WIN__ = null; } catch(_) {}
                 e.preventDefault();
                 e.stopPropagation();
 
                 // NEXT ROUND
                 round += 1;
                 console.log('Essays Master: Processing round', round);
+
+                // Close overlay and popup defensively on round change
+                try { if (window.__EM_FLOAT_PANEL__ && window.__EM_FLOAT_PANEL__.parentNode) { window.__EM_FLOAT_PANEL__.parentNode.removeChild(window.__EM_FLOAT_PANEL__); } } catch(_) {}
+                try { if (window.__EM_FEEDBACK_WIN__ && !window.__EM_FEEDBACK_WIN__.closed) { window.__EM_FEEDBACK_WIN__.close(); } } catch(_) {}
 
                 const isValidationRound = [2, 4, 6].includes(round);
                 const isFeedbackRound = [1, 3, 5].includes(round);
@@ -1717,6 +1927,14 @@ define([], function () {
 
             console.log('Essays Master: 6-round system active - Feedback→Validation pattern');
         };
+
+        // Defensive: close overlay/popup when page is unloading (navigation/form submit)
+        try {
+            window.addEventListener('beforeunload', function(){
+                try { if (window.__EM_FLOAT_PANEL__ && window.__EM_FLOAT_PANEL__.parentNode) { window.__EM_FLOAT_PANEL__.parentNode.removeChild(window.__EM_FLOAT_PANEL__); } } catch(_) {}
+                try { if (window.__EM_FEEDBACK_WIN__ && !window.__EM_FEEDBACK_WIN__.closed) { window.__EM_FEEDBACK_WIN__.close(); } } catch(_) {}
+            });
+        } catch(_) {}
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', boot);
