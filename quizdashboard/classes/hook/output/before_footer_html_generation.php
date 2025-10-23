@@ -200,44 +200,78 @@ class before_footer_html_generation {
     }
 
     private static function extract_mechanics_items($html, $limit = 3) : array {
-        // Prefer mechanics section by heading
         $segment = '';
-        if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
+
+        // Prefer mechanics section by heading.
+        if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
             $segment = $m[1];
         }
-        // Fallback to markers
+
+        // Fallback to markers – these may wrap a larger chunk that still contains
+        // the Mechanics heading, so trim down to the portion following that heading.
         if ($segment === '' && preg_match('/<!--\s*EXTRACT_MECHANICS_START\s*-->(.*?)<!--\s*EXTRACT_MECHANICS_END\s*-->/si', $html, $mm)) {
-            $segment = $mm[1];
+            $rawsegment = $mm[1];
+            if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\/h2>(.*)/si', $rawsegment, $inner)) {
+                $segment = $inner[1];
+            }
         }
+
         $items = [];
         if ($segment) {
-            // Primary: list immediately after "Areas for Improvement" label in Mechanics
+            // Primary: list immediately after "Areas for Improvement" label in Mechanics.
             if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
                 $start = $ai[0][1] + strlen($ai[0][0]);
-                if (preg_match('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ul, 0, $start)) {
-                    if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $ul[1], $lis)) {
+                if (preg_match('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $ul, 0, $start)) {
+                    if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul[1], $lis)) {
                         foreach ($lis[1] as $li) {
                             $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
-                            if ($text !== '') { $items[] = $text; }
-                            if (count($items) >= $limit) break;
+                            if ($text !== '') {
+                                $items[] = $text;
+                                if (count($items) >= $limit) {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
             }
-            // Secondary: harvest mechanics-like bullets by keyword from any UL inside section
-            if (empty($items)) {
-                if (preg_match_all('/<li[^>]*>(.*?)<\\/li>/si', $segment, $lis2)) {
+
+            // Secondary: harvest mechanics-like bullets by keyword from any UL inside section.
+            if (count($items) < $limit) {
+                if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $segment, $lis2)) {
                     foreach ($lis2[1] as $li) {
                         $plain = strtolower(trim(strip_tags($li)));
                         if (preg_match('/spelling|capital|punctuation|comma|proofread|tense|grammar/i', $plain)) {
-                            $items[] = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                            $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                            if ($text !== '') {
+                                $items[] = $text;
+                                if (count($items) >= $limit) {
+                                    break;
+                                }
+                            }
                         }
-                        if (count($items) >= $limit) break;
                     }
                 }
             }
         }
-        // Final fallback: standard mechanics reminders
+
+        if (!empty($items)) {
+            // Remove duplicates while preserving order.
+            $items = array_values(array_unique($items));
+
+            // Avoid repeating the same bullets as the Content section when markers misalign.
+            $contentitems = self::extract_improvement_items($html, 'Content\\s+and\\s+Ideas', $limit);
+            if (!empty($contentitems)) {
+                $items = array_values(array_diff($items, $contentitems));
+            }
+
+            // Enforce limit after filtering.
+            if (count($items) > $limit) {
+                $items = array_slice($items, 0, $limit);
+            }
+        }
+
+        // Final fallback: standard mechanics reminders.
         if (empty($items)) {
             $items = [
                 'Check spelling carefully, especially common words',
@@ -245,6 +279,7 @@ class before_footer_html_generation {
                 'Review punctuation, particularly commas in compound sentences'
             ];
         }
+
         return $items;
     }
 
