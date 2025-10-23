@@ -221,17 +221,17 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 padding-bottom: 10px;
     }
             @media print {
-                @page { margin: 0.75in; size: A4; }
-                body { font-family: 'Times New Roman', Times, serif; font-size: 10pt; line-height: 1.3; color: #000; background: #fff; }
+                @page { margin: 0.1in; size: A4; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: #000; background: #fff; }
                 .ld-essay-feedback { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; width: 100% !important; }
-                h1, h2, h3, h4, h5, h6 { color: #000 !important; margin-top: 12pt !important; margin-bottom: 6pt !important; page-break-after: avoid; }
-                h2 { font-size: 12pt !important; font-weight: bold !important; }
-                hr { border: 0 !important; border-top: 1pt solid #000 !important; margin: 6pt 0 !important; page-break-after: avoid; }
-                p { font-size: 10pt !important; margin: 4pt 0 !important; text-align: justify; orphans: 2; widows: 2; }
-                ul, ol { font-size: 10pt !important; margin: 4pt 0 !important; padding-left: 18pt !important; }
-                li { font-size: 10pt !important; margin: 2pt 0 !important; page-break-inside: avoid; }
-                .feedback-section { margin-bottom: 10pt !important; page-break-inside: auto; }
-                .homework-section { page-break-inside: avoid; margin-top: 12pt !important; }
+                h1, h2, h3, h4, h5, h6 { color: #000 !important; margin-top: 14pt !important; margin-bottom: 8pt !important; page-break-after: avoid; }
+                h2 { font-size: 14pt !important; font-weight: bold !important; }
+                hr { border: 0 !important; border-top: 1pt solid #000 !important; margin: 8pt 0 !important; page-break-after: avoid; }
+                p { font-size: 12pt !important; margin: 6pt 0 !important; text-align: justify; orphans: 2; widows: 2; }
+                ul, ol { font-size: 12pt !important; margin: 6pt 0 !important; padding-left: 20pt !important; }
+                li { font-size: 12pt !important; margin: 4pt 0 !important; page-break-inside: avoid; }
+                .feedback-section { margin-bottom: 12pt !important; page-break-inside: auto; }
+                .homework-section { page-break-inside: avoid; margin-top: 14pt !important; }
                 .page-break-before { page-break-before: auto; break-before: auto; }
                 .no-page-break { page-break-inside: avoid; }
                 .screen-only { display: none !important; }

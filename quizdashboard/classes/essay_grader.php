@@ -1275,14 +1275,14 @@ Provide an encouraging but factual commentary about the student's writing journe
             /* Print-specific styles */
             @media print {
                 @page {
-                    margin: 0.75in;
+                    margin: 0.1in;
                     size: A4;
                 }
                 
                 body { 
                     font-family: 'Times New Roman', Times, serif; 
-                    font-size: 10pt; 
-                    line-height: 1.3;
+                    font-size: 12pt; 
+                    line-height: 1.4;
                     color: #000;
                     background: white;
                 }
@@ -1299,13 +1299,13 @@ Provide an encouraging but factual commentary about the student's writing journe
                 /* Headers */
                 h1, h2, h3, h4, h5, h6 { 
                     color: #000000 !important; 
-                    margin-top: 12pt !important;
-                    margin-bottom: 6pt !important;
+                    margin-top: 14pt !important;
+                    margin-bottom: 8pt !important;
                     page-break-after: avoid;
                 }
                 
                 h2 { 
-                    font-size: 12pt !important; 
+                    font-size: 14pt !important; 
                     font-weight: bold !important;
                 }
                 
@@ -1313,14 +1313,14 @@ Provide an encouraging but factual commentary about the student's writing journe
                 hr { 
                     border: 0 !important;
                     border-top: 1pt solid #000 !important; 
-                    margin: 6pt 0 !important;
+                    margin: 8pt 0 !important;
                     page-break-after: avoid;
                 }
                 
                 /* Paragraphs and text */
                 p { 
-                    font-size: 10pt !important; 
-                    margin: 4pt 0 !important;
+                    font-size: 12pt !important; 
+                    margin: 6pt 0 !important;
                     text-align: justify;
                     orphans: 2;
                     widows: 2;
@@ -1328,14 +1328,14 @@ Provide an encouraging but factual commentary about the student's writing journe
                 
                 /* Lists */
                 ul, ol { 
-                    font-size: 10pt !important; 
-                    margin: 4pt 0 !important;
-                    padding-left: 18pt !important;
+                    font-size: 12pt !important; 
+                    margin: 6pt 0 !important;
+                    padding-left: 20pt !important;
                 }
                 
                 li { 
-                    font-size: 10pt !important; 
-                    margin: 2pt 0 !important;
+                    font-size: 12pt !important; 
+                    margin: 4pt 0 !important;
                     page-break-inside: avoid;
                 }
                 
@@ -1357,14 +1357,14 @@ Provide an encouraging but factual commentary about the student's writing journe
                 
                 /* Better spacing for feedback sections */
                 .feedback-section {
-                    margin-bottom: 10pt !important;
+                    margin-bottom: 12pt !important;
                     page-break-inside: auto;
                 }
                 
                 /* Homework section print styles */
                 .homework-section { 
                     page-break-inside: avoid;
-                    margin-top: 12pt !important;
+                    margin-top: 14pt !important;
                 }
                 
                 .exercise-section { 
