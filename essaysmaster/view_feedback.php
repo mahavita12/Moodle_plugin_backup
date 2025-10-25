@@ -274,6 +274,27 @@ echo '<style>body{margin:0} .popup-feedback-view{max-width:820px;margin:0 auto;p
         echo '</div>';
     }
 
+
+    // Copy protection for popup window
+    echo "<script>";
+    echo "(function() {";
+    echo "    var container = document.querySelector('.popup-feedback-view');";
+    echo "    if (!container) { container = document.body; }";
+    echo "    container.setAttribute('oncopy', 'return false');";
+    echo "    container.setAttribute('oncut', 'return false');";
+    echo "    container.setAttribute('onpaste', 'return false');";
+    echo "    container.setAttribute('oncontextmenu', 'return false');";
+    echo "    container.style.userSelect = 'none';";
+    echo "    container.style.webkitUserSelect = 'none';";
+    echo "    container.style.msUserSelect = 'none';";
+    echo "    ['copy', 'cut', 'paste', 'contextmenu', 'dragstart', 'selectstart'].forEach(function(evt) {";
+    echo "        container.addEventListener(evt, function(e) {";
+    echo "            e.preventDefault();";
+    echo "            e.stopPropagation();";
+    echo "        }, {passive: false});";
+    echo "    });";
+    echo "})();";
+    echo "</script>";
     echo '</div>'; // wrapper
 
     // postMessage bridge to allow exact clone injection from opener
