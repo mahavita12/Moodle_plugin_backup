@@ -64,6 +64,20 @@ try {
 
     echo $OUTPUT->header();
 
+    // Add print-specific top/bottom padding for popup window
+    echo '<style>
+        @media print {
+            .popup-feedback-view,
+            .clean-feedback-view {
+                padding-top: 0.5in !important;
+                padding-bottom: 0.5in !important;
+            }
+            .ld-essay-feedback {
+                margin-top: 0 !important;
+            }
+        }
+    </style>';
+
     // IMPROVED: Better print button layout
     if (!$print_view && !$clean_view && $grading_result && !empty($grading_result->feedback_html)) {
         echo '<div class="print-buttons screen-only">';
