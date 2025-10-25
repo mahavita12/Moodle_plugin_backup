@@ -624,6 +624,33 @@ body.hide-feedback .formulation {
     window.isTeacher = ' . ($is_teacher ? 'true' : 'false') . ';
     window.qfSesskey = "' . $sesskey . '";
 
+    // Submit flag via form POST (no nested forms - creates temporary form outside quiz form)
+    window.submitFlag = function(questionId, flagColor, currentState) {
+        var form = document.createElement("form");
+        form.method = "POST";
+        form.action = window.location.href;
+        form.style.display = "none";
+        
+        var fields = {
+            "flag_action": "1",
+            "questionid": questionId,
+            "flagcolor": flagColor,
+            "current_state": currentState,
+            "sesskey": window.qfSesskey
+        };
+        
+        for (var key in fields) {
+            var input = document.createElement("input");
+            input.type = "hidden";
+            input.name = key;
+            input.value = fields[key];
+            form.appendChild(input);
+        }
+        
+        document.body.appendChild(form);
+        form.submit();
+    };
+
     document.addEventListener("DOMContentLoaded", function() {
         console.log("Question flags loaded:", window.questionFlagsData);
         console.log("Structure guides loaded:", window.structureGuidesData);
@@ -840,22 +867,8 @@ body.hide-feedback .formulation {
                 var flagDiv = document.createElement("div");
                 flagDiv.className = "question-flag-container";
                 flagDiv.innerHTML = 
-                    "<form class=\"flag-form\" method=\"post\" style=\"display: inline;\">"+
-                        "<input type=\\"hidden\\" name=\\"flag_action\\" value=\\"1\\">"+
-                        "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
-                        "<input type=\\"hidden\\" name=\\"flagcolor\\" value=\\"blue\\">"+
-                        "<input type=\\"hidden\\" name=\\"current_state\\" value=\\""+currentFlag+"\\">"+
-                        "<input type=\\"hidden\\" name=\\"sesskey\\" value=\\"' . $sesskey . '\\">"+
-                        "<button type=\\"submit\\" class=\\"flag-btn blue\\"><span class=\\"emoji\\">🏳️</span> <span class=\\"text\\">Blue flag</span></button>"+
-                    "</form>"+
-                    "<form class=\\"flag-form\\" method=\\"post\\" style=\\"display: inline;\\">"+
-                        "<input type=\\"hidden\\" name=\\"flag_action\\" value=\\"1\\">"+
-                        "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
-                        "<input type=\\"hidden\\" name=\\"flagcolor\\" value=\\"red\\">"+
-                        "<input type=\\"hidden\\" name=\\"current_state\\" value=\\""+currentFlag+"\\">"+
-                        "<input type=\\"hidden\\" name=\\"sesskey\\" value=\\"' . $sesskey . '\\">"+
-                        "<button type=\\"submit\\" class=\\"flag-btn red\\"><span class=\\"emoji\\">🚩</span> <span class=\\"text\\">Red flag</span></button>"+
-                    "</form>";
+                    "<button type=\"button\" class=\"flag-btn blue\" onclick=\"submitFlag("+questionId+", \'blue\', \'"+currentFlag+"\')\"><span class=\"emoji\">🏳️</span> <span class=\"text\">Blue flag</span></button>"+
+                    "<button type=\"button\" class=\"flag-btn red\" onclick=\"submitFlag("+questionId+", \'red\', \'"+currentFlag+"\')\"><span class=\"emoji\">🚩</span> <span class=\"text\">Red flag</span></button>";
                 
                 var infoDiv = question.querySelector(".info");
                 if (infoDiv) {
