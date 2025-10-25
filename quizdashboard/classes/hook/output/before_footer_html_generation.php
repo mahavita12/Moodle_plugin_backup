@@ -5,11 +5,26 @@ defined('MOODLE_INTERNAL') || die();
 
 class before_footer_html_generation {
     /**
-     * Inject previous feedback summary for resubmission attempts.
+     * Hook callback for before footer HTML generation.
+     * Handles two responsibilities:
+     * 1. Load global navigation panel (all pages, admins only)
+     * 2. Inject previous feedback summary (quiz attempt pages, resubmissions only)
      */
     public static function callback(\core\hook\output\before_footer_html_generation $hook): void {
-        global $PAGE, $DB, $USER;
+        global $PAGE, $DB, $USER, $CFG;
 
+        // FIRST: Load global navigation for site administrators (runs on ALL pages)
+        if (empty($CFG->quizdashboard_disable_global_nav)) {
+            $clean = isset($_GET['clean']) ? (int)$_GET['clean'] : 0;
+            $printp = isset($_GET['print']) ? (int)$_GET['print'] : 0;
+            if ($PAGE->pagelayout !== 'print' && $clean !== 1 && $printp !== 1) {
+                if (is_siteadmin()) {
+                    $PAGE->requires->js_call_amd('local_quizdashboard/global_nav', 'init');
+                }
+            }
+        }
+
+        // SECOND: Inject feedback summaries (only on quiz attempt pages)
         if ($PAGE->pagetype !== 'mod-quiz-attempt') {
             return;
         }
