@@ -624,31 +624,21 @@ body.hide-feedback .formulation {
     window.isTeacher = ' . ($is_teacher ? 'true' : 'false') . ';
     window.qfSesskey = "' . $sesskey . '";
 
-    // Submit flag via form POST (no nested forms - creates temporary form outside quiz form)
+    // Submit flag via AJAX to avoid form submission conflict
     window.submitFlag = function(questionId, flagColor, currentState) {
-        var form = document.createElement("form");
-        form.method = "POST";
-        form.action = window.location.href;
-        form.style.display = "none";
+        var formData = new FormData();
+        formData.append("flag_action", "1");
+        formData.append("questionid", questionId);
+        formData.append("flagcolor", flagColor);
+        formData.append("current_state", currentState);
+        formData.append("sesskey", window.qfSesskey);
         
-        var fields = {
-            "flag_action": "1",
-            "questionid": questionId,
-            "flagcolor": flagColor,
-            "current_state": currentState,
-            "sesskey": window.qfSesskey
-        };
-        
-        for (var key in fields) {
-            var input = document.createElement("input");
-            input.type = "hidden";
-            input.name = key;
-            input.value = fields[key];
-            form.appendChild(input);
-        }
-        
-        document.body.appendChild(form);
-        form.submit();
+        fetch(window.location.href, {
+            method: "POST",
+            body: formData
+        }).then(function() {
+            window.location.reload();
+        });
     };
 
     document.addEventListener("DOMContentLoaded", function() {
