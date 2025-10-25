@@ -1275,7 +1275,7 @@ Provide an encouraging but factual commentary about the student's writing journe
             /* Print-specific styles */
             @media print {
                 @page {
-                    margin: 0.1in;
+                    margin: 0.75in;
                     size: A4;
                 }
                 

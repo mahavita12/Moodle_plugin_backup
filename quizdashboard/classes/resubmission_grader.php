@@ -221,7 +221,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 padding-bottom: 10px;
     }
             @media print {
-                @page { margin: 0.1in; size: A4; }
+                @page { margin: 0.75in; size: A4; }
                 body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: #000; background: #fff; }
                 .ld-essay-feedback { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; width: 100% !important; }
                 h1, h2, h3, h4, h5, h6 { color: #000 !important; margin-top: 14pt !important; margin-bottom: 8pt !important; page-break-after: avoid; }
