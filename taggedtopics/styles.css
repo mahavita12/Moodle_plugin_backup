@@ -1,0 +1,36 @@
+/* Local Tagged Topics styles (mirrors format_taggedtopics) */
+.activity-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: 6px;
+    vertical-align: middle;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.activity-tag-new {
+    background-color: #007cba;
+    color: #ffffff;
+    border: 1px solid #005a87;
+    box-shadow: 0 1px 3px rgba(0, 124, 186, 0.3);
+}
+.activity-tag-new:hover { background-color: #005a87; box-shadow: 0 2px 4px rgba(0,124,186,0.4); }
+.activity-tag-revision {
+    background-color: #ffc107;
+    color: #ffffff;
+    border: 1px solid #e0a800;
+    box-shadow: 0 1px 3px rgba(255, 193, 7, 0.3);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+.activity-tag-revision:hover { background-color: #e0a800; box-shadow: 0 2px 4px rgba(255,193,7,0.4); }
+.activity-tag .tag-icon { font-size: 12px; margin-right: 3px; display: inline-block; }
+
+/* Container used when placing tags on their own line (e.g., Calendar event headers). */
+.local-taggedtopics-afterline {
+    display: block;
+    margin-top: 4px;
+}

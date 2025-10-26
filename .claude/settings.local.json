@@ -56,7 +56,16 @@
       "Bash(del .\\nul)",
       "Read(//c/MCP_servers/moodle_backups/**)",
       "Bash(git log:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quizdashboard\\cli\\install_activity_tags.php\")",
+      "Bash(timeout /t 5)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\local\\quizdashboard\\test_callback.php\")",
+      "Bash(del QUICK_START_QUIZ_TAGS.md QUIZ_ACTIVITY_TAGS_README.md ajax_get_tags.php test_callback.php)",
+      "Bash(del /f QUICK_START_QUIZ_TAGS.md QUIZ_ACTIVITY_TAGS_README.md ajax_get_tags.php test_callback.php dbservices.php)",
+      "Bash(del /f classesobservers.php classesquiz_activity_tags.php classesquiz_settings_handler.php)",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\classes\\activity_tags.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\classes\\output\\renderer.php\")",
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\test_callback.php\")"
     ],
     "deny": [],
     "ask": []
