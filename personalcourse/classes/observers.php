@@ -106,7 +106,7 @@ class observers {
                         ]);
                         if ($existing && (int)$existing->personalquizid !== (int)$pq->id) {
                             $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                            if ($oldpq) { $qb->remove_question((int)$oldpq->quizid, (int)$questionid); }
+                            if ($oldpq) { self::delete_inprogress_attempts_for_user_at_quiz((int)$oldpq->quizid, (int)$targetuserid); $qb->remove_question((int)$oldpq->quizid, (int)$questionid); }
                             $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
                         }
                         // Add to current PQ if not present.
@@ -147,14 +147,11 @@ class observers {
                     }
                     if ($existing) {
                         $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                        if ($targetpq) { $qb->remove_question((int)$targetpq->quizid, (int)$questionid); }
+                        if ($targetpq) { self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid); $qb->remove_question((int)$targetpq->quizid, (int)$questionid); }
                         $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
                     } else if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        // No mapping row found; remove directly from the mapped quiz.
+                        self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                         $qb->remove_question((int)$pq->quizid, (int)$questionid);
-                    } else {
-                        // As a last resort (e.g. flag removal in personal course with missing mapping), remove from this cm's quiz instance.
-                        $qb->remove_question((int)$cm->instance, (int)$questionid);
                     }
                 }
 
@@ -196,6 +193,7 @@ class observers {
 
                             // Apply removals first, then adds.
                             if (!empty($toremove)) {
+                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                                 foreach ($toremove as $qid) {
                                     $qb->remove_question((int)$pq->quizid, (int)$qid);
                                     $DB->delete_records('local_personalcourse_questions', [
@@ -369,6 +367,7 @@ class observers {
         try {
             $qb = new \local_personalcourse\quiz_builder();
             if (!empty($toremove)) {
+                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$userid);
                 foreach ($toremove as $qid) {
                     $qb->remove_question((int)$pq->quizid, (int)$qid);
                     $DB->delete_records('local_personalcourse_questions', [
@@ -504,6 +503,7 @@ class observers {
 
         $qb = new \local_personalcourse\quiz_builder();
         if (!empty($toremove)) {
+            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$userid);
             foreach ($toremove as $qid) {
                 $qb->remove_question((int)$pq->quizid, (int)$qid);
                 $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id, 'questionid' => (int)$qid]);
@@ -537,6 +537,23 @@ class observers {
                     ]);
                 }
             }
+        }
+    }
+
+    private static function delete_inprogress_attempts_for_user_at_quiz(int $quizid, int $userid): void {
+        global $DB, $CFG;
+        if ($quizid <= 0 || $userid <= 0) { return; }
+        $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$quizid, (int)$userid], 'id ASC');
+        if (empty($attempts)) { return; }
+        $quiz = $DB->get_record('quiz', ['id' => (int)$quizid], '*', IGNORE_MISSING);
+        if (!$quiz) { return; }
+        try { require_once($CFG->dirroot . '/mod/quiz/locallib.php'); } catch (\Throwable $e) { return; }
+        try {
+            $cm = get_coursemodule_from_instance('quiz', (int)$quizid, (int)$quiz->course, false, MUST_EXIST);
+            if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; }
+        } catch (\Throwable $e) { }
+        foreach ($attempts as $attempt) {
+            try { quiz_delete_attempt($attempt, $quiz); } catch (\Throwable $e) { }
         }
     }
 }
