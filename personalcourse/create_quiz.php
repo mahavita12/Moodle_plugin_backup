@@ -328,7 +328,8 @@ try {
                                                     JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                     JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                     JOIN {question} q ON q.id = qv.questionid
-                                                   WHERE qs.quizid = ?", [$quizid]);
+                                                   WHERE qs.quizid = ?
+                                                ORDER BY qs.slot", [$quizid]);
         } catch (\Throwable $e) {
             $srcquizqids = [];
         }
@@ -336,7 +337,8 @@ try {
             try {
                 $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qs.questionid
                                                         FROM {quiz_slots} qs
-                                                       WHERE qs.quizid = ? AND qs.questionid IS NOT NULL", [$quizid]);
+                                                       WHERE qs.quizid = ? AND qs.questionid IS NOT NULL
+                                                    ORDER BY qs.slot", [$quizid]);
             } catch (\Throwable $e) {
                 $srcquizqids = [];
             }
@@ -355,8 +357,11 @@ try {
         $analyzer = new \local_personalcourse\attempt_analyzer();
         $incorrect = $analyzer->get_incorrect_questionids_from_attempt($finalattemptid);
 
-        // 4) Desired set = flagged ∪ incorrect.
-        $qids = array_values(array_unique(array_merge($flagqids, $incorrect)));
+        // 4) Desired set in source order = (source slots order) ∩ (flagged ∪ incorrect).
+        $qids = array_values(array_intersect(
+            array_map('intval', $srcquizqids),
+            array_map('intval', array_unique(array_merge($flagqids, $incorrect)))
+        ));
         if (empty($qids)) {
             throw new \Exception('No flagged or incorrect questions found for the latest attempt.');
         }
@@ -437,13 +442,14 @@ try {
                                                      JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                      JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                      JOIN {question} q ON q.id = qv.questionid
-                                                    WHERE qs.quizid = ?", [$targetquizid]);
+                                                    WHERE qs.quizid = ?
+                                                 ORDER BY qs.slot", [$targetquizid]);
             } catch (\Throwable $e) {
                 $currqids = [];
             }
             if (empty($currqids)) {
                 try {
-                    $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [$targetquizid]);
+                    $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$targetquizid]);
                 } catch (\Throwable $e) {
                     $currqids = [];
                 }

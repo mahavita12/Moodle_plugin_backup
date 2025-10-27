@@ -117,7 +117,8 @@ class attempt_generation_task extends \core\task\adhoc_task {
                                                         JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                         JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                         JOIN {question} q ON q.id = qv.questionid
-                                                       WHERE qs.quizid = ?", [$quizid]);
+                                                       WHERE qs.quizid = ?
+                                                    ORDER BY qs.slot", [$quizid]);
             } catch (\Throwable $e) {
                 $srcquizqids = [];
             }
@@ -125,7 +126,8 @@ class attempt_generation_task extends \core\task\adhoc_task {
                 try {
                     $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qs.questionid
                                                             FROM {quiz_slots} qs
-                                                           WHERE qs.quizid = ? AND qs.questionid IS NOT NULL", [$quizid]);
+                                                           WHERE qs.quizid = ? AND qs.questionid IS NOT NULL
+                                                        ORDER BY qs.slot", [$quizid]);
                 } catch (\Throwable $e) {
                     $srcquizqids = [];
                 }
@@ -138,8 +140,8 @@ class attempt_generation_task extends \core\task\adhoc_task {
                 $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq}", array_merge([$userid], $inparamsq));
             }
 
-            // 3) Desired set = flagged only (incorrects are persisted as auto-blue flags separately).
-            $qids = array_map('intval', $flagqids);
+            // 3) Desired set in source order = (source qids ordered by slot) ∩ (flagged ids).
+            $qids = array_values(array_intersect(array_map('intval', $srcquizqids), array_map('intval', $flagqids)));
 
             // 4) Current question ids in personal quiz.
             $currqids = [];
@@ -150,13 +152,14 @@ class attempt_generation_task extends \core\task\adhoc_task {
                                                      JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                      JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                      JOIN {question} q ON q.id = qv.questionid
-                                                    WHERE qs.quizid = ?", [(int)$pq->quizid]);
+                                                    WHERE qs.quizid = ?
+                                                 ORDER BY qs.slot", [(int)$pq->quizid]);
             } catch (\Throwable $e) {
                 $currqids = [];
             }
             if (empty($currqids)) {
                 try {
-                    $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
+                    $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
                 } catch (\Throwable $e) {
                     $currqids = [];
                 }

@@ -173,9 +173,9 @@ class observers {
                             // 1) Source quiz question ids.
                             $srcquizqids = [];
                             try {
-                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                           FROM {quiz_slots} qs\n                                                                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                           JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                          WHERE qs.quizid = ?", [$sourcequizid]);
+                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                           FROM {quiz_slots} qs\n                                                                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                           JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                          WHERE qs.quizid = ?\n                                                                       ORDER BY qs.slot", [$sourcequizid]);
                             } catch (\Throwable $e) {
-                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [$sourcequizid]);
+                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$sourcequizid]);
                             }
 
                             // 2) Owner's flagged qids.
@@ -185,9 +185,9 @@ class observers {
                             // 3) Current qids in personal quiz.
                             $currqids = [];
                             try {
-                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                       FROM {quiz_slots} qs\n                                                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                      WHERE qs.quizid = ?", [(int)$pq->quizid]);
+                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                       FROM {quiz_slots} qs\n                                                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                      WHERE qs.quizid = ?\n                                                                   ORDER BY qs.slot", [(int)$pq->quizid]);
                             } catch (\Throwable $e) {
-                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
+                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
                             }
                             $currqids = array_map('intval', $currqids ?: []);
 
@@ -344,9 +344,9 @@ class observers {
 
         $srcquizqids = [];
         try {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                   FROM {quiz_slots} qs\n                                                   JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                  WHERE qs.quizid = ?", [$sourcequizid]);
+            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                   FROM {quiz_slots} qs\n                                                   JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                  WHERE qs.quizid = ?\n                                               ORDER BY qs.slot", [$sourcequizid]);
         } catch (\Throwable $e) {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [$sourcequizid]);
+            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$sourcequizid]);
         }
         if (empty($srcquizqids)) { return; }
 
@@ -355,9 +355,9 @@ class observers {
 
         $currqids = [];
         try {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                              WHERE qs.quizid = ?", [(int)$pq->quizid]);
+            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                              WHERE qs.quizid = ?\n                                           ORDER BY qs.slot", [(int)$pq->quizid]);
         } catch (\Throwable $e) {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
+            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
         }
         $currqids = array_map('intval', $currqids ?: []);
 
@@ -465,19 +465,20 @@ class observers {
                                                     JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                     JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                     JOIN {question} q ON q.id = qv.questionid
-                                                   WHERE qs.quizid = ?", [(int)$pq->sourcequizid]);
+                                                   WHERE qs.quizid = ?
+                                                ORDER BY qs.slot", [(int)$pq->sourcequizid]);
         } catch (\Throwable $e) { $srcquizqids = []; }
         if (empty($srcquizqids)) {
             try {
-                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->sourcequizid]);
+                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->sourcequizid]);
             } catch (\Throwable $e) { $srcquizqids = []; }
         }
         if (empty($srcquizqids)) { return; }
 
-        // 2) Flagged by user intersected with source quiz.
+        // 2) Flagged by user intersected with source quiz, preserving source slot order.
         list($insqlq, $inparamsq) = $DB->get_in_or_equal(array_map('intval', $srcquizqids), SQL_PARAMS_QM);
         $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq}", array_merge([$userid], $inparamsq));
-        $qids = array_map('intval', $flagqids);
+        $qids = array_values(array_intersect(array_map('intval', $srcquizqids), array_map('intval', $flagqids)));
 
         // 3) Current questions in personal quiz.
         $currqids = [];
@@ -488,11 +489,12 @@ class observers {
                                                  JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
                                                  JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
                                                  JOIN {question} q ON q.id = qv.questionid
-                                                WHERE qs.quizid = ?", [(int)$pq->quizid]);
+                                                WHERE qs.quizid = ?
+                                             ORDER BY qs.slot", [(int)$pq->quizid]);
         } catch (\Throwable $e) { $currqids = []; }
         if (empty($currqids)) {
             try {
-                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
+                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
             } catch (\Throwable $e) { $currqids = []; }
         }
         $currqids = array_map('intval', $currqids);
