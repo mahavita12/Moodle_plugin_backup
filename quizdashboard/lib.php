@@ -12,8 +12,8 @@ function local_quizdashboard_before_footer() {
     $clean = isset($_GET['clean']) ? (int)$_GET['clean'] : 0;
     $printp = isset($_GET['print']) ? (int)$_GET['print'] : 0;
     if ($PAGE->pagelayout === 'print' || $clean === 1 || $printp === 1) { return; }
-    // Only show the global Dashboards panel to site administrators.
-    // This prevents the floating navigation from appearing for regular users.
-    if (!is_siteadmin()) { return; }
+    // Show the global Dashboards panel to site administrators and managers with Personal Course capability.
+    $sysctx = \context_system::instance();
+    if (!is_siteadmin() && !has_capability('local/personalcourse:viewdashboard', $sysctx)) { return; }
     $PAGE->requires->js_call_amd('local_quizdashboard/global_nav', 'init');
 }

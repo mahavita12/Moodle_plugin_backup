@@ -15,6 +15,7 @@ define(['core/config'], function(Config) {
             '    <a href="' + wwwroot + '/local/quizdashboard/essays.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px">Essay Dashboard</a>' +
             '    <a href="' + wwwroot + '/local/quizdashboard/questions.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px">Questions Dashboard</a>' +
             '    <a href="' + wwwroot + '/local/essaysmaster/dashboard.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px">EssaysMaster Dashboard</a>' +
+            '    <a href="' + wwwroot + '/local/personalcourse/index.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;border-bottom:1px solid #dee2e6;font-size:13px">Personal Course Dashboard</a>' +
             '    <a href="' + wwwroot + '/local/quiz_uploader/upload.php" style="display:block;padding:8px 12px;color:#007cba;text-decoration:none;font-size:13px">Quiz Uploader</a>' +
             '  </div>' +
             '</div>';

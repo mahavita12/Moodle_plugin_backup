@@ -47,5 +47,31 @@ function xmldb_local_questionflags_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025081601, 'local', 'questionflags');
     }
 
+    if ($oldversion < 2025102600) {
+        $table = new xmldb_table('local_questionflags');
+
+        $quizid = new xmldb_field('quizid', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
+        if (!$dbman->field_exists($table, $quizid)) {
+            $dbman->add_field($table, $quizid);
+        }
+
+        $cmid = new xmldb_field('cmid', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
+        if (!$dbman->field_exists($table, $cmid)) {
+            $dbman->add_field($table, $cmid);
+        }
+
+        $indexquiz = new xmldb_index('idx_qf_quizid', XMLDB_INDEX_NOTUNIQUE, ['quizid']);
+        if (!$dbman->index_exists($table, $indexquiz)) {
+            $dbman->add_index($table, $indexquiz);
+        }
+
+        $indexcm = new xmldb_index('idx_qf_cmid', XMLDB_INDEX_NOTUNIQUE, ['cmid']);
+        if (!$dbman->index_exists($table, $indexcm)) {
+            $dbman->add_index($table, $indexcm);
+        }
+
+        upgrade_plugin_savepoint(true, 2025102600, 'local', 'questionflags');
+    }
+
     return true;
 }

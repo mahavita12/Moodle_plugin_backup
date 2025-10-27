@@ -115,26 +115,63 @@ class before_footer_html_generation {
             $questionid = required_param('questionid', PARAM_INT);
             $flagcolor = required_param('flagcolor', PARAM_ALPHA);
             $current_state = optional_param('current_state', '', PARAM_ALPHA);
-            
+
             if (in_array($flagcolor, ['blue', 'red'])) {
                 $time = time();
-                
+                $cmid = $PAGE->cm->id ?? 0;
+                $quizid = null;
+                if ($cmid) {
+                    $cm = get_coursemodule_from_id('quiz', $cmid);
+                    if ($cm) { $quizid = (int)$cm->instance; }
+                }
+
+                // Remove any existing flag for this user+question.
                 $DB->delete_records('local_questionflags', [
                     'userid' => $USER->id,
                     'questionid' => $questionid
                 ]);
-                
+
                 if ($current_state !== $flagcolor) {
+                    // Add new flag and emit event.
                     $record = new \stdClass();
                     $record->userid = $USER->id;
                     $record->questionid = $questionid;
                     $record->flagcolor = $flagcolor;
+                    $record->cmid = $cmid ?: null;
+                    $record->quizid = $quizid;
                     $record->timecreated = $time;
                     $record->timemodified = $time;
-                    $DB->insert_record('local_questionflags', $record);
+                    $insertid = $DB->insert_record('local_questionflags', $record);
+
+                    $event = \local_questionflags\event\flag_added::create([
+                        'context' => \context_module::instance($cmid),
+                        'objectid' => $insertid,
+                        'relateduserid' => $USER->id,
+                        'other' => [
+                            'questionid' => $questionid,
+                            'flagcolor' => $flagcolor,
+                            'cmid' => $cmid,
+                            'quizid' => $quizid,
+                        ],
+                    ]);
+                    $event->trigger();
+                } else {
+                    // Toggled off -> emit removal event.
+                    $event = \local_questionflags\event\flag_removed::create([
+                        'context' => \context_module::instance($cmid),
+                        'objectid' => 0,
+                        'relateduserid' => $USER->id,
+                        'other' => [
+                            'questionid' => $questionid,
+                            'flagcolor' => $flagcolor,
+                            'cmid' => $cmid,
+                            'quizid' => $quizid,
+                        ],
+                    ]);
+                    $event->trigger();
                 }
             }
-            
+
             redirect($PAGE->url);
         }
 

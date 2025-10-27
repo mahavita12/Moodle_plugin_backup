@@ -48,6 +48,10 @@ class flag_question extends external_api {
 
         $time = time();
 
+        // Resolve quiz from cmid (for attribution)
+        $cm = get_coursemodule_from_id('quiz', $params['cmid']);
+        $quizid = $cm ? (int)$cm->instance : null;
+
         if ($params['isflagged']) {
             // Remove any existing flag for this question first
             $DB->delete_records('local_questionflags', [
@@ -60,17 +64,46 @@ class flag_question extends external_api {
             $record->userid = $USER->id;
             $record->questionid = $params['questionid'];
             $record->flagcolor = $params['flagcolor'];
+            $record->cmid = $params['cmid'];
+            $record->quizid = $quizid;
             $record->timecreated = $time;
             $record->timemodified = $time;
 
-            $DB->insert_record('local_questionflags', $record);
+            $insertid = $DB->insert_record('local_questionflags', $record);
+
+            // Trigger event: flag added
+            $event = \local_questionflags\event\flag_added::create([
+                'context' => $context,
+                'objectid' => $insertid,
+                'relateduserid' => $USER->id,
+                'other' => [
+                    'questionid' => $params['questionid'],
+                    'flagcolor' => $params['flagcolor'],
+                    'cmid' => $params['cmid'],
+                    'quizid' => $quizid,
+                ],
+            ]);
+            $event->trigger();
         } else {
-            // Remove flag
+            // Remove all flags for this question (any color) to reflect a single boolean state after initial generation.
             $DB->delete_records('local_questionflags', [
                 'userid' => $USER->id,
-                'questionid' => $params['questionid'],
-                'flagcolor' => $params['flagcolor']
+                'questionid' => $params['questionid']
             ]);
+
+            // Trigger event: flag removed (color provided is the button the user toggled off).
+            $event = \local_questionflags\event\flag_removed::create([
+                'context' => $context,
+                'objectid' => 0,
+                'relateduserid' => $USER->id,
+                'other' => [
+                    'questionid' => $params['questionid'],
+                    'flagcolor' => $params['flagcolor'],
+                    'cmid' => $params['cmid'],
+                    'quizid' => $quizid,
+                ],
+            ]);
+            $event->trigger();
         }
 
         return [
