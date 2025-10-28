@@ -64,7 +64,7 @@ class attempt_generation_task extends \core\task\adhoc_task {
                 'sourcequizid' => $quizid,
             ], 'id');
         }
-        $allowfirst = ($n === 1 && $grade >= 30.0) || ($n === 2 && $grade >= 20.0) || ($n >= 3 && $grade >= 30.0);
+        $allowfirst = ($n === 1 && $grade >= 90.0) || ($n === 2 && $grade >= 90.0) || ($n >= 3 && $grade >= 90.0);
         if ($pq || $allowfirst) {
             try {
                 $svc = new \local_personalcourse\generator_service();
@@ -75,9 +75,9 @@ class attempt_generation_task extends \core\task\adhoc_task {
 
         if (!$pq) {
             $allow = false;
-            if ($n === 1 && $grade >= 30.0) { $allow = true; }
-            else if ($n === 2 && $grade >= 20.0) { $allow = true; }
-            else if ($n >= 3 && $grade >= 30.0) { $allow = true; }
+            if ($n === 1 && $grade >= 90.0) { $allow = true; }
+            else if ($n === 2 && $grade >= 90.0) { $allow = true; }
+            else if ($n >= 3 && $grade >= 90.0) { $allow = true; }
             if (!$allow) { return; }
 
             $cg = new \local_personalcourse\course_generator();
