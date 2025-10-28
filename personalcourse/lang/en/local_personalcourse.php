@@ -39,3 +39,9 @@ $string['createquiz_error'] = 'Error creating personal quiz: {$a}';
 $string['for_user'] = 'For user: {$a}';
 $string['select_source_course'] = 'Select source course';
 $string['select_source_quiz'] = 'Select source quiz';
+
+// Notifications shown after quiz attempt submissions.
+$string['notify_pq_created_short'] = 'Congratulations! Your personal quiz is ready in your Personal Course.';
+$string['notify_pq_not_created_first_short'] = 'Personal quiz not created yet. Score above 80% on your first attempt to unlock it.';
+$string['notify_pq_not_created_next_short'] = 'Personal quiz not created yet. Score at least 40% to unlock it.';
+$string['notify_pq_exists_short'] = 'Your personal quiz is already available in your Personal Course.';

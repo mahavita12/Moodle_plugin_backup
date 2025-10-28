@@ -82,8 +82,8 @@ class attempt_generation_task extends \core\task\adhoc_task {
             );
             $hasquiz = ($existingquiz && empty($existingquiz->deletioninprogress));
         }
-        // Attempt 1 rule.
-        if ($n === 1 && $grade >= 30.0) {
+        // Attempt 1 rule (creation only).
+        if ($n === 1 && $grade > 80.0 && !$hasquiz) {
             try {
                 $svc = new \local_personalcourse\generator_service();
                 $svc->generate_from_source($userid, $quizid, $attemptid);
@@ -91,8 +91,8 @@ class attempt_generation_task extends \core\task\adhoc_task {
             return;
         }
 
-        // Attempt 2 rule.
-        if ($n === 2 && $grade >= 20.0) {
+        // Attempt 2 rule (creation only).
+        if ($n === 2 && $grade >= 40.0 && !$hasquiz) {
             try {
                 $svc = new \local_personalcourse\generator_service();
                 $svc->generate_from_source($userid, $quizid, $attemptid);
@@ -101,7 +101,7 @@ class attempt_generation_task extends \core\task\adhoc_task {
         }
 
         // Attempts 3+ rule: only if a personal quiz does NOT already exist (ignore mapping).
-        if ($n >= 3 && $grade >= 20.0 && !$hasquiz) {
+        if ($n >= 3 && $grade >= 40.0 && !$hasquiz) {
             try {
                 $svc = new \local_personalcourse\generator_service();
                 $svc->generate_from_source($userid, $quizid, $attemptid);
@@ -111,9 +111,9 @@ class attempt_generation_task extends \core\task\adhoc_task {
 
         if (!$hasquiz) {
             $allow = false;
-            if ($n === 1 && $grade >= 30.0) { $allow = true; }
-            else if ($n === 2 && $grade >= 20.0) { $allow = true; }
-            else if ($n >= 3 && $grade >= 20.0) { $allow = true; }
+            if ($n === 1 && $grade > 80.0) { $allow = true; }
+            else if ($n === 2 && $grade >= 40.0) { $allow = true; }
+            else if ($n >= 3 && $grade >= 40.0) { $allow = true; }
             if (!$allow) { return; }
 
             $cg = new \local_personalcourse\course_generator();

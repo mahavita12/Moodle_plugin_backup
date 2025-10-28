@@ -52,8 +52,6 @@ class observers {
         $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,courseid,userid');
         $targetuserid = $pcowner ? (int)$pcowner->userid : (int)$userid;
 
-        return;
-
         try {
             if (!$quizid) { $quizid = (int)$cm->instance; }
             // Ensure personal course mapping exists for target user; if not, we only handle removal from any existing PQ.
@@ -96,7 +94,7 @@ class observers {
                             ]);
                         }
                     }
-                    if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    if (!$ispcourse && $pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         // Dedupe: if this question is in another PQ inside this personal course, move it here.
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
@@ -143,11 +141,11 @@ class observers {
                             'questionid' => (int)$questionid,
                         ]);
                     }
-                    if ($existing) {
+                    if (!$ispcourse && $existing) {
                         $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
                         if ($targetpq) { self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid); $qb->remove_question((int)$targetpq->quizid, (int)$questionid); }
                         $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                    } else if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    } else if (!$ispcourse && !empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                         $qb->remove_question((int)$pq->quizid, (int)$questionid);
                     }
@@ -155,7 +153,7 @@ class observers {
 
                 // Always reconcile: ensure the personal quiz equals (owner flags ∩ source quiz questions).
                 try {
-                    if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    if (!$ispcourse && !empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         $sourcequizid = null;
                         if (!empty($pq->sourcequizid)) {
                             $sourcequizid = (int)$pq->sourcequizid;
@@ -242,6 +240,7 @@ class observers {
     }
 
     public static function on_quiz_attempt_submitted(\mod_quiz\event\attempt_submitted $event): void {
+        global $DB, $CFG, $PAGE;
         $userid = $event->relateduserid ?? null;
         if (!$userid) {
             return;
@@ -280,6 +279,43 @@ class observers {
             return;
         }
 
+        // Compute grade/attempt for notification purposes.
+        $attempt = $DB->get_record('quiz_attempts', ['id' => (int)$event->objectid], 'id,attempt,sumgrades,quiz,userid', IGNORE_MISSING);
+        $quiz = $DB->get_record('quiz', ['id' => (int)$cm->instance], 'id,sumgrades', IGNORE_MISSING);
+        $sumgrades = $attempt ? (float)($attempt->sumgrades ?? 0.0) : 0.0;
+        $totalsum = $quiz ? (float)($quiz->sumgrades ?? 0.0) : 0.0;
+        $grade = ($totalsum > 0.0) ? (($sumgrades / $totalsum) * 100.0) : 0.0;
+        $n = $attempt ? (int)$attempt->attempt : 0;
+
+        // Determine if a personal quiz already exists for this user and source quiz.
+        $hasquiz = false;
+        $pcinfo = $DB->get_record('local_personalcourse_courses', ['userid' => (int)$userid], 'id,courseid');
+        if ($pcinfo) {
+            $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+            $existingquiz = $DB->get_record_sql(
+                'SELECT q.id, cm.deletioninprogress
+                   FROM {quiz} q
+                   JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
+                  WHERE q.course = ? AND q.name = (
+                        SELECT name FROM {quiz} WHERE id = ?
+                  )
+               ORDER BY q.id DESC',
+                [$moduleidquiz_chk, (int)$pcinfo->courseid, (int)$cm->instance]
+            );
+            $hasquiz = ($existingquiz && empty($existingquiz->deletioninprogress));
+        }
+
+        // Show notification according to state.
+        if ($hasquiz) {
+            \core\notification::info(get_string('notify_pq_exists_short', 'local_personalcourse'));
+        } else {
+            if ($n === 1 && !($grade > 80.0)) {
+                \core\notification::warning(get_string('notify_pq_not_created_first_short', 'local_personalcourse'));
+            } else if ($n >= 2 && $grade < 40.0) {
+                \core\notification::warning(get_string('notify_pq_not_created_next_short', 'local_personalcourse'));
+            }
+        }
+
         // Queue an adhoc task to analyze attempt, persist auto-blue flags, and apply thresholds.
         $task = new \local_personalcourse\task\attempt_generation_task();
         $task->set_custom_data([
@@ -299,7 +335,30 @@ class observers {
             'cmid' => (int)$cmid,
         ]);
         $task2->set_component('local_personalcourse');
-        try { $task2->execute(); } catch (\Throwable $e) {}
+        try {
+            // Execute synchronously as well; if creation happens now, show success notification.
+            $before = $hasquiz;
+            $task2->execute();
+            // Re-check creation state after execution.
+            $hasquiz_after = false;
+            if ($pcinfo) {
+                $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+                $existingquiz2 = $DB->get_record_sql(
+                    'SELECT q.id, cm.deletioninprogress
+                       FROM {quiz} q
+                       JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
+                      WHERE q.course = ? AND q.name = (
+                            SELECT name FROM {quiz} WHERE id = ?
+                      )
+                   ORDER BY q.id DESC',
+                    [$moduleidquiz_chk, (int)$pcinfo->courseid, (int)$cm->instance]
+                );
+                $hasquiz_after = ($existingquiz2 && empty($existingquiz2->deletioninprogress));
+            }
+            if (!$before && $hasquiz_after) {
+                \core\notification::success(get_string('notify_pq_created_short', 'local_personalcourse'));
+            }
+        } catch (\Throwable $e) {}
         return;
     }
 
@@ -358,15 +417,8 @@ class observers {
             }
         }
 
-        // Re-enable pre-attempt reconcile: ensure personal quiz equals (global flags ∩ source quiz) before attempts start.
-        try {
-            $ownerid = (int)$pc->userid;
-            if (!empty($pq) && !empty($pq->sourcequizid)) {
-                $svc = new \local_personalcourse\generator_service();
-                // flags_only: ignore incorrects; use global flags. Generator will delete inprogress/overdue attempts if structure changes.
-                $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
-            }
-        } catch (\Throwable $e) { /* best-effort */ }
+        // Pre-attempt reconcile disabled: personal-quiz-origin flag changes defer until submission.
+        try { /* no-op by policy */ } catch (\Throwable $e) { }
         return;
     }
 

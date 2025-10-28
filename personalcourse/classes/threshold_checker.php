@@ -28,11 +28,11 @@ class threshold_checker {
 
         if (!$gen) {
             // No generation yet.
-            if ($n === 1 && $grade > 30.0) {
-                return ['action' => 'generate', 'reason' => 'first_attempt_gt30', 'grade' => $grade, 'attempt' => $n];
+            if ($n === 1 && $grade > 80.0) {
+                return ['action' => 'generate', 'reason' => 'first_attempt_gt80', 'grade' => $grade, 'attempt' => $n];
             }
-            if ($n === 2 && $grade >= 20.0) {
-                return ['action' => 'generate', 'reason' => 'second_attempt_ge20', 'grade' => $grade, 'attempt' => $n];
+            if ($n === 2 && $grade >= 30.0) {
+                return ['action' => 'generate', 'reason' => 'second_attempt_ge30', 'grade' => $grade, 'attempt' => $n];
             }
             return ['action' => 'none', 'reason' => 'no_initial_threshold_met', 'grade' => $grade, 'attempt' => $n];
         }
@@ -40,16 +40,16 @@ class threshold_checker {
         // Already generated.
         $firstgenattempt = (int)$gen->attemptnumber;
         if ($firstgenattempt === 1) {
-            // If first generation was on attempt 1 due to >70, future regenerations require >70 again.
-            if ($grade > 70.0) {
-                return ['action' => 'regenerate', 'reason' => 'regen_gt70_after_first_attempt_gen', 'grade' => $grade, 'attempt' => $n];
+            // If first generation was on attempt 1 due to >80, future regenerations require >80 again.
+            if ($grade > 80.0) {
+                return ['action' => 'regenerate', 'reason' => 'regen_gt80_after_first_attempt_gen', 'grade' => $grade, 'attempt' => $n];
             }
-            return ['action' => 'none', 'reason' => 'regen_requires_gt70', 'grade' => $grade, 'attempt' => $n];
+            return ['action' => 'none', 'reason' => 'regen_requires_gt80', 'grade' => $grade, 'attempt' => $n];
         }
 
-        // Otherwise, standard rule: attempt >= 3 and grade >= 70.
-        if ($n >= 3 && $grade >= 70.0) {
-            return ['action' => 'regenerate', 'reason' => 'regen_attempt3p_ge70', 'grade' => $grade, 'attempt' => $n];
+        // Otherwise, standard rule: attempt >= 3 and grade >= 30.
+        if ($n >= 3 && $grade >= 30.0) {
+            return ['action' => 'regenerate', 'reason' => 'regen_attempt3p_ge30', 'grade' => $grade, 'attempt' => $n];
         }
         return ['action' => 'none', 'reason' => 'regen_threshold_not_met', 'grade' => $grade, 'attempt' => $n];
     }
