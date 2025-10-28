@@ -42,7 +42,7 @@ class attempt_generation_task extends \core\task\adhoc_task {
         // Compute grade percent and attempt number for threshold gating.
         $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid], 'id,attempt,sumgrades,quiz,userid', MUST_EXIST);
         if ((int)$attempt->userid !== $userid || (int)$attempt->quiz !== $quizid) { return; }
-        $quiz = $DB->get_record('quiz', ['id' => $quizid], 'id,sumgrades', MUST_EXIST);
+        $quiz = $DB->get_record('quiz', ['id' => $quizid], 'id,sumgrades,name,course', MUST_EXIST);
         $sumgrades = (float)($attempt->sumgrades ?? 0.0);
         $totalsum = (float)($quiz->sumgrades ?? 0.0);
         $grade = ($totalsum > 0.0) ? (($sumgrades / $totalsum) * 100.0) : 0.0;
@@ -55,7 +55,10 @@ class attempt_generation_task extends \core\task\adhoc_task {
         $context = \context_module::instance($cmid);
 
         // Delegate to admin-path generator for consistent behavior.
-        // Allow delegation for any existing mapping, or if thresholds allow first-time creation.
+        // Attempt-number driven policy for public attempts:
+        // - Attempt 1: if grade >= 30, generate (admin may reset attempts).
+        // - Attempt 2: if grade >= 20, generate.
+        // - Attempts 3+: if grade >= 20 AND no mapping exists, generate (first-time only).
         $pc = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id');
         $pq = null;
         if ($pc) {
@@ -64,8 +67,23 @@ class attempt_generation_task extends \core\task\adhoc_task {
                 'sourcequizid' => $quizid,
             ], 'id');
         }
-        $allowfirst = ($n === 1 && $grade >= 90.0) || ($n === 2 && $grade >= 90.0) || ($n >= 3 && $grade >= 90.0);
-        if ($pq || $allowfirst) {
+        // Determine if a real personal quiz already exists in the student's personal course for this source quiz.
+        $hasquiz = false;
+        $pcinfo = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id,courseid');
+        if ($pcinfo && !empty($pcinfo->courseid) && !empty($quiz->name)) {
+            $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+            $existingquiz = $DB->get_record_sql(
+                'SELECT q.id, cm.deletioninprogress
+                   FROM {quiz} q
+                   JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
+                  WHERE q.course = ? AND q.name = ?
+               ORDER BY q.id DESC',
+                [$moduleidquiz_chk, (int)$pcinfo->courseid, (string)$quiz->name]
+            );
+            $hasquiz = ($existingquiz && empty($existingquiz->deletioninprogress));
+        }
+        // Attempt 1 rule.
+        if ($n === 1 && $grade >= 30.0) {
             try {
                 $svc = new \local_personalcourse\generator_service();
                 $svc->generate_from_source($userid, $quizid, $attemptid);
@@ -73,11 +91,29 @@ class attempt_generation_task extends \core\task\adhoc_task {
             return;
         }
 
-        if (!$pq) {
+        // Attempt 2 rule.
+        if ($n === 2 && $grade >= 20.0) {
+            try {
+                $svc = new \local_personalcourse\generator_service();
+                $svc->generate_from_source($userid, $quizid, $attemptid);
+            } catch (\Throwable $e) { /* best-effort */ }
+            return;
+        }
+
+        // Attempts 3+ rule: only if a personal quiz does NOT already exist (ignore mapping).
+        if ($n >= 3 && $grade >= 20.0 && !$hasquiz) {
+            try {
+                $svc = new \local_personalcourse\generator_service();
+                $svc->generate_from_source($userid, $quizid, $attemptid);
+            } catch (\Throwable $e) { /* best-effort */ }
+            return;
+        }
+
+        if (!$hasquiz) {
             $allow = false;
-            if ($n === 1 && $grade >= 90.0) { $allow = true; }
-            else if ($n === 2 && $grade >= 90.0) { $allow = true; }
-            else if ($n >= 3 && $grade >= 90.0) { $allow = true; }
+            if ($n === 1 && $grade >= 30.0) { $allow = true; }
+            else if ($n === 2 && $grade >= 20.0) { $allow = true; }
+            else if ($n >= 3 && $grade >= 20.0) { $allow = true; }
             if (!$allow) { return; }
 
             $cg = new \local_personalcourse\course_generator();
@@ -222,169 +258,7 @@ class attempt_generation_task extends \core\task\adhoc_task {
         }
         
 
-        if ($pq) {
-            // If the mapped quiz is missing or its CM is being deleted, recreate it and update the mapping.
-            $needrecreate = false;
-            if (!$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                $needrecreate = true;
-            } else {
-                $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-                $cmrow_chk = $DB->get_record('course_modules', [
-                    'module' => $moduleidquiz_chk,
-                    'instance' => (int)$pq->quizid,
-                    'course' => (int)$pc->courseid,
-                ], 'id, deletioninprogress');
-                if (!$cmrow_chk || (!empty($cmrow_chk->deletioninprogress))) {
-                    $needrecreate = true;
-                }
-            }
-
-            if ($needrecreate) {
-                $quizrow = $DB->get_record('quiz', ['id' => $quizid], 'id,course,name', MUST_EXIST);
-                $sourcecourse = $DB->get_record('course', ['id' => $quizrow->course], 'id,shortname,fullname', MUST_EXIST);
-                $prefix = (string)$sourcecourse->shortname;
-                $sm = new \local_personalcourse\section_manager();
-                $sectionnumber = $sm->ensure_section_by_prefix((int)$pc->courseid, $prefix);
-                $qb = new \local_personalcourse\quiz_builder();
-                $res = $qb->create_quiz((int)$pc->courseid, $sectionnumber, (string)$quizrow->name, '', 'default');
-                if (!empty($res) && !empty($res->quizid)) {
-                    $pq->quizid = (int)$res->quizid;
-                    $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
-                } else {
-                    return; // Cannot recreate; abort safely.
-                }
-            }
-            // Reconcile existing personal quiz to match flagged ∪ incorrect from this attempt.
-            // 1) Source quiz question ids (with fallback for legacy schemas).
-            $srcquizqids = [];
-            try {
-                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT q.id
-                                                        FROM {quiz_slots} qs
-                                                        JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                                        JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
-                                                        JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                                                        JOIN {question} q ON q.id = qv.questionid
-                                                       WHERE qs.quizid = ?
-                                                    ORDER BY qs.slot", [$quizid]);
-            } catch (\Throwable $e) {
-                $srcquizqids = [];
-            }
-            if (empty($srcquizqids)) {
-                try {
-                    $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qs.questionid
-                                                            FROM {quiz_slots} qs
-                                                           WHERE qs.quizid = ? AND qs.questionid IS NOT NULL
-                                                        ORDER BY qs.slot", [$quizid]);
-                } catch (\Throwable $e) {
-                    $srcquizqids = [];
-                }
-            }
-
-            // 2) Flagged by user intersected with source quiz.
-            $flagqids = [];
-            if (!empty($srcquizqids)) {
-                list($insqlq, $inparamsq) = $DB->get_in_or_equal(array_map('intval', $srcquizqids), SQL_PARAMS_QM);
-                $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq}", array_merge([$userid], $inparamsq));
-            }
-
-            // 3) Desired set in source order = (source qids ordered by slot) ∩ (flagged ∪ incorrect from this attempt).
-            $unionids = array_values(array_unique(array_merge(array_map('intval', $flagqids ?: []), array_map('intval', (array)$incorrectqids ?: []))));
-            $qids = array_values(array_intersect(array_map('intval', $srcquizqids), $unionids));
-
-            // 4) Current question ids in personal quiz.
-            $currqids = [];
-            try {
-                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT q.id
-                                                     FROM {quiz_slots} qs
-                                                     JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                                     JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
-                                                     JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                                                     JOIN {question} q ON q.id = qv.questionid
-                                                    WHERE qs.quizid = ?
-                                                 ORDER BY qs.slot", [(int)$pq->quizid]);
-            } catch (\Throwable $e) {
-                $currqids = [];
-            }
-            if (empty($currqids)) {
-                try {
-                    $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
-                } catch (\Throwable $e) {
-                    $currqids = [];
-                }
-            }
-            $currqids = array_map('intval', $currqids);
-
-            $toadd = array_values(array_diff($qids, $currqids));
-            $toremove = array_values(array_diff($currqids, $qids));
-
-            $qb = new \local_personalcourse\quiz_builder();
-            if (!empty($toremove)) {
-                foreach ($toremove as $qid) {
-                    $qb->remove_question((int)$pq->quizid, (int)$qid);
-                    $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id, 'questionid' => (int)$qid]);
-                }
-            }
-            if (!empty($toadd)) {
-                $addres = $qb->add_questions((int)$pq->quizid, $toadd);
-                // Upsert mapping rows.
-                $now = time();
-                foreach ($toadd as $qid) {
-                    $existsrow = $DB->get_record('local_personalcourse_questions', [
-                        'personalcourseid' => (int)$pc->id,
-                        'questionid' => (int)$qid,
-                    ]);
-                    if ($existsrow) {
-                        $existsrow->personalquizid = (int)$pq->id;
-                        if (empty($existsrow->flagcolor)) { $existsrow->flagcolor = 'blue'; }
-                        $existsrow->timemodified = $now;
-                        $DB->update_record('local_personalcourse_questions', $existsrow);
-                    } else {
-                        $DB->insert_record('local_personalcourse_questions', (object)[
-                            'personalcourseid' => (int)$pc->id,
-                            'personalquizid' => (int)$pq->id,
-                            'questionid' => (int)$qid,
-                            'slotid' => null,
-                            'flagcolor' => in_array((int)$qid, array_map('intval', $flagqids ?: []), true) ? 'blue' : 'blue',
-                            'source' => in_array((int)$qid, array_map('intval', $flagqids ?: []), true) ? 'manual_flag' : 'auto',
-                            'originalposition' => null,
-                            'currentposition' => null,
-                            'timecreated' => $now,
-                            'timemodified' => $now,
-                        ]);
-                    }
-                }
-                // Persist auto-blue flags for incorrects that were not already flagged.
-                $autoblue = array_values(array_diff(array_map('intval', (array)$incorrectqids ?: []), array_map('intval', $flagqids ?: [])));
-                foreach ($autoblue as $qid) {
-                    $exists = $DB->get_record('local_questionflags', ['userid' => $userid, 'questionid' => (int)$qid], 'id');
-                    if ($exists) { continue; }
-                    $rec = (object)[
-                        'userid' => $userid,
-                        'questionid' => (int)$qid,
-                        'flagcolor' => 'blue',
-                        'cmid' => $cmid,
-                        'quizid' => $quizid,
-                        'timecreated' => $now,
-                        'timemodified' => $now,
-                    ];
-                    $id = $DB->insert_record('local_questionflags', $rec);
-                    $event = \local_questionflags\event\flag_added::create([
-                        'context' => $context,
-                        'objectid' => $id,
-                        'relateduserid' => $userid,
-                        'other' => [
-                            'questionid' => (int)$qid,
-                            'flagcolor' => 'blue',
-                            'cmid' => $cmid,
-                            'quizid' => $quizid,
-                            'origin' => 'auto',
-                        ],
-                    ]);
-                    $event->trigger();
-                }
-            }
-            return;
-        }
+        if ($pq) { return; }
 
         // If we get here, it's first-time generation (allowed). Persist incorrects and rely on flag events to finalize creation.
         if (empty($incorrectqids)) { return; }

@@ -44,7 +44,7 @@ class generator_service {
                 if ($src_section) { $srsectionname = (string)($src_section->name ?: ('Section ' . (int)$src_section->section)); }
             }
         }
-        $prefix = trim((string)$srcourse->shortname . (strlen($srsectionname) ? '-' . $srsectionname : ''));
+        $prefix = trim($srsectionname !== '' ? $srsectionname : (string)$srcourse->shortname);
 
         // Settings mode based on qtypes.
         $qtypes = [];
@@ -82,7 +82,7 @@ class generator_service {
                     'personalcourseid' => $personalcourseid,
                     'quizid' => (int)$existingquiz->id,
                     'sourcequizid' => $sourcequizid,
-                    'sectionname' => (string)$srcourse->shortname,
+                    'sectionname' => $prefix,
                     'quiztype' => $allessay ? 'essay' : 'non_essay',
                     'timecreated' => time(),
                     'timemodified' => time(),

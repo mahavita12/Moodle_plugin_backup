@@ -358,7 +358,15 @@ class observers {
             }
         }
 
-        // No structural changes on view; defer to attempt_submitted.
+        // Re-enable pre-attempt reconcile: ensure personal quiz equals (global flags ∩ source quiz) before attempts start.
+        try {
+            $ownerid = (int)$pc->userid;
+            if (!empty($pq) && !empty($pq->sourcequizid)) {
+                $svc = new \local_personalcourse\generator_service();
+                // flags_only: ignore incorrects; use global flags. Generator will delete inprogress/overdue attempts if structure changes.
+                $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
+            }
+        } catch (\Throwable $e) { /* best-effort */ }
         return;
     }
 
