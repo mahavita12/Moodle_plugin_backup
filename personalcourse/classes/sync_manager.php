@@ -1,3 +1,4 @@
+<?php
 namespace local_personalcourse;
 
 defined('MOODLE_INTERNAL') || die();

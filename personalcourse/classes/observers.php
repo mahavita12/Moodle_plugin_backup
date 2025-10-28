@@ -52,10 +52,8 @@ class observers {
         $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,courseid,userid');
         $targetuserid = $pcowner ? (int)$pcowner->userid : (int)$userid;
 
-        $sync = new \local_personalcourse\sync_manager();
-        $sync->queue_flag_change($targetuserid, $questionid, $flagcolor, $added, $cmid, $quizid, $origin);
+        return;
 
-        // Immediate best-effort reconciliation so counts reflect flag changes without waiting for cron.
         try {
             if (!$quizid) { $quizid = (int)$cm->instance; }
             // Ensure personal course mapping exists for target user; if not, we only handle removal from any existing PQ.
@@ -263,11 +261,23 @@ class observers {
             return;
         }
 
-        // Do not process attempts on the student's personal course; we only react to source quiz attempts.
+        // Handle both cases: if attempt is in personal course, map to source quiz and delegate to generator_service;
+        // otherwise proceed with the existing task path (which delegates to generator_service).
         global $DB;
         $pcrow = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id,courseid');
         if ($pcrow && (int)$pcrow->courseid === (int)$courseid) {
-            return; // Attempt is on personal course quiz; skip.
+            $pq = $DB->get_record('local_personalcourse_quizzes', [
+                'personalcourseid' => (int)$pcrow->id,
+                'quizid' => (int)$cm->instance,
+            ], 'id, sourcequizid');
+            if ($pq && !empty($pq->sourcequizid)) {
+                try {
+                    $svc = new \local_personalcourse\generator_service();
+                    // Flags-only reconciliation post-creation; drive solely by global flag state.
+                    $svc->generate_from_source((int)$userid, (int)$pq->sourcequizid, (int)$event->objectid, 'flags_only');
+                } catch (\Throwable $e) { /* best-effort */ }
+            }
+            return;
         }
 
         // Queue an adhoc task to analyze attempt, persist auto-blue flags, and apply thresholds.
@@ -280,6 +290,17 @@ class observers {
         ]);
         $task->set_component('local_personalcourse');
         \core\task\manager::queue_adhoc_task($task, true);
+        // Execute synchronously as well so that first-time creation or existing mapping reconciliation happens immediately.
+        $task2 = new \local_personalcourse\task\attempt_generation_task();
+        $task2->set_custom_data([
+            'userid' => (int)$userid,
+            'quizid' => (int)$cm->instance,
+            'attemptid' => (int)$event->objectid,
+            'cmid' => (int)$cmid,
+        ]);
+        $task2->set_component('local_personalcourse');
+        try { $task2->execute(); } catch (\Throwable $e) {}
+        return;
     }
 
     public static function on_quiz_viewed(\mod_quiz\event\course_module_viewed $event): void {
@@ -337,90 +358,8 @@ class observers {
             }
         }
 
-        $sourcequizid = (int)$pq->sourcequizid;
-        $userid = (int)$pc->userid; // Reconcile for the owner.
-
-        $srcquizqids = [];
-        try {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                   FROM {quiz_slots} qs\n                                                   JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                  WHERE qs.quizid = ?\n                                               ORDER BY qs.slot", [$sourcequizid]);
-        } catch (\Throwable $e) {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$sourcequizid]);
-        }
-        if (empty($srcquizqids)) { return; }
-
-        $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ?", [$userid]);
-        $desired = array_values(array_intersect(array_map('intval', $srcquizqids ?: []), array_map('intval', $flagqids ?: [])));
-
-        $currqids = [];
-        try {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                              WHERE qs.quizid = ?\n                                           ORDER BY qs.slot", [(int)$pq->quizid]);
-        } catch (\Throwable $e) {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
-        }
-        $currqids = array_map('intval', $currqids ?: []);
-
-        $toadd = array_values(array_diff($desired, $currqids));
-        $toremove = array_values(array_diff($currqids, $desired));
-
-        if (empty($toadd) && empty($toremove)) { return; }
-
-        try {
-            $qb = new \local_personalcourse\quiz_builder();
-            if (!empty($toremove)) {
-                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$userid);
-                foreach ($toremove as $qid) {
-                    $qb->remove_question((int)$pq->quizid, (int)$qid);
-                    $DB->delete_records('local_personalcourse_questions', [
-                        'personalquizid' => (int)$pq->id,
-                        'questionid' => (int)$qid,
-                    ]);
-                }
-            }
-            if (!empty($toadd)) {
-                $qb->add_questions((int)$pq->quizid, array_map('intval', $toadd));
-                $now = time();
-                foreach ($toadd as $qid) {
-                    $existsrow = $DB->get_record('local_personalcourse_questions', [
-                        'personalcourseid' => (int)$pc->id,
-                        'questionid' => (int)$qid,
-                    ]);
-                    if ($existsrow) {
-                        $existsrow->personalquizid = (int)$pq->id;
-                        if (empty($existsrow->flagcolor)) { $existsrow->flagcolor = 'blue'; }
-                        $existsrow->timemodified = $now;
-                        $DB->update_record('local_personalcourse_questions', $existsrow);
-                    } else {
-                        $DB->insert_record('local_personalcourse_questions', (object)[
-                            'personalcourseid' => (int)$pc->id,
-                            'personalquizid' => (int)$pq->id,
-                            'questionid' => (int)$qid,
-                            'slotid' => null,
-                            'flagcolor' => 'blue',
-                            'source' => 'manual_flag',
-                            'originalposition' => null,
-                            'currentposition' => null,
-                            'timecreated' => $now,
-                            'timemodified' => $now,
-                        ]);
-                    }
-                }
-            }
-        } catch (\Throwable $e) {
-            // Best-effort.
-        }
-    }
-
-    private static function user_has_student_role(int $userid, int $courseid): bool {
-        // Allow site admins to trigger tasks for testing and admin flows.
-        if (is_siteadmin($userid)) { return true; }
-        $coursectx = context_course::instance($courseid);
-        $roles = get_user_roles($coursectx, $userid, true);
-        foreach ($roles as $ra) {
-            if (!empty($ra->shortname) && $ra->shortname === 'student') {
-                return true;
-            }
-        }
-        return false;
+        // No structural changes on view; defer to attempt_submitted.
+        return;
     }
 
     public static function on_personal_quiz_attempt_started(\core\event\base $event): void {
@@ -454,90 +393,21 @@ class observers {
         ], 'id, quizid, sourcequizid');
         if (!$pq || empty($pq->sourcequizid)) { return; }
 
-        // Build desired set = flagged only for the source quiz.
-        // 1) Source quiz question ids
-        $srcquizqids = [];
-        try {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT q.id
-                                                    FROM {quiz_slots} qs
-                                                    JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                                    JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
-                                                    JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                                                    JOIN {question} q ON q.id = qv.questionid
-                                                   WHERE qs.quizid = ?
-                                                ORDER BY qs.slot", [(int)$pq->sourcequizid]);
-        } catch (\Throwable $e) { $srcquizqids = []; }
-        if (empty($srcquizqids)) {
-            try {
-                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->sourcequizid]);
-            } catch (\Throwable $e) { $srcquizqids = []; }
-        }
-        if (empty($srcquizqids)) { return; }
+        // No structural changes on attempt start; defer to attempt_submitted.
+        return;
+    }
 
-        // 2) Flagged by user intersected with source quiz, preserving source slot order.
-        list($insqlq, $inparamsq) = $DB->get_in_or_equal(array_map('intval', $srcquizqids), SQL_PARAMS_QM);
-        $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq}", array_merge([$userid], $inparamsq));
-        $qids = array_values(array_intersect(array_map('intval', $srcquizqids), array_map('intval', $flagqids)));
-
-        // 3) Current questions in personal quiz.
-        $currqids = [];
-        try {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT q.id
-                                                 FROM {quiz_slots} qs
-                                                 JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                                 JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
-                                                 JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                                                 JOIN {question} q ON q.id = qv.questionid
-                                                WHERE qs.quizid = ?
-                                             ORDER BY qs.slot", [(int)$pq->quizid]);
-        } catch (\Throwable $e) { $currqids = []; }
-        if (empty($currqids)) {
-            try {
-                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
-            } catch (\Throwable $e) { $currqids = []; }
-        }
-        $currqids = array_map('intval', $currqids);
-
-        $toadd = array_values(array_diff($qids, $currqids));
-        $toremove = array_values(array_diff($currqids, $qids));
-
-        $qb = new \local_personalcourse\quiz_builder();
-        if (!empty($toremove)) {
-            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$userid);
-            foreach ($toremove as $qid) {
-                $qb->remove_question((int)$pq->quizid, (int)$qid);
-                $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id, 'questionid' => (int)$qid]);
+    private static function user_has_student_role(int $userid, int $courseid): bool {
+        // Allow site admins to trigger tasks for testing and admin flows.
+        if (is_siteadmin($userid)) { return true; }
+        $coursectx = \context_course::instance($courseid);
+        $roles = get_user_roles($coursectx, $userid, true);
+        foreach ($roles as $ra) {
+            if (!empty($ra->shortname) && $ra->shortname === 'student') {
+                return true;
             }
         }
-        if (!empty($toadd)) {
-            $qb->add_questions((int)$pq->quizid, $toadd);
-            $now = time();
-            foreach ($toadd as $qid) {
-                $existsrow = $DB->get_record('local_personalcourse_questions', [
-                    'personalcourseid' => (int)$pc->id,
-                    'questionid' => (int)$qid,
-                ]);
-                if ($existsrow) {
-                    $existsrow->personalquizid = (int)$pq->id;
-                    if (empty($existsrow->flagcolor)) { $existsrow->flagcolor = 'blue'; }
-                    $existsrow->timemodified = $now;
-                    $DB->update_record('local_personalcourse_questions', $existsrow);
-                } else {
-                    $DB->insert_record('local_personalcourse_questions', (object)[
-                        'personalcourseid' => (int)$pc->id,
-                        'personalquizid' => (int)$pq->id,
-                        'questionid' => (int)$qid,
-                        'slotid' => null,
-                        'flagcolor' => 'blue',
-                        'source' => 'manual_flag',
-                        'originalposition' => null,
-                        'currentposition' => null,
-                        'timecreated' => $now,
-                        'timemodified' => $now,
-                    ]);
-                }
-            }
-        }
+        return false;
     }
 
     private static function delete_inprogress_attempts_for_user_at_quiz(int $quizid, int $userid): void {

@@ -23,6 +23,7 @@ $report = [
     'pc_questions' => [],
     'user_flags' => [],
     'flag_removed_logs' => [],
+    'incorrect_qids' => [],
 ];
 
 // Attempt row.
@@ -57,15 +58,52 @@ if ($quizid) {
     }
 }
 
-// Mapping row for this personal quiz.
-$report['mapping'] = $DB->get_record('local_personalcourse_quizzes', ['quizid' => $quizid]);
-
 // Personal course row for this user.
 $report['pcourse'] = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], '*');
+
+// Mapping row for this source quiz in user's personal course.
+if ($report['pcourse'] && $quizid) {
+    $report['mapping'] = $DB->get_record('local_personalcourse_quizzes', [
+        'personalcourseid' => (int)$report['pcourse']->id,
+        'sourcequizid' => $quizid,
+    ]);
+} else {
+    $report['mapping'] = null;
+}
 
 // personalcourse_questions for this personal quiz.
 if ($report['mapping']) {
     $report['pc_questions'] = array_values($DB->get_records('local_personalcourse_questions', ['personalquizid' => (int)$report['mapping']->id], 'id DESC'));
+    // Resolve personal quiz cmid and quiz info.
+    try {
+        $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+        $report['personal_cmid'] = (int)$DB->get_field('course_modules', 'id', [
+            'module' => $moduleidquiz,
+            'instance' => (int)$report['mapping']->quizid,
+            'course' => (int)$report['pcourse']->courseid,
+        ], IGNORE_MISSING);
+        if (!empty($report['personal_cmid'])) {
+            $report['personal_quiz'] = $DB->get_record('quiz', ['id' => (int)$report['mapping']->quizid], 'id,course,name,sumgrades,grade,questionsperpage');
+            $report['personal_cm'] = $DB->get_record('course_modules', ['id' => (int)$report['personal_cmid']], 'id,course,section,module,instance,visible,visibleoncoursepage,availability,deletioninprogress');
+            if ($report['personal_cm']) {
+                $report['personal_section'] = $DB->get_record('course_sections', ['id' => (int)$report['personal_cm']->section], 'id,section,name,visible');
+                $modrec = $DB->get_record('modules', ['id' => (int)$report['personal_cm']->module], 'id,name');
+                $report['personal_cm_modname'] = $modrec ? $modrec->name : null;
+            }
+            // Current qids in personal quiz (schema tolerant).
+            $pids = [];
+            try {
+                $pids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                       FROM {quiz_slots} qs\n                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                      WHERE qs.quizid = ?", [(int)$report['mapping']->quizid]);
+            } catch (\Throwable $pe) {
+                $pids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$report['mapping']->quizid]);
+            }
+            $report['personal_quiz_slots_qids'] = array_map('intval', $pids ?: []);
+            // URL
+            $report['personal_quiz_url'] = $CFG->wwwroot . '/mod/quiz/view.php?id=' . (int)$report['personal_cmid'];
+        }
+    } catch (\Throwable $e) {
+        $report['personal_cmid_error'] = $e->getMessage();
+    }
 }
 
 // User flags.
@@ -81,6 +119,9 @@ $report['expected_qids'] = [];
 $report['current_qids'] = [];
 $report['to_add'] = [];
 $report['to_remove'] = [];
+// Also compute union_expected_qids = (flags ∪ incorrect) ∩ source quiz and autoblue_needed = incorrect - flags.
+$report['union_expected_qids'] = [];
+$report['autoblue_needed'] = [];
 
 try {
     if (!empty($report['mapping']->sourcequizid)) {
@@ -95,6 +136,18 @@ try {
             $flags = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ?", [$userid]);
             $expect = array_values(array_intersect(array_map('intval',$srcqids), array_map('intval',$flags)));
             $report['expected_qids'] = $expect;
+            // Incorrect for this attempt.
+            try {
+                require_once($root . '/local/personalcourse/classes/attempt_analyzer.php');
+                $an = new \local_personalcourse\attempt_analyzer();
+                $incorrect = $an->get_incorrect_questionids_from_attempt($attemptid);
+                $report['incorrect_qids'] = array_map('intval', $incorrect ?: []);
+            } catch (\Throwable $e) {
+                $report['incorrect_error'] = $e->getMessage();
+            }
+            $union = array_values(array_unique(array_merge(array_map('intval',$flags ?: []), array_map('intval', $report['incorrect_qids'] ?: []))));
+            $report['union_expected_qids'] = array_values(array_intersect(array_map('intval',$srcqids), $union));
+            $report['autoblue_needed'] = array_values(array_diff(array_map('intval', $report['incorrect_qids'] ?: []), array_map('intval', $flags ?: [])));
         }
     }
 } catch (\Throwable $e) {

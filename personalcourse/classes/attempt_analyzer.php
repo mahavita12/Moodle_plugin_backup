@@ -22,12 +22,17 @@ class attempt_analyzer {
         foreach ($quba->get_attempt_iterator() as $slot => $qa) {
             $qid = (int)$qa->get_question()->id;
             $fraction = $qa->get_fraction();
-            if ($fraction === null) {
-                // Not graded yet; skip.
-                continue;
-            }
-            if ($fraction < 1.0) {
-                $incorrect[] = $qid;
+            $stateobj = $qa->get_state();
+            $state = method_exists($stateobj, '__toString') ? (string)$stateobj : '';
+            // Consider incorrect if:
+            // - fraction exists and is < 1.0 (gradedwrong/gradedpartial), OR
+            // - fraction is null but the question state is finished and not gradedright (e.g., gaveup, finished without checking).
+            if ($fraction !== null) {
+                if ($fraction < 1.0) { $incorrect[] = $qid; }
+            } else {
+                if (method_exists($stateobj, 'is_finished') && $stateobj->is_finished()) {
+                    if ($state !== 'gradedright') { $incorrect[] = $qid; }
+                }
             }
         }
         return array_values(array_unique($incorrect));

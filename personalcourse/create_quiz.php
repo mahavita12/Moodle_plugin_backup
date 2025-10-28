@@ -123,6 +123,19 @@ if ($courseid > 0 && ($quizid <= 0 || !$DB->record_exists('quiz', ['id' => $quiz
 // Step 3: Create the personal quiz mapping immediately (ignore thresholds).
 require_sesskey();
 
+// Unified generation: delegate to generator_service so admin path and event path share one implementation.
+try {
+    $svc = new \local_personalcourse\generator_service();
+    $res = $svc->generate_from_source((int)$userid, (int)$quizid, $attemptid > 0 ? (int)$attemptid : null);
+    $cmid = (int)($res->cmid ?? 0);
+    $fallbackcourseid = $cmid ? 0 : (int)$DB->get_field('quiz', 'course', ['id' => (int)$res->quizid], IGNORE_MISSING);
+    $quizurl = $cmid ? new moodle_url('/mod/quiz/view.php', ['id' => $cmid]) : new moodle_url('/course/view.php', ['id' => $fallbackcourseid]);
+    redirect($quizurl, get_string('createquiz_success', 'local_personalcourse'), 0, \core\output\notification::NOTIFY_SUCCESS);
+} catch (\Throwable $e) {
+    redirect(new moodle_url('/local/personalcourse/index.php'), get_string('createquiz_error', 'local_personalcourse', $e->getMessage()), 0, \core\output\notification::NOTIFY_ERROR);
+}
+exit;
+
 try {
     // Ensure student's personal course exists.
     $gen = new \local_personalcourse\course_generator();

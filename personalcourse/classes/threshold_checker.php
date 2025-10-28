@@ -28,11 +28,11 @@ class threshold_checker {
 
         if (!$gen) {
             // No generation yet.
-            if ($n === 1 && $grade > 70.0) {
-                return ['action' => 'generate', 'reason' => 'first_attempt_gt70', 'grade' => $grade, 'attempt' => $n];
+            if ($n === 1 && $grade > 30.0) {
+                return ['action' => 'generate', 'reason' => 'first_attempt_gt30', 'grade' => $grade, 'attempt' => $n];
             }
-            if ($n === 2 && $grade >= 30.0) {
-                return ['action' => 'generate', 'reason' => 'second_attempt_ge30', 'grade' => $grade, 'attempt' => $n];
+            if ($n === 2 && $grade >= 20.0) {
+                return ['action' => 'generate', 'reason' => 'second_attempt_ge20', 'grade' => $grade, 'attempt' => $n];
             }
             return ['action' => 'none', 'reason' => 'no_initial_threshold_met', 'grade' => $grade, 'attempt' => $n];
         }
