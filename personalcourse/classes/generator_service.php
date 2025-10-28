@@ -195,6 +195,10 @@ class generator_service {
         $currqids = array_map('intval', $currqids ?: []);
 
         $toadd = array_values(array_diff($desired, $currqids));
+        // Ensure additions are in the exact source order for consistent slot placement.
+        if (!empty($toadd)) {
+            $toadd = array_values(array_intersect($desired, $toadd));
+        }
         $toremove = array_values(array_diff($currqids, $desired));
 
         // Delete in-progress/overdue attempts before structural changes.

@@ -777,7 +777,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 <?php foreach ($quiz_questions as $question): ?>
                                     <td>
                                         <?php 
-                                        $result_key = $attempt->userid . '_' . $question->id;
+                                        $result_key = $attempt->attemptid . '_' . $question->slot_number;
                                         if (isset($question_results[$result_key])) {
                                             $result = $question_results[$result_key];
                                             if ($result->fraction >= 1.0) {
@@ -789,8 +789,9 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                             }
                                             
                                             // Add question timing if available
-                                            if (!empty($question_timings_cache[$attempt->attemptid][$question->id]['duration_seconds'])) {
-                                                $timing_data = $question_timings_cache[$attempt->attemptid][$question->id];
+                                            if (!empty($question_timings_cache[$attempt->attemptid][$question->id]['duration_seconds']) || !empty($question_timings_cache[$attempt->attemptid][$result->questionid]['duration_seconds'])) {
+                                                $timing_slot_key = !empty($question_timings_cache[$attempt->attemptid][$result->questionid]) ? $result->questionid : $question->id;
+                                                $timing_data = $question_timings_cache[$attempt->attemptid][$timing_slot_key];
                                                 $q_duration = $timing_data['duration_seconds'];
                                                 $has_meaningful_data = !empty($timing_data['has_meaningful_data']);
                                                 
@@ -823,7 +824,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                             }
                                             
                                             // Add flags if available
-                                            $flags = $questionsmanager->get_question_flags($attempt->userid, $question->id, $quizid);
+                                            $flags = $questionsmanager->get_question_flags($attempt->userid, $result->questionid ?? $question->id, $quizid);
                                             if (!empty($flags)) {
                                                 echo '<br><span class="question-flags">' . $flags . '</span>';
                                             }

@@ -341,7 +341,7 @@ class questions_manager {
                           ON qas.questionattemptid = laststep.questionattemptid
                          AND qas.sequencenumber = laststep.maxseq
                         WHERE qa.id {$attempt_sql}
-                        ORDER BY qa.userid, qatt.slot
+                        ORDER BY qa.userid, qa.id, qatt.slot
                     ";
                     
                     // Include results for both finished and inprogress (preview) attempts
@@ -349,13 +349,13 @@ class questions_manager {
                     $results = $DB->get_records_sql($sql_results, $params);
                     
                     foreach ($results as $result) {
-                        $key = $result->userid . '_' . $result->questionid;
-                        
+                        $key = $result->attemptid . '_' . $result->slot;
+
                         // Ensure fraction values are numeric and valid
                         if (!is_numeric($result->fraction)) {
                             $result->fraction = 0;
                         }
-                        
+
                         $result->maxfraction = 1;
                         $question_results[$key] = $result;
                     }
@@ -440,14 +440,14 @@ class questions_manager {
                 list($in_sql, $in_params) = $DB->get_in_or_equal($attempt_ids);
                 
                 $results = $DB->get_records_sql("
-                    SELECT qatt.questionid, qatt.fraction, qa.userid
+                    SELECT qatt.questionid, qatt.slot, qatt.fraction, qa.userid, qa.id AS attemptid
                     FROM {question_attempts} qatt
                     JOIN {quiz_attempts} qa ON qa.uniqueid = qatt.questionusageid
                     WHERE qa.id $in_sql
                 ", $in_params);
-                
+
                 foreach ($results as $result) {
-                    $key = $result->userid . '_' . $result->questionid;
+                    $key = $result->attemptid . '_' . $result->slot;
                     $question_results[$key] = $result;
                 }
             }
