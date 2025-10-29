@@ -153,7 +153,24 @@ class observers {
 
                 // Always reconcile: ensure the personal quiz equals (owner flags ∩ source quiz questions).
                 try {
-                    if (!$ispcourse && !empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    $canreconcile = false;
+                    $originctx = isset($event->other['origin']) ? (string)$event->other['origin'] : '';
+                    if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                        if ($ispcourse) {
+                            // Only when flags are changed from the review page do we remove any existing next attempt(s) and reconcile now.
+                            if ($originctx === 'review') {
+                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                                $canreconcile = true;
+                            } else {
+                                // Flag changes during an in-progress attempt should defer until submission.
+                                $canreconcile = false;
+                            }
+                        } else {
+                            // Public-source flags: reconcile immediately.
+                            $canreconcile = true;
+                        }
+                    }
+                    if ($canreconcile) {
                         $sourcequizid = null;
                         if (!empty($pq->sourcequizid)) {
                             $sourcequizid = (int)$pq->sourcequizid;
@@ -417,8 +434,22 @@ class observers {
             }
         }
 
-        // Pre-attempt reconcile disabled: personal-quiz-origin flag changes defer until submission.
-        try { /* no-op by policy */ } catch (\Throwable $e) { }
+        // Pre-attempt reconcile: only when no in-progress/overdue attempt exists at this personal quiz for the owner.
+        try {
+            $ownerid = (int)$pc->userid;
+            if (!empty($pq) && !empty($pq->sourcequizid)) {
+                $hasinprogress = $DB->record_exists_select(
+                    'quiz_attempts',
+                    "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                    [(int)$cm->instance, (int)$ownerid]
+                );
+                if (!$hasinprogress) {
+                    $svc = new \local_personalcourse\generator_service();
+                    // flags_only: ignore incorrects; use global flags.
+                    $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
+                }
+            }
+        } catch (\Throwable $e) { /* best-effort */ }
         return;
     }
 
@@ -453,7 +484,7 @@ class observers {
         ], 'id, quizid, sourcequizid');
         if (!$pq || empty($pq->sourcequizid)) { return; }
 
-        // No structural changes on attempt start; defer to attempt_submitted.
+        // No structural changes on attempt start; defer to attempt_submitted and review-page flag change handling.
         return;
     }
 

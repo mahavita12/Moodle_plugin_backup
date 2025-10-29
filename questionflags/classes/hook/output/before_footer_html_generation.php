@@ -143,6 +143,7 @@ class before_footer_html_generation {
                     $record->timemodified = $time;
                     $insertid = $DB->insert_record('local_questionflags', $record);
 
+                    $origin = ($PAGE->pagetype === 'mod-quiz-review') ? 'review' : (($PAGE->pagetype === 'mod-quiz-attempt') ? 'attempt' : '');
                     $event = \local_questionflags\event\flag_added::create([
                         'context' => \context_module::instance($cmid),
                         'objectid' => $insertid,
@@ -152,11 +153,13 @@ class before_footer_html_generation {
                             'flagcolor' => $flagcolor,
                             'cmid' => $cmid,
                             'quizid' => $quizid,
+                            'origin' => $origin,
                         ],
                     ]);
                     $event->trigger();
                 } else {
                     // Toggled off -> emit removal event.
+                    $origin = ($PAGE->pagetype === 'mod-quiz-review') ? 'review' : (($PAGE->pagetype === 'mod-quiz-attempt') ? 'attempt' : '');
                     $event = \local_questionflags\event\flag_removed::create([
                         'context' => \context_module::instance($cmid),
                         'objectid' => 0,
@@ -166,6 +169,7 @@ class before_footer_html_generation {
                             'flagcolor' => $flagcolor,
                             'cmid' => $cmid,
                             'quizid' => $quizid,
+                            'origin' => $origin,
                         ],
                     ]);
                     $event->trigger();

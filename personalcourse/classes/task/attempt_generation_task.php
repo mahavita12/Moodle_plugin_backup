@@ -48,12 +48,6 @@ class attempt_generation_task extends \core\task\adhoc_task {
         $grade = ($totalsum > 0.0) ? (($sumgrades / $totalsum) * 100.0) : 0.0;
         $n = (int)$attempt->attempt;
 
-        // Persist auto-blue for any new incorrects on this attempt.
-        $analyzer = new \local_personalcourse\attempt_analyzer();
-        $incorrectqids = $analyzer->get_incorrect_questionids_from_attempt($attemptid);
-        $time = time();
-        $context = \context_module::instance($cmid);
-
         // Delegate to admin-path generator for consistent behavior.
         // Attempt-number driven policy for public attempts:
         // - Attempt 1: if grade >= 30, generate (admin may reset attempts).

@@ -41,7 +41,7 @@ $string['select_source_course'] = 'Select source course';
 $string['select_source_quiz'] = 'Select source quiz';
 
 // Notifications shown after quiz attempt submissions.
-$string['notify_pq_created_short'] = 'Congratulations! Your personal quiz is ready in your Personal Course.';
-$string['notify_pq_not_created_first_short'] = 'Personal quiz not created yet. Score above 80% on your first attempt to unlock it.';
-$string['notify_pq_not_created_next_short'] = 'Personal quiz not created yet. Score at least 40% to unlock it.';
-$string['notify_pq_exists_short'] = 'Your personal quiz is already available in your Personal Course.';
+$string['notify_pq_created_short'] = 'Your Personal Quiz is Live! Head to your Personal Course and start practicing.';
+$string['notify_pq_exists_short'] = 'Your Personal Quiz is Waiting! Continue practicing in your Personal Course.';
+$string['notify_pq_not_created_first_short'] = 'Almost there! Score 80%+ on your first attempt to unlock your personalized practice quiz.';
+$string['notify_pq_not_created_next_short'] = 'Keep going! Score 40%+ to unlock your personal quiz and boost your learning.';
