@@ -151,19 +151,16 @@ class observers {
                     }
                 }
 
-                // Always reconcile: ensure the personal quiz equals (owner flags ∩ source quiz questions).
+                // Always reconcile: unify via generator_service to enforce placeholder/fork policy.
                 try {
                     $canreconcile = false;
                     $originctx = isset($event->other['origin']) ? (string)$event->other['origin'] : '';
                     if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         if ($ispcourse) {
-                            // Only when flags are changed from the review page do we remove any existing next attempt(s) and reconcile now.
+                            // Only when flags are changed from the review page do we reconcile now.
                             if ($originctx === 'review') {
                                 self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                                 $canreconcile = true;
-                            } else {
-                                // Flag changes during an in-progress attempt should defer until submission.
-                                $canreconcile = false;
                             }
                         } else {
                             // Public-source flags: reconcile immediately.
@@ -171,80 +168,10 @@ class observers {
                         }
                     }
                     if ($canreconcile) {
-                        $sourcequizid = null;
-                        if (!empty($pq->sourcequizid)) {
-                            $sourcequizid = (int)$pq->sourcequizid;
-                        } else if (!$ispcourse && !empty($quizid)) {
-                            // Event came from source quiz context.
-                            $sourcequizid = (int)$quizid;
-                        }
-
+                        $sourcequizid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
                         if (!empty($sourcequizid)) {
-                            // 1) Source quiz question ids.
-                            $srcquizqids = [];
-                            try {
-                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                           FROM {quiz_slots} qs\n                                                                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                           JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                          WHERE qs.quizid = ?\n                                                                       ORDER BY qs.slot", [$sourcequizid]);
-                            } catch (\Throwable $e) {
-                                $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$sourcequizid]);
-                            }
-
-                            // 2) Owner's flagged qids.
-                            $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ?", [$targetuserid]);
-                            $desired = array_values(array_intersect(array_map('intval', $srcquizqids ?: []), array_map('intval', $flagqids ?: [])));
-
-                            // 3) Current qids in personal quiz.
-                            $currqids = [];
-                            try {
-                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                                       FROM {quiz_slots} qs\n                                                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                                      WHERE qs.quizid = ?\n                                                                   ORDER BY qs.slot", [(int)$pq->quizid]);
-                            } catch (\Throwable $e) {
-                                $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
-                            }
-                            $currqids = array_map('intval', $currqids ?: []);
-
-                            $toadd = array_values(array_diff($desired, $currqids));
-                            $toremove = array_values(array_diff($currqids, $desired));
-
-                            // Apply removals first, then adds.
-                            if (!empty($toremove)) {
-                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                                foreach ($toremove as $qid) {
-                                    $qb->remove_question((int)$pq->quizid, (int)$qid);
-                                    $DB->delete_records('local_personalcourse_questions', [
-                                        'personalquizid' => (int)$pq->id,
-                                        'questionid' => (int)$qid,
-                                    ]);
-                                }
-                            }
-
-                            if (!empty($toadd)) {
-                                $qb->add_questions((int)$pq->quizid, array_map('intval', $toadd));
-                                $now = time();
-                                foreach ($toadd as $qid) {
-                                    $existsrow = $DB->get_record('local_personalcourse_questions', [
-                                        'personalcourseid' => (int)$pc->id,
-                                        'questionid' => (int)$qid,
-                                    ]);
-                                    if ($existsrow) {
-                                        $existsrow->personalquizid = (int)$pq->id;
-                                        if (empty($existsrow->flagcolor)) { $existsrow->flagcolor = 'blue'; }
-                                        $existsrow->timemodified = $now;
-                                        $DB->update_record('local_personalcourse_questions', $existsrow);
-                                    } else {
-                                        $DB->insert_record('local_personalcourse_questions', (object)[
-                                            'personalcourseid' => (int)$pc->id,
-                                            'personalquizid' => (int)$pq->id,
-                                            'questionid' => (int)$qid,
-                                            'slotid' => null,
-                                            'flagcolor' => 'blue',
-                                            'source' => 'manual_flag',
-                                            'originalposition' => null,
-                                            'currentposition' => null,
-                                            'timecreated' => $now,
-                                            'timemodified' => $now,
-                                        ]);
-                                    }
-                                }
-                            }
+                            $svc = new \local_personalcourse\generator_service();
+                            $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only');
                         }
                     }
                 } catch (\Throwable $reconerr) {
@@ -434,20 +361,15 @@ class observers {
             }
         }
 
-        // Pre-attempt reconcile: only when no in-progress/overdue attempt exists at this personal quiz for the owner.
+        // Pre-attempt reconcile: delete in-progress attempts and reconcile to current flags.
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
-                $hasinprogress = $DB->record_exists_select(
-                    'quiz_attempts',
-                    "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                    [(int)$cm->instance, (int)$ownerid]
-                );
-                if (!$hasinprogress) {
-                    $svc = new \local_personalcourse\generator_service();
-                    // flags_only: ignore incorrects; use global flags.
-                    $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
-                }
+                // Remove any in-progress/overdue attempts for the owner to allow structural changes safely.
+                self::delete_inprogress_attempts_for_user_at_quiz((int)$cm->instance, (int)$ownerid);
+                // Reconcile to flags-only so that an empty flag set results in no real questions (placeholder/fork handled by service).
+                $svc = new \local_personalcourse\generator_service();
+                $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
             }
         } catch (\Throwable $e) { /* best-effort */ }
         return;

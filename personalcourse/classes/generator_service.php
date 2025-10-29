@@ -170,6 +170,64 @@ class generator_service {
             }
         }
 
+        // If we are in flags_only mode and the desired set is empty, remove the active personal quiz.
+        if ($mode === 'flags_only' && empty($desired)) {
+            // If a mapping exists, handle quiz cleanup.
+            if ($pq && !empty($pq->quizid) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                // Delete any in-progress/overdue attempts for this user to unlock structural/CM changes.
+                $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
+                if (!empty($attempts)) {
+                    $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
+                    if ($quiz) {
+                        try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
+                        foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
+                    }
+                }
+
+                $hasfinished = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND userid = ? AND state = 'finished'", [(int)$pq->quizid, (int)$userid]);
+                if ($hasfinished) {
+                    // Archive: rename and hide on course page, then detach mapping.
+                    try {
+                        $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
+                        if ($oldname && stripos($oldname, '(Archived)') === false) {
+                            $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
+                        }
+                        $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                        if ($oldcm) {
+                            $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
+                            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                        }
+                    } catch (\Throwable $e) {}
+                    // Remove the mapping so no active PQ exists.
+                    $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                } else {
+                    // Safe to delete the entire module and mapping.
+                    try {
+                        $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                        if ($cm) {
+                            course_delete_module((int)$cm->id);
+                        }
+                    } catch (\Throwable $e) {
+                        // Fallback: if CM missing, delete quiz record to avoid orphans.
+                        $DB->delete_records('quiz', ['id' => (int)$pq->quizid]);
+                    }
+                    // Clean auxiliary rows and mapping.
+                    $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id]);
+                    $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                }
+            }
+            // Rebuild cache and exit early; no personal quiz should remain active for this source.
+            try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e) {}
+            return (object)[
+                'personalcourseid' => $personalcourseid,
+                'mappingid' => 0,
+                'quizid' => 0,
+                'cmid' => 0,
+                'toadd' => [],
+                'toremove' => [],
+            ];
+        }
+
         // Dedupe across the student's personal course: if any desired qid exists in another personal quiz, move it here.
         if (!empty($desired)) {
             foreach ($desired as $qid) {
@@ -194,12 +252,82 @@ class generator_service {
         }
         $currqids = array_map('intval', $currqids ?: []);
 
+        // Detect any existing placeholder description questions in this quiz by idnumber prefix.
+        $placeholderprefix = 'pcq_placeholder_';
+        $phqids = [];
+        try {
+            $phqids = $DB->get_fieldset_sql("SELECT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                               JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid\n                                              WHERE qs.quizid = ? AND qbe.idnumber LIKE ?", [(int)$pq->quizid, $placeholderprefix . '%']);
+        } catch (\Throwable $e) { $phqids = []; }
+
         $toadd = array_values(array_diff($desired, $currqids));
         // Ensure additions are in the exact source order for consistent slot placement.
         if (!empty($toadd)) {
             $toadd = array_values(array_intersect($desired, $toadd));
         }
         $toremove = array_values(array_diff($currqids, $desired));
+
+        // Always remove placeholder when we have real desired questions.
+        if (!empty($desired) && !empty($phqids)) {
+            $toremove = array_values(array_unique(array_merge($toremove, array_map('intval', $phqids))));
+        }
+        // When desired is empty, ensure there are no real questions left in the active personal quiz.
+        // If finished attempts exist, fork-and-switch to a fresh quiz to preserve history.
+        $needplaceholder = false;
+        if (empty($desired)) {
+            $realcurrqids = !empty($phqids) ? array_values(array_diff($currqids, array_map('intval', $phqids))) : $currqids;
+            $hasfinished = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND userid = ? AND state = 'finished'", [(int)$pq->quizid, (int)$userid]);
+
+            if (!empty($realcurrqids)) {
+                if ($hasfinished) {
+                    // Delete in-progress/overdue attempts.
+                    $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
+                    if (!empty($attempts)) {
+                        $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
+                        if ($quiz) {
+                            try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
+                            foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
+                        }
+                    }
+                    // Mark old quiz as archived and hide it from the course page (but keep accessible via direct links).
+                    try {
+                        $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
+                        if ($oldname && stripos($oldname, '(Archived)') === false) {
+                            $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
+                        }
+                        $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                        if ($oldcm) {
+                            // Keep visible=1 so direct attempt/review links still work, but hide on course page.
+                            $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
+                            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                            // Rebuild course cache so the change is reflected immediately in the course index.
+                            try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
+                        }
+                    } catch (\Throwable $e) {}
+
+                    // Create a fresh quiz and switch mapping.
+                    $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
+                    $newname = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+                    $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
+                    $pq->quizid = (int)$resnew->quizid;
+                    $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
+
+                    // Reset local sets; we will add a placeholder below.
+                    $currqids = [];
+                    $phqids = [];
+                    $toadd = [];
+                    $toremove = [];
+                    $needplaceholder = true;
+                } else {
+                    // Edit in place: remove all real questions.
+                    $toadd = [];
+                    $toremove = array_values(array_unique(array_merge($toremove, $realcurrqids)));
+                    $needplaceholder = true;
+                }
+            } else {
+                // No real questions currently present; ensure a placeholder exists.
+                $needplaceholder = true;
+            }
+        }
 
         // Delete in-progress/overdue attempts before structural changes.
         if (!empty($toadd) || !empty($toremove)) {
@@ -246,6 +374,94 @@ class generator_service {
                         'timemodified' => $now,
                     ]);
                 }
+            }
+        }
+
+        // Ensure a single zero-mark placeholder exists when needed and there are no slots.
+        if ($needplaceholder) {
+            $slotcount = (int)$DB->count_records('quiz_slots', ['quizid' => (int)$pq->quizid]);
+            if ($slotcount === 0) {
+                $placeholderprefix = 'pcq_placeholder_';
+                $phidnumber = $placeholderprefix . $userid . '_' . $sourcequizid;
+                $placeholderqid = (int)$DB->get_field_sql("SELECT qv.questionid FROM {question_versions} qv JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid WHERE qbe.idnumber = ?", [$phidnumber]);
+                if ($placeholderqid <= 0) {
+                    // Create placeholder in course context.
+                    $coursectx = \context_course::instance($pccourseid);
+                    $qcat = $DB->get_record('question_categories', ['contextid' => (int)$coursectx->id], 'id', IGNORE_MISSING);
+                    if (!$qcat) {
+                        $qcat = (object)[
+                            'name' => 'Personal Course Placeholders',
+                            'contextid' => (int)$coursectx->id,
+                            'info' => '',
+                            'infoformat' => 1,
+                            'stamp' => uniqid('pcqcat_'),
+                            'parent' => 0,
+                            'sortorder' => 9999,
+                            'idnumber' => 'pcq_placeholders',
+                        ];
+                        $qcat->id = (int)$DB->insert_record('question_categories', $qcat);
+                    }
+                    $now = time();
+                    $q = (object)[
+                        'category' => (int)$qcat->id,
+                        'parent' => 0,
+                        'name' => 'Personal Quiz Empty Placeholder',
+                        'questiontext' => '<p>No questions are currently available. Add blue/red flags on your quizzes to populate your Personal Quiz.</p>',
+                        'questiontextformat' => 1,
+                        'generalfeedback' => '',
+                        'generalfeedbackformat' => 1,
+                        'defaultmark' => 0.0,
+                        'penalty' => 0.0,
+                        'qtype' => 'truefalse',
+                        'length' => 1,
+                        'stamp' => uniqid('pcq_'),
+                        'timecreated' => $now,
+                        'timemodified' => $now,
+                        'createdby' => $userid,
+                        'modifiedby' => $userid,
+                    ];
+                    $placeholderqid = (int)$DB->insert_record('question', $q);
+                    $qbe = (object)[
+                        'questioncategoryid' => (int)$qcat->id,
+                        'idnumber' => $phidnumber,
+                    ];
+                    $qbe->id = (int)$DB->insert_record('question_bank_entries', $qbe);
+                    $qv = (object)[
+                        'questionbankentryid' => (int)$qbe->id,
+                        'version' => 1,
+                        'questionid' => (int)$placeholderqid,
+                        'status' => 'ready',
+                        'timecreated' => $now,
+                    ];
+                    $DB->insert_record('question_versions', $qv);
+                    // Answers/options.
+                    $ansTrue = (object)[
+                        'question' => (int)$placeholderqid,
+                        'answer' => get_string('true', 'qtype_truefalse'),
+                        'fraction' => 1.0,
+                        'feedback' => '',
+                        'feedbackformat' => 1,
+                    ];
+                    $ansTrue->id = (int)$DB->insert_record('question_answers', $ansTrue);
+                    $ansFalse = (object)[
+                        'question' => (int)$placeholderqid,
+                        'answer' => get_string('false', 'qtype_truefalse'),
+                        'fraction' => 0.0,
+                        'feedback' => '',
+                        'feedbackformat' => 1,
+                    ];
+                    $ansFalse->id = (int)$DB->insert_record('question_answers', $ansFalse);
+                    $opt = (object)[
+                        'question' => (int)$placeholderqid,
+                        'trueanswer' => (int)$ansTrue->id,
+                        'falseanswer' => (int)$ansFalse->id,
+                        'showstandardinstruction' => 1,
+                    ];
+                    $DB->insert_record('question_truefalse', $opt);
+                }
+                // Add placeholder as the only slot.
+                require_once($CFG->dirroot . '/local/quiz_uploader/classes/quiz_creator.php');
+                \local_quiz_uploader\quiz_creator::add_questions_to_quiz((int)$pq->quizid, [(int)$placeholderqid]);
             }
         }
 
