@@ -166,5 +166,29 @@ function xmldb_local_personalcourse_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025102603, 'local', 'personalcourse');
     }
 
+    if ($oldversion < 2025102604) {
+        // Create table: local_personalcourse_archives
+        $table = new xmldb_table('local_personalcourse_archives');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('ownerid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('personalcourseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('sourcequizid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('archivedquizid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('archivedcmid', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
+            $table->add_field('archivedname', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('reason', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, 'flags_empty');
+            $table->add_field('archivedat', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('notes', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_index('owner_source', XMLDB_INDEX_NOTUNIQUE, ['ownerid', 'sourcequizid']);
+            $table->add_index('pc_source', XMLDB_INDEX_NOTUNIQUE, ['personalcourseid', 'sourcequizid']);
+            $table->add_index('archivedquiz_unique', XMLDB_INDEX_UNIQUE, ['archivedquizid']);
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2025102604, 'local', 'personalcourse');
+    }
+
     return true;
 }

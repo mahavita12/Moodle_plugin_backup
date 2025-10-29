@@ -197,6 +197,21 @@ class generator_service {
                             $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
                             $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
                         }
+                        // Register archive record for full history.
+                        try {
+                            $archive = (object)[
+                                'ownerid' => (int)$userid,
+                                'personalcourseid' => (int)$personalcourseid,
+                                'sourcequizid' => (int)$sourcequizid,
+                                'archivedquizid' => (int)$pq->quizid,
+                                'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
+                                'archivedname' => (string)($oldname ?: ''),
+                                'reason' => 'flags_empty',
+                                'archivedat' => time(),
+                                'notes' => null,
+                            ];
+                            $DB->insert_record('local_personalcourse_archives', $archive);
+                        } catch (\Throwable $e3) { }
                     } catch (\Throwable $e) {}
                     // Remove the mapping so no active PQ exists.
                     $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
@@ -302,6 +317,21 @@ class generator_service {
                             // Rebuild course cache so the change is reflected immediately in the course index.
                             try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
                         }
+                        // Register archive record for full history.
+                        try {
+                            $archive = (object)[
+                                'ownerid' => (int)$userid,
+                                'personalcourseid' => (int)$personalcourseid,
+                                'sourcequizid' => (int)$sourcequizid,
+                                'archivedquizid' => (int)$pq->quizid,
+                                'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
+                                'archivedname' => (string)($oldname ?: ''),
+                                'reason' => 'fork',
+                                'archivedat' => time(),
+                                'notes' => null,
+                            ];
+                            $DB->insert_record('local_personalcourse_archives', $archive);
+                        } catch (\Throwable $e3) { }
                     } catch (\Throwable $e) {}
 
                     // Create a fresh quiz and switch mapping.

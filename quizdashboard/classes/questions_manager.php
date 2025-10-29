@@ -227,21 +227,44 @@ class questions_manager {
         
         try {
             // First, check if the quiz exists
-            $quiz_exists = $DB->get_record('quiz', ['id' => $quizid], 'id, name');
+            $quiz_exists = $DB->get_record('quiz', ['id' => $quizid], 'id, name, course');
             if (!$quiz_exists) {
                 error_log('Questions Dashboard Error: Quiz with ID ' . $quizid . ' does not exist');
                 return ['user_attempts' => [], 'quiz_questions' => [], 'question_results' => []];
             }
-            
+
+            // Detect personal-course linkage to include archived attempts and align to source slot order
+            $headerquizid = $quizid; // default header = selected quiz
+            $sourcequizid = null;
+            $pcid = null; $ownerid = null;
+
+            try {
+                // Case 1: Selected quiz is the active Personal Quiz
+                $pqmap = $DB->get_record('local_personalcourse_quizzes', ['quizid' => (int)$quizid], 'id, personalcourseid, sourcequizid');
+                if ($pqmap) {
+                    $pcid = (int)$pqmap->personalcourseid;
+                    $sourcequizid = (int)$pqmap->sourcequizid;
+                    $pcrow = $DB->get_record('local_personalcourse_courses', ['id' => $pcid], 'id,userid');
+                    if ($pcrow) { $ownerid = (int)$pcrow->userid; }
+                } else {
+                    // Case 2: Selected quiz is an archived Personal Quiz
+                    $arch = $DB->get_record('local_personalcourse_archives', ['archivedquizid' => (int)$quizid], 'ownerid, personalcourseid, sourcequizid');
+                    if ($arch) { $ownerid = (int)$arch->ownerid; $pcid = (int)$arch->personalcourseid; $sourcequizid = (int)$arch->sourcequizid; }
+                }
+            } catch (\Throwable $e0) { /* best-effort */ }
+
+            // Use source quiz for column headers when we know it, so columns are stable across archived/active PQs
+            if (!empty($sourcequizid)) { $headerquizid = (int)$sourcequizid; }
+
             // Run diagnostics first to understand the database schema
             $this->diagnose_database_schema();
-            
-            // Get quiz questions with slot numbers using cross-version compatibility
-            $quiz_questions = qdb_get_quiz_questions_crossver($quizid);
-            
+
+            // Build stable header based on source quiz if available
+            $quiz_questions = qdb_get_quiz_questions_crossver((int)$headerquizid);
+
             // Debug: Log quiz questions found
-            error_log('Questions Dashboard Debug: Found ' . count($quiz_questions) . ' questions for quiz ID ' . $quizid);
-            
+            error_log('Questions Dashboard Debug: Found ' . count($quiz_questions) . ' questions for header quiz ID ' . $headerquizid);
+
             // Add slot numbers for display
             foreach ($quiz_questions as $question) {
                 $question->slot_number = $question->slot;
@@ -259,7 +282,26 @@ class questions_manager {
         }
         
         // Get user attempts - build conditions
-        $params = [$quizid];
+        // Determine attempt quizids set (active + archived) when the selected quiz is a Personal Quiz
+        $targetquizids = [(int)$quizid];
+        try {
+            if (!empty($ownerid) && !empty($pcid) && !empty($sourcequizid)) {
+                // Include active PQ if selected quiz is archived
+                $activepq = $DB->get_record('local_personalcourse_quizzes', [
+                    'personalcourseid' => (int)$pcid,
+                    'sourcequizid' => (int)$sourcequizid,
+                ], 'quizid');
+                if ($activepq && (int)$activepq->quizid > 0) { $targetquizids[] = (int)$activepq->quizid; }
+
+                // Include all archived PQs for this owner+source
+                $archrows = $DB->get_fieldset_sql("SELECT archivedquizid FROM {local_personalcourse_archives} WHERE ownerid = ? AND personalcourseid = ? AND sourcequizid = ?",
+                    [(int)$ownerid, (int)$pcid, (int)$sourcequizid]);
+                foreach ($archrows as $aqid) { $aqid = (int)$aqid; if ($aqid > 0) { $targetquizids[] = $aqid; } }
+                $targetquizids = array_values(array_unique(array_map('intval', $targetquizids)));
+            }
+        } catch (\Throwable $e1) { /* best-effort */ }
+
+        $params = [];
         $where_conditions = [];
         
         if ($userid) {
@@ -278,6 +320,9 @@ class questions_manager {
         $where_clause = !empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "";
         
         try {
+            // Build IN clause for attempts (single id if not a personal-course context)
+            list($in_sql_quiz, $in_params_quiz) = $DB->get_in_or_equal($targetquizids, SQL_PARAMS_QM);
+
             $sql_attempts = "SELECT qa.id as attemptid, qa.userid, qa.timefinish, qa.timestart,
                                    qa.attempt as attemptno,
                                    CONCAT(u.firstname, ' ', u.lastname) as username,
@@ -291,10 +336,10 @@ class questions_manager {
                             FROM {quiz_attempts} qa
                             JOIN {user} u ON u.id = qa.userid
                             JOIN {quiz} q ON q.id = qa.quiz
-                            WHERE qa.quiz = ? AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause . "
+                            WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause . "
                             ORDER BY u.lastname, u.firstname";
             
-            $user_attempts = $DB->get_records_sql($sql_attempts, $params);
+            $user_attempts = $DB->get_records_sql($sql_attempts, array_merge($in_params_quiz, $params));
             
             // Debug: Log user attempts found
             error_log('Questions Dashboard Debug: Found ' . count($user_attempts) . ' user attempts for quiz ID ' . $quizid);
@@ -348,8 +393,19 @@ class questions_manager {
                     $params = $attempt_params;
                     $results = $DB->get_records_sql($sql_results, $params);
                     
+                    // Map questionid -> source slot number for stable columns when sourcequizid is known
+                    $qid_to_sourceslot = [];
+                    if (!empty($sourcequizid)) {
+                        try {
+                            $src_questions = qdb_get_quiz_questions_crossver((int)$sourcequizid);
+                            foreach ($src_questions as $sq) { $qid_to_sourceslot[(int)$sq->id] = (int)$sq->slot; }
+                        } catch (\Throwable $e2) { /* ignore */ }
+                    }
+
                     foreach ($results as $result) {
-                        $key = $result->attemptid . '_' . $result->slot;
+                        // Align to source slot if available; otherwise keep attempt slot
+                        $slot = (isset($qid_to_sourceslot[(int)$result->questionid])) ? (int)$qid_to_sourceslot[(int)$result->questionid] : (int)$result->slot;
+                        $key = $result->attemptid . '_' . $slot;
 
                         // Ensure fraction values are numeric and valid
                         if (!is_numeric($result->fraction)) {
