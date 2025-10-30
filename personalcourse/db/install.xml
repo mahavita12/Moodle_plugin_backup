@@ -24,7 +24,7 @@
         <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
         <FIELD NAME="personalcourseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
-        <FIELD NAME="sourcequizid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="sourcequizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
         <FIELD NAME="sectionname" TYPE="char" LENGTH="255" NOTNULL="false"/>
         <FIELD NAME="quiztype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="non_essay"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>

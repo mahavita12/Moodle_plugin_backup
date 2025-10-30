@@ -190,5 +190,27 @@ function xmldb_local_personalcourse_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025102604, 'local', 'personalcourse');
     }
 
+    if ($oldversion < 2025102605) {
+        $table = new xmldb_table('local_personalcourse_quizzes');
+        $field = new xmldb_field('sourcequizid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null, 'quizid');
+        $index = new xmldb_index('sourcequiz_unique', XMLDB_INDEX_UNIQUE, ['personalcourseid', 'sourcequizid']);
+        if ($dbman->table_exists($table)) {
+            $hasnulls = 0;
+            try { $hasnulls = (int)$DB->count_records_select('local_personalcourse_quizzes', 'sourcequizid IS NULL'); } catch (\Throwable $e) { $hasnulls = 0; }
+            if ($hasnulls === 0) {
+                if ($dbman->index_exists($table, $index)) {
+                    $dbman->drop_index($table, $index);
+                }
+                if ($dbman->field_exists($table, $field)) {
+                    $dbman->change_field_notnull($table, $field);
+                }
+                if (!$dbman->index_exists($table, $index)) {
+                    $dbman->add_index($table, $index);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2025102605, 'local', 'personalcourse');
+    }
+
     return true;
 }
