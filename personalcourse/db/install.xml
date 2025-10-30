@@ -18,7 +18,7 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="userid_unique" UNIQUE="true" FIELDS="userid"/>
-        <INDEX NAME="courseid" FIELDS="courseid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
       </INDEXES>
     </TABLE>
 
@@ -37,7 +37,7 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="personalcourseid" FIELDS="personalcourseid"/>
+        <INDEX NAME="personalcourseid" UNIQUE="false" FIELDS="personalcourseid"/>
         <INDEX NAME="sourcequiz_unique" UNIQUE="true" FIELDS="personalcourseid, sourcequizid"/>
       </INDEXES>
     </TABLE>
@@ -60,8 +60,8 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="personalquizid" FIELDS="personalquizid"/>
-        <INDEX NAME="questionid" FIELDS="questionid"/>
+        <INDEX NAME="personalquizid" UNIQUE="false" FIELDS="personalquizid"/>
+        <INDEX NAME="questionid" UNIQUE="false" FIELDS="questionid"/>
         <INDEX NAME="pcq_unique" UNIQUE="true" FIELDS="personalcourseid, questionid"/>
       </INDEXES>
     </TABLE>
@@ -81,8 +81,8 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="pc_time" FIELDS="personalcourseid, timecreated"/>
-        <INDEX NAME="user_quiz" FIELDS="userid, sourcequizid"/>
+        <INDEX NAME="pc_time" UNIQUE="false" FIELDS="personalcourseid, timecreated"/>
+        <INDEX NAME="user_quiz" UNIQUE="false" FIELDS="userid, sourcequizid"/>
       </INDEXES>
     </TABLE>
 
@@ -103,8 +103,8 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="owner_source" FIELDS="ownerid, sourcequizid"/>
-        <INDEX NAME="pc_source" FIELDS="personalcourseid, sourcequizid"/>
+        <INDEX NAME="owner_source" UNIQUE="false" FIELDS="ownerid, sourcequizid"/>
+        <INDEX NAME="pc_source" UNIQUE="false" FIELDS="personalcourseid, sourcequizid"/>
         <INDEX NAME="archivedquiz_unique" UNIQUE="true" FIELDS="archivedquizid"/>
       </INDEXES>
     </TABLE>
