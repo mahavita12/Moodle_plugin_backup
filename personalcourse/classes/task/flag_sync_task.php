@@ -63,8 +63,8 @@ class flag_sync_task extends \core\task\adhoc_task {
                 $n = (int)$a->attempt;
                 $grade = ($totalsum > 0.0) ? (((float)($a->sumgrades ?? 0.0) / $totalsum) * 100.0) : 0.0;
                 if ($n === 1 && $grade > 80.0) { $allow = true; break; }
-                if ($n === 2 && $grade >= 30.0) { $allow = true; break; }
-                if ($n >= 3 && $grade >= 30.0) { $allow = true; break; }
+                if ($n === 2 && $grade >= 40.0) { $allow = true; break; }
+                if ($n >= 3 && $grade >= 40.0) { $allow = true; break; }
             }
             if (!$allow) {
                 // Not yet eligible to create personal quiz for this source; return early.

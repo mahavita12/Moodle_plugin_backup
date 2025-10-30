@@ -4,7 +4,7 @@ namespace local_personalcourse;
 defined('MOODLE_INTERNAL') || die();
 
 class generator_service {
-    public static function generate_from_source(int $userid, int $sourcequizid, ?int $attemptid = null, string $mode = 'union'): object {
+    public static function generate_from_source(int $userid, int $sourcequizid, ?int $attemptid = null, string $mode = 'union', bool $defer = false): object {
         global $DB, $CFG;
         require_once($CFG->dirroot . '/course/lib.php');
         require_once($CFG->dirroot . '/mod/quiz/lib.php');
@@ -132,7 +132,7 @@ class generator_service {
         $flagqids = [];
         if (!empty($srcquizqids)) {
             list($insqlq, $inparamsq) = $DB->get_in_or_equal(array_map('intval', $srcquizqids), SQL_PARAMS_QM);
-            $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq}", array_merge([$userid], $inparamsq));
+            $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq} AND flagcolor IN ('blue','red')", array_merge([$userid], $inparamsq));
         }
         $incorrect = [];
         if ($mode === 'union') {
@@ -172,6 +172,18 @@ class generator_service {
 
         // If we are in flags_only mode and the desired set is empty, remove the active personal quiz.
         if ($mode === 'flags_only' && empty($desired)) {
+            if ($defer) {
+                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
+                return (object)[
+                    'personalcourseid' => $personalcourseid,
+                    'mappingid' => (int)$pq->id,
+                    'quizid' => (int)$pq->quizid,
+                    'cmid' => $cmid,
+                    'toadd' => [],
+                    'toremove' => [],
+                    'deferred' => true,
+                ];
+            }
             // If a mapping exists, handle quiz cleanup.
             if ($pq && !empty($pq->quizid) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                 // Delete any in-progress/overdue attempts for this user to unlock structural/CM changes.
@@ -244,7 +256,7 @@ class generator_service {
         }
 
         // Dedupe across the student's personal course: if any desired qid exists in another personal quiz, move it here.
-        if (!empty($desired)) {
+        if (!$defer && !empty($desired)) {
             foreach ($desired as $qid) {
                 $existingpcq = $DB->get_record('local_personalcourse_questions', [
                     'personalcourseid' => (int)$personalcourseid,
@@ -357,6 +369,20 @@ class generator_service {
                 // No real questions currently present; ensure a placeholder exists.
                 $needplaceholder = true;
             }
+        }
+
+        // If deferring, return summary without mutating structure.
+        if ($defer) {
+            $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
+            return (object)[
+                'personalcourseid' => $personalcourseid,
+                'mappingid' => (int)$pq->id,
+                'quizid' => (int)$pq->quizid,
+                'cmid' => $cmid,
+                'toadd' => $toadd,
+                'toremove' => $toremove,
+                'deferred' => true,
+            ];
         }
 
         // Delete in-progress/overdue attempts before structural changes.

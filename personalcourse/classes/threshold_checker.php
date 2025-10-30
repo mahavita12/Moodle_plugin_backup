@@ -31,26 +31,13 @@ class threshold_checker {
             if ($n === 1 && $grade > 80.0) {
                 return ['action' => 'generate', 'reason' => 'first_attempt_gt80', 'grade' => $grade, 'attempt' => $n];
             }
-            if ($n === 2 && $grade >= 30.0) {
-                return ['action' => 'generate', 'reason' => 'second_attempt_ge30', 'grade' => $grade, 'attempt' => $n];
+            if ($n === 2 && $grade >= 40.0) {
+                return ['action' => 'generate', 'reason' => 'second_attempt_ge40', 'grade' => $grade, 'attempt' => $n];
             }
             return ['action' => 'none', 'reason' => 'no_initial_threshold_met', 'grade' => $grade, 'attempt' => $n];
         }
 
-        // Already generated.
-        $firstgenattempt = (int)$gen->attemptnumber;
-        if ($firstgenattempt === 1) {
-            // If first generation was on attempt 1 due to >80, future regenerations require >80 again.
-            if ($grade > 80.0) {
-                return ['action' => 'regenerate', 'reason' => 'regen_gt80_after_first_attempt_gen', 'grade' => $grade, 'attempt' => $n];
-            }
-            return ['action' => 'none', 'reason' => 'regen_requires_gt80', 'grade' => $grade, 'attempt' => $n];
-        }
-
-        // Otherwise, standard rule: attempt >= 3 and grade >= 30.
-        if ($n >= 3 && $grade >= 30.0) {
-            return ['action' => 'regenerate', 'reason' => 'regen_attempt3p_ge30', 'grade' => $grade, 'attempt' => $n];
-        }
-        return ['action' => 'none', 'reason' => 'regen_threshold_not_met', 'grade' => $grade, 'attempt' => $n];
+        // Already generated: threshold-driven regeneration is disabled by policy.
+        return ['action' => 'none', 'reason' => 'regen_disabled_policy', 'grade' => $grade, 'attempt' => $n];
     }
 }

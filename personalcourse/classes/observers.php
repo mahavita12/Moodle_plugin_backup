@@ -74,6 +74,16 @@ class observers {
 
                 $qb = new \local_personalcourse\quiz_builder();
 
+                // Defer structural changes when flag change happens during an in-progress Personal Quiz attempt.
+                $shoulddefer = false;
+                if ($ispcourse && !empty($pq) && $DB->record_exists_select(
+                        'quiz_attempts',
+                        "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                        [(int)$pq->quizid, (int)$targetuserid]
+                    )) {
+                    $shoulddefer = true;
+                }
+
                 if ($added) {
                     // If we re-attributed to the owner, ensure the owner's flag row exists.
                     if ($targetuserid !== $userid) {
@@ -94,7 +104,9 @@ class observers {
                             ]);
                         }
                     }
-                    if (!$ispcourse && $pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    if ($shoulddefer) {
+                        // Defer structural changes; do not mutate quiz during active attempt.
+                    } else if (!$ispcourse && $pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         // Dedupe: if this question is in another PQ inside this personal course, move it here.
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
@@ -133,7 +145,7 @@ class observers {
                     $existing = $DB->get_record('local_personalcourse_questions', [
                         'personalcourseid' => (int)$pc->id,
                         'questionid' => (int)$questionid,
-                    ], 'id, personalquizid');
+                    ]);
                     // If we re-attributed to the owner, also remove the owner's flag rows.
                     if ($targetuserid !== $userid) {
                         $DB->delete_records('local_questionflags', [
@@ -141,37 +153,38 @@ class observers {
                             'questionid' => (int)$questionid,
                         ]);
                     }
-                    if (!$ispcourse && $existing) {
+                    if ($shoulddefer) {
+                        // Defer structural changes; do not remove from quiz during active attempt.
+                    } else if ($existing) {
                         $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                        if ($targetpq) { self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid); $qb->remove_question((int)$targetpq->quizid, (int)$questionid); }
+                        if ($targetpq) {
+                            self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid);
+                            $qb->remove_question((int)$targetpq->quizid, (int)$questionid);
+                        }
                         $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                    } else if (!$ispcourse && !empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    } else if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                         $qb->remove_question((int)$pq->quizid, (int)$questionid);
+                        $DB->delete_records('local_personalcourse_questions', [
+                            'personalcourseid' => (int)$pc->id,
+                            'personalquizid' => (int)$pq->id,
+                            'questionid' => (int)$questionid,
+                        ]);
                     }
                 }
 
-                // Always reconcile: unify via generator_service to enforce placeholder/fork policy.
+                // Always reconcile: compute desired state immediately. Defer structural edits during active PQ attempts.
                 try {
-                    $canreconcile = false;
-                    $originctx = isset($event->other['origin']) ? (string)$event->other['origin'] : '';
                     if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        if ($ispcourse) {
-                            // Only when flags are changed from the review page do we reconcile now.
-                            if ($originctx === 'review') {
-                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                                $canreconcile = true;
-                            }
-                        } else {
-                            // Public-source flags: reconcile immediately.
-                            $canreconcile = true;
-                        }
-                    }
-                    if ($canreconcile) {
                         $sourcequizid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
                         if (!empty($sourcequizid)) {
+                            $deferflag = ($ispcourse && $shoulddefer);
+                            if ($ispcourse && !$deferflag) {
+                                // Safe to apply immediately: no active attempt; clear in-progress then reconcile.
+                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                            }
                             $svc = new \local_personalcourse\generator_service();
-                            $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only');
+                            $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only', (bool)$deferflag);
                         }
                     }
                 } catch (\Throwable $reconerr) {
@@ -216,7 +229,7 @@ class observers {
             if ($pq && !empty($pq->sourcequizid)) {
                 try {
                     $svc = new \local_personalcourse\generator_service();
-                    // Flags-only reconciliation post-creation; drive solely by global flag state.
+                    // Flags-only reconciliation post-creation; drive solely by current global flag state.
                     $svc->generate_from_source((int)$userid, (int)$pq->sourcequizid, (int)$event->objectid, 'flags_only');
                 } catch (\Throwable $e) { /* best-effort */ }
             }
@@ -361,7 +374,7 @@ class observers {
             }
         }
 
-        // Pre-attempt reconcile: delete in-progress attempts and reconcile to current flags.
+        // Pre-attempt reconcile on viewing the personal quiz. Ensure no mid-attempt changes by deleting in-progress attempts first.
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
