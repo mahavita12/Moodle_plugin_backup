@@ -2,7 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_quizdashboard';
-$plugin->version = 2025101502; // Bump: enable hook-based global navigation (retry)
+$plugin->version = 2025110101; // Bump: add event observer to auto-attach orphaned quiz CMs
 $plugin->requires = 2022112800; // Moodle 4.0+
 $plugin->maturity = MATURITY_BETA;
 $plugin->release = 'v.1.0 - Auto-Grading Integration';
