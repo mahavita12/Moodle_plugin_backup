@@ -160,9 +160,16 @@ if ($autofix) {
     foreach ($allcmids as $cmid) {
         if (!isset($seqcmids[$cmid])) {
             try {
+                // Prefer the section already stored on CM (id), convert to section NUMBER.
+                $cmrec = $DB->get_record('course_modules', ['id' => $cmid], 'id,section');
+                $targetnum = (int)$firstsectionnum;
+                if ($cmrec && !empty($cmrec->section)) {
+                    $num = $DB->get_field('course_sections', 'section', ['id' => $cmrec->section]);
+                    if ($num !== false && $num !== null) { $targetnum = (int)$num; }
+                }
                 // This API updates both course_sections.sequence and cm->section.
-                course_add_cm_to_section($courseid, (int)$cmid, (int)$firstsectionnum);
-                $attached[] = 'Attached cmid ' . $cmid . ' to section #' . $firstsectionnum;
+                course_add_cm_to_section($courseid, (int)$cmid, $targetnum);
+                $attached[] = 'Attached cmid ' . $cmid . ' to section #' . $targetnum;
             } catch (\Throwable $e) {
                 $attached[] = 'Failed to attach cmid ' . $cmid . ': ' . $e->getMessage();
             }

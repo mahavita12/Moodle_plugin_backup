@@ -54,17 +54,27 @@ class observer {
 
             if ($isreferenced) { return; }
 
-            // Choose a sensible target section: prefer section 0, else the first existing, else create section 1.
-            $targetsection = 0;
-            $hassection0 = $DB->record_exists('course_sections', ['course' => $courseid, 'section' => 0]);
-            if (!$hassection0) {
-                if ($firstsectionnum !== null) {
-                    $targetsection = $firstsectionnum;
-                } else {
-                    // Create section 1 if no sections exist yet.
-                    require_once($CFG->dirroot . '/course/lib.php');
-                    \course_create_sections_if_missing($courseid, [1]);
-                    $targetsection = 1;
+            // Prefer the section already stored on the CM row (cm.section -> course_sections.id)
+            // and map it to its section NUMBER; this preserves the creator's intended target section.
+            $targetsection = null;
+            if (!empty($cm->section)) {
+                $secnum = $DB->get_field('course_sections', 'section', ['id' => $cm->section]);
+                if ($secnum !== false && $secnum !== null) {
+                    $targetsection = (int)$secnum; // section NUMBER
+                }
+            }
+            // If unknown, choose a sensible default: 0 if it exists, else first existing, else create 1.
+            if ($targetsection === null) {
+                $targetsection = 0;
+                $hassection0 = $DB->record_exists('course_sections', ['course' => $courseid, 'section' => 0]);
+                if (!$hassection0) {
+                    if ($firstsectionnum !== null) {
+                        $targetsection = $firstsectionnum;
+                    } else {
+                        require_once($CFG->dirroot . '/course/lib.php');
+                        \course_create_sections_if_missing($courseid, [1]);
+                        $targetsection = 1;
+                    }
                 }
             }
 

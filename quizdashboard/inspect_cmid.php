@@ -77,4 +77,26 @@ $courseurl = new moodle_url('/course/view.php', ['id' => $cm->course]);
 echo html_writer::tag('p', html_writer::link($courseurl, 'Open course')); 
 echo html_writer::tag('p', html_writer::link($autofixurl, 'Run Autofix for this course (recreate missing CMs, attach orphaned CMs, rebuild cache)'));
 
+// Simple admin move-to-section utility (by section NUMBER)
+$moveto = optional_param('movetosection', null, PARAM_INT);
+if ($moveto !== null) {
+    require_once($CFG->dirroot . '/course/lib.php');
+    try {
+        course_add_cm_to_section($cm->course, $cmid, (int)$moveto);
+        rebuild_course_cache($cm->course, true);
+        echo $OUTPUT->notification('Moved cmid '.$cmid.' to section #'.(int)$moveto.' and rebuilt cache.', 'notifysuccess');
+    } catch (\Throwable $e) {
+        echo $OUTPUT->notification('Move failed: '.$e->getMessage(), 'notifyproblem');
+    }
+}
+
+// Render a tiny form
+$formurl = new moodle_url('/local/quizdashboard/inspect_cmid.php', ['id' => $cmid]);
+echo html_writer::start_tag('form', ['method' => 'get', 'action' => $formurl]);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'id', 'value' => $cmid]);
+echo html_writer::tag('label', 'Move to section number: ', ['for' => 'movetosection']);
+echo html_writer::empty_tag('input', ['type' => 'number', 'name' => 'movetosection', 'id' => 'movetosection', 'min' => 0, 'max' => 999, 'value' => '0']);
+echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => 'Move']);
+echo html_writer::end_tag('form');
+
 echo $OUTPUT->footer();
