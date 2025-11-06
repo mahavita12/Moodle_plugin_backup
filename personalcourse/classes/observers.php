@@ -83,6 +83,10 @@ class observers {
                     )) {
                     $shoulddefer = true;
                 }
+                // Also defer if the flag event originated from a review page to avoid mid-view mutations (both public and personal review).
+                if ($origin === 'review') {
+                    $shoulddefer = true;
+                }
 
                 if ($added) {
                     // If we re-attributed to the owner, ensure the owner's flag row exists.
@@ -373,16 +377,19 @@ class observers {
                 return;
             }
         }
-
-        // Pre-attempt reconcile on viewing the personal quiz. Ensure no mid-attempt changes by deleting in-progress attempts first.
+        // Defer structural reconcile on review: enqueue adhoc task, do not mutate in this request.
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
-                // Remove any in-progress/overdue attempts for the owner to allow structural changes safely.
-                self::delete_inprogress_attempts_for_user_at_quiz((int)$cm->instance, (int)$ownerid);
-                // Reconcile to flags-only so that an empty flag set results in no real questions (placeholder/fork handled by service).
-                $svc = new \local_personalcourse\generator_service();
-                $svc->generate_from_source($ownerid, (int)$pq->sourcequizid, null, 'flags_only');
+                $task = new \local_personalcourse\task\reconcile_view_task();
+                $task->set_custom_data([
+                    'userid' => $ownerid,
+                    'sourcequizid' => (int)$pq->sourcequizid,
+                    'cmid' => (int)$cmid,
+                ]);
+                $task->set_component('local_personalcourse');
+                \core\task\manager::queue_adhoc_task($task, true);
+                \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
             }
         } catch (\Throwable $e) { /* best-effort */ }
         return;

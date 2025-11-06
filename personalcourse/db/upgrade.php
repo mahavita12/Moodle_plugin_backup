@@ -212,5 +212,10 @@ function xmldb_local_personalcourse_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025102605, 'local', 'personalcourse');
     }
 
+    // Mark upgrade for deferred-on-review behavior.
+    if ($oldversion < 2025110600) {
+        upgrade_plugin_savepoint(true, 2025110600, 'local', 'personalcourse');
+    }
+
     return true;
 }

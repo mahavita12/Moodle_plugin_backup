@@ -45,3 +45,6 @@ $string['notify_pq_created_short'] = 'Your Personal Quiz is Live! Head to your P
 $string['notify_pq_exists_short'] = 'Your Personal Quiz is Waiting! Continue practicing in your Personal Course.';
 $string['notify_pq_not_created_first_short'] = 'Almost there! Score 80%+ on your first attempt to unlock your personalized practice quiz.';
 $string['notify_pq_not_created_next_short'] = 'Keep going! Score 40%+ to unlock your personal quiz and boost your learning.';
+
+// Background reconcile notice.
+$string['task_reconcile_scheduled'] = 'Personal Quiz updates are being applied in the background. Please refresh shortly.';
