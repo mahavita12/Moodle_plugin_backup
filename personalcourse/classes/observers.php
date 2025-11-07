@@ -377,19 +377,25 @@ class observers {
                 return;
             }
         }
-        // Defer structural reconcile on review: enqueue adhoc task, do not mutate in this request.
+        // Defer structural reconcile on review: enqueue adhoc task (deduped), do not mutate in this request.
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
-                $task = new \local_personalcourse\task\reconcile_view_task();
-                $task->set_custom_data([
-                    'userid' => $ownerid,
-                    'sourcequizid' => (int)$pq->sourcequizid,
-                    'cmid' => (int)$cmid,
-                ]);
-                $task->set_component('local_personalcourse');
-                \core\task\manager::queue_adhoc_task($task, true);
-                \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
+                $classname = '\\local_personalcourse\\task\\reconcile_view_task';
+                $cd1 = '"userid":' . (int)$ownerid;
+                $cd2 = '"sourcequizid":' . (int)$pq->sourcequizid;
+                $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
+                if (!$exists) {
+                    $task = new \local_personalcourse\task\reconcile_view_task();
+                    $task->set_custom_data([
+                        'userid' => $ownerid,
+                        'sourcequizid' => (int)$pq->sourcequizid,
+                        'cmid' => (int)$cmid,
+                    ]);
+                    $task->set_component('local_personalcourse');
+                    \core\task\manager::queue_adhoc_task($task, true);
+                    \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
+                }
             }
         } catch (\Throwable $e) { /* best-effort */ }
         return;

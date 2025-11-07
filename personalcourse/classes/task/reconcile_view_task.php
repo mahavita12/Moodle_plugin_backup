@@ -54,6 +54,13 @@ class reconcile_view_task extends \core\task\adhoc_task {
             ]);
             $next->set_next_run_time(time() + 120);
             \core\task\manager::queue_adhoc_task($next, true);
+            // Also queue a sequence cleanup for the personal course to heal stale sequences.
+            if ($pccourseid) {
+                $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
+                $cleanup->set_component('local_personalcourse');
+                $cleanup->set_custom_data(['courseid' => (int)$pccourseid]);
+                \core\task\manager::queue_adhoc_task($cleanup, true);
+            }
             return;
         }
 
@@ -61,6 +68,13 @@ class reconcile_view_task extends \core\task\adhoc_task {
         try {
             $svc = new \local_personalcourse\generator_service();
             $svc->generate_from_source((int)$userid, (int)$sourcequizid, null, 'flags_only', false);
+            // After reconcile, queue a sequence cleanup to ensure section sequences do not reference deleted CMs.
+            if ($pccourseid) {
+                $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
+                $cleanup->set_component('local_personalcourse');
+                $cleanup->set_custom_data(['courseid' => (int)$pccourseid]);
+                \core\task\manager::queue_adhoc_task($cleanup, true);
+            }
         } catch (\Throwable $e) {
             // If anything fails, reschedule once to retry.
             $retry = new self();
