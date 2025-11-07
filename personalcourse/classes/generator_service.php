@@ -228,17 +228,17 @@ class generator_service {
                     // Remove the mapping so no active PQ exists.
                     $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
                 } else {
-                    // Safe to delete the entire module and mapping.
                     try {
                         $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                         if ($cm) {
-                            course_delete_module((int)$cm->id);
+                            $task = new \local_personalcourse\task\orchestrate_deletion_task();
+                            $task->set_component('local_personalcourse');
+                            $task->set_custom_data(['courseid' => (int)$pccourseid, 'cmids' => [(int)$cm->id]]);
+                            \core\task\manager::queue_adhoc_task($task, true);
                         }
                     } catch (\Throwable $e) {
-                        // Fallback: if CM missing, delete quiz record to avoid orphans.
                         $DB->delete_records('quiz', ['id' => (int)$pq->quizid]);
                     }
-                    // Clean auxiliary rows and mapping.
                     $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id]);
                     $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
                 }

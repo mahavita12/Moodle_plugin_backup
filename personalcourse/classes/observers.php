@@ -381,6 +381,24 @@ class observers {
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
+                // Detect inconsistent section sequences for this course (sequence referencing deleting/missing CMs).
+                $inconsistent = false;
+                $badexists = false;
+                $sections = $DB->get_records('course_sections', ['course' => (int)$courseid], 'section', 'id,sequence');
+                if (!empty($sections)) {
+                    // Build valid CM id set: existing and not deletioninprogress.
+                    $validcmids = [];
+                    $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [(int)$courseid], '', 'id');
+                    foreach ($rs as $r) { $validcmids[(int)$r->id] = true; }
+                    $rs->close();
+                    foreach ($sections as $sec) {
+                        $seq = trim((string)$sec->sequence);
+                        if ($seq === '') { continue; }
+                        $ids = array_filter(array_map('intval', explode(',', $seq)));
+                        foreach ($ids as $id) { if (!isset($validcmids[(int)$id])) { $inconsistent = true; $badexists = true; break 2; } }
+                    }
+                }
+
                 $classname = '\\local_personalcourse\\task\\reconcile_view_task';
                 $cd1 = '"userid":' . (int)$ownerid;
                 $cd2 = '"sourcequizid":' . (int)$pq->sourcequizid;
@@ -395,6 +413,21 @@ class observers {
                     $task->set_component('local_personalcourse');
                     \core\task\manager::queue_adhoc_task($task, true);
                     \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
+                }
+
+                // If inconsistent, also queue a sequence cleanup task for the course (dedup by courseid in customdata).
+                if ($inconsistent) {
+                    $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
+                    $cd = '"courseid":' . (int)$courseid;
+                    $exists2 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ?', [$classname2, "%$cd%"]);
+                    if (!$exists2) {
+                        $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
+                        $cleanup->set_component('local_personalcourse');
+                        $cleanup->set_custom_data(['courseid' => (int)$courseid]);
+                        \core\task\manager::queue_adhoc_task($cleanup, true);
+                    }
+                    // Early return to avoid any risk during rendering.
+                    return;
                 }
             }
         } catch (\Throwable $e) { /* best-effort */ }
