@@ -217,5 +217,9 @@ function xmldb_local_personalcourse_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025110600, 'local', 'personalcourse');
     }
 
+    if ($oldversion < 2025110700) {
+        upgrade_plugin_savepoint(true, 2025110700, 'local', 'personalcourse');
+    }
+
     return true;
 }

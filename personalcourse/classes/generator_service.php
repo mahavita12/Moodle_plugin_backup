@@ -104,6 +104,8 @@ class generator_service {
                 ];
                 $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
                 $pq = $pqrec;
+                // Proactively clean section sequences in the personal course to drop deleting/missing CMIDs.
+                self::cleanup_course_sequences((int)$pccourseid);
             }
         } else {
             // Recreate if mapped quiz is missing or CM is being deleted.
@@ -119,6 +121,8 @@ class generator_service {
                 $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
                 $pq->quizid = (int)$res->quizid;
                 $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
+                // Heal sequences immediately after recreation to avoid stale CMIDs lingering next to the new CM.
+                self::cleanup_course_sequences((int)$pccourseid);
             }
         }
 
@@ -571,5 +575,36 @@ class generator_service {
             'toadd' => $toadd,
             'toremove' => $toremove,
         ];
+    }
+
+    /**
+     * Clean sequences for a course: remove cmids that are missing or marked deletioninprogress, then rebuild cache.
+     */
+    private static function cleanup_course_sequences(int $courseid): void {
+        global $DB;
+        if ($courseid <= 0) { return; }
+        // Build valid set: existing CMs in this course with deletioninprogress = 0 or NULL.
+        $valid = [];
+        $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [$courseid], '', 'id');
+        foreach ($rs as $r) { $valid[(int)$r->id] = true; }
+        $rs->close();
+
+        $sections = $DB->get_records('course_sections', ['course' => $courseid], 'section', 'id,sequence');
+        $changed = false;
+        foreach ($sections as $sec) {
+            $seq = trim((string)$sec->sequence);
+            if ($seq === '') { continue; }
+            $ids = array_filter(array_map('intval', explode(',', $seq)));
+            $filtered = [];
+            foreach ($ids as $id) { if (isset($valid[(int)$id])) { $filtered[] = (int)$id; } }
+            $newseq = implode(',', $filtered);
+            if ($newseq !== $seq) {
+                $DB->update_record('course_sections', (object)['id' => (int)$sec->id, 'sequence' => $newseq]);
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
+        }
     }
 }

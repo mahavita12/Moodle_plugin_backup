@@ -182,13 +182,38 @@ class observers {
                     if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         $sourcequizid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
                         if (!empty($sourcequizid)) {
-                            $deferflag = ($ispcourse && $shoulddefer);
+                            $deferflag = (bool)$shoulddefer;
                             if ($ispcourse && !$deferflag) {
                                 // Safe to apply immediately: no active attempt; clear in-progress then reconcile.
                                 self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
                             }
                             $svc = new \local_personalcourse\generator_service();
                             $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only', (bool)$deferflag);
+                            // When deferring (e.g., review-origin or in-progress PQ), enqueue an adhoc reconcile to run out-of-request and a sequence cleanup.
+                            if ($deferflag) {
+                                try {
+                                    $classname = '\\local_personalcourse\\task\\reconcile_view_task';
+                                    $cd1 = '"userid":' . (int)$targetuserid;
+                                    $cd2 = '"sourcequizid":' . (int)$sourcequizid;
+                                    $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
+                                    if (!$exists) {
+                                        $task = new \local_personalcourse\task\reconcile_view_task();
+                                        $task->set_component('local_personalcourse');
+                                        $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid]);
+                                        \core\task\manager::queue_adhoc_task($task, true);
+                                    }
+                                    // Also queue a sequence cleanup for the personal course to heal any stale CMIDs.
+                                    $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
+                                    $cd = '"courseid":' . (int)$pc->courseid;
+                                    $exists2 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ?', [$classname2, "%$cd%"]);
+                                    if (!$exists2) {
+                                        $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
+                                        $cleanup->set_component('local_personalcourse');
+                                        $cleanup->set_custom_data(['courseid' => (int)$pc->courseid]);
+                                        \core\task\manager::queue_adhoc_task($cleanup, true);
+                                    }
+                                } catch (\Throwable $q) { /* best-effort */ }
+                            }
                         }
                     }
                 } catch (\Throwable $reconerr) {
