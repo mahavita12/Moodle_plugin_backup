@@ -211,7 +211,7 @@ class generator_service {
                         $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                         if ($oldcm) {
                             $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                            $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
                         }
                         // Register archive record for full history.
                         try {
@@ -248,6 +248,7 @@ class generator_service {
                 }
             }
             // Rebuild cache and exit early; no personal quiz should remain active for this source.
+            try { self::enforce_archive_visibility((int)$pccourseid, (int)$sourcequizid, 0); } catch (\Throwable $ee) {}
             try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e) {}
             return (object)[
                 'personalcourseid' => $personalcourseid,
@@ -325,7 +326,7 @@ class generator_service {
                 $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                 if ($oldcm) {
                     $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                    $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                    $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
                     try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
                 }
                 // Archive record.
@@ -395,7 +396,7 @@ class generator_service {
                         if ($oldcm) {
                             // Keep visible=1 so direct attempt/review links still work, but hide on course page.
                             $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                            $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
                             // Rebuild course cache so the change is reflected immediately in the course index.
                             try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
                         }
@@ -648,55 +649,91 @@ class generator_service {
      * as 'Previous Attempt', hiding all older archived copies from the course page.
      */
     public static function enforce_archive_visibility(int $courseid, int $sourcequizid, int $activequizid): void {
-        global $DB, $CFG;
-        if ($courseid <= 0 || $sourcequizid <= 0 || $activequizid <= 0) { return; }
-        $basename = (string)$DB->get_field('quiz', 'name', ['id' => (int)$sourcequizid], IGNORE_MISSING);
-        if ($basename === '') { return; }
+        global $DB;
+        if ($courseid <= 0 || $sourcequizid <= 0) { return; }
+        $pc = $DB->get_record('local_personalcourse_courses', ['courseid' => (int)$courseid], 'id,userid,courseid');
+        if (!$pc) { return; }
         $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
         if ($moduleidquiz <= 0) { return; }
 
-        // Fetch all quiz modules in this course that match the base name pattern.
-        $all = $DB->get_records_sql(
-            "SELECT q.id AS quizid, q.name, q.timemodified, cm.id AS cmid, cm.visible, cm.visibleoncoursepage\n" .
+        $basename = (string)$DB->get_field('quiz', 'name', ['id' => (int)$sourcequizid], IGNORE_MISSING);
+        if ($basename === '') { return; }
+
+        // 1) Gather candidates by name pattern (covers legacy items without archive rows).
+        $likearch = $basename . ' (Archived)%';
+        $likeprev = $basename . ' (Previous Attempt)%';
+        $nameRows = $DB->get_records_sql(
+            "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
             "  FROM {quiz} q\n" .
             "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
-            " WHERE q.course = ? AND (q.name = ? OR q.name LIKE ?)\n" .
+            " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
             " ORDER BY q.timemodified DESC, q.id DESC",
-            [$moduleidquiz, (int)$courseid, $basename, $DB->sql_like_escape($basename) . ' %']
+            [$moduleidquiz, (int)$courseid, $likearch, $likeprev]
         );
-        if (empty($all)) { return; }
 
-        // Identify archived candidates = all except the active quiz id.
-        $archived = [];
-        foreach ($all as $row) {
-            if ((int)$row->quizid !== (int)$activequizid) { $archived[] = $row; }
-        }
-        if (empty($archived)) { return; }
+        // 2) Gather candidates from archives table (preferred ordering by archivedat).
+        $archives = $DB->get_records('local_personalcourse_archives', [
+            'personalcourseid' => (int)$pc->id,
+            'sourcequizid' => (int)$sourcequizid,
+        ], 'archivedat DESC, id DESC', 'id, archivedquizid, archivedcmid, archivedat');
 
-        // Latest archived is the first by our ORDER BY.
-        $latest = $archived[0];
-
-        // Hide all archived from course page, then expose the latest as 'Previous Attempt'.
-        foreach ($archived as $row) {
-            // Rename to '(Archived)' by default.
-            $newname = $basename . ' (Archived)';
-            if ($row->name !== $newname) {
-                $DB->set_field('quiz', 'name', $newname, ['id' => (int)$row->quizid]);
+        // Build candidate map: cmid => score (archivedat preferred, else timemodified).
+        $candidates = [];
+        if (!empty($nameRows)) {
+            foreach ($nameRows as $r) {
+                if ((int)$r->quizid === (int)$activequizid) { continue; }
+                $candidates[(int)$r->cmid] = (int)($r->timemodified ?? 0);
             }
-            // Hide from course page but keep visible for direct links.
-            $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$row->cmid]);
-            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$row->cmid]);
+        }
+        if (!empty($archives)) {
+            foreach ($archives as $a) {
+                $cmid = (int)($a->archivedcmid ?? 0);
+                if ($cmid <= 0) {
+                    $cmid = (int)$DB->get_field('course_modules', 'id', [
+                        'module' => $moduleidquiz,
+                        'instance' => (int)$a->archivedquizid,
+                        'course' => (int)$courseid,
+                    ], IGNORE_MISSING);
+                }
+                if ($cmid > 0) {
+                    $score = (int)($a->archivedat ?? 0);
+                    if (!isset($candidates[$cmid]) || $score > $candidates[$cmid]) {
+                        $candidates[$cmid] = $score;
+                    }
+                }
+            }
         }
 
-        // Now promote the latest archived to 'Previous Attempt' and show on course page.
-        $prevname = $basename . ' (Previous Attempt)';
-        if ((string)$latest->name !== $prevname) {
-            $DB->set_field('quiz', 'name', $prevname, ['id' => (int)$latest->quizid]);
-        }
-        $DB->set_field('course_modules', 'visibleoncoursepage', 1, ['id' => (int)$latest->cmid]);
-        $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$latest->cmid]);
+        if (empty($candidates)) { return; }
 
-        // Rebuild course cache for immediate effect.
+        // Determine the latest candidate by highest score.
+        arsort($candidates); // Descending by score.
+        $cmids = array_keys($candidates);
+        $latestcmid = (int)reset($cmids);
+
+        // Hide all candidates from course page.
+        list($insql, $inparams) = $DB->get_in_or_equal(array_map('intval', $cmids), SQL_PARAMS_QM);
+        $DB->execute("UPDATE {course_modules} SET visibleoncoursepage = 0, visible = 0 WHERE id $insql", $inparams);
+
+        // Rename all non-latest archives back to '(Archived)'.
+        $othercmids = array_slice($cmids, 1);
+        if (!empty($othercmids)) {
+            foreach ($othercmids as $ocmid) {
+                $qid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$ocmid], IGNORE_MISSING);
+                if ($qid > 0) {
+                    $DB->set_field('quiz', 'name', ($basename . ' (Archived)'), ['id' => (int)$qid]);
+                }
+            }
+        }
+
+        // Promote latest archived to '(Previous Attempt)' and show on course page.
+        $latestquizid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$latestcmid], IGNORE_MISSING);
+        if ($latestquizid > 0 && $latestquizid !== (int)$activequizid) {
+            $DB->set_field('quiz', 'name', ($basename . ' (Previous Attempt)'), ['id' => (int)$latestquizid]);
+            $DB->set_field('course_modules', 'visibleoncoursepage', 1, ['id' => (int)$latestcmid]);
+            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$latestcmid]);
+        }
+
         try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
     }
 
