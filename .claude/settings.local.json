@@ -65,7 +65,8 @@
       "Bash(del /f classesobservers.php classesquiz_activity_tags.php classesquiz_settings_handler.php)",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\classes\\activity_tags.php\")",
       "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" -l \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\classes\\output\\renderer.php\")",
-      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\test_callback.php\")"
+      "Bash(\"C:\\MoodleWindowsInstaller-latest-404\\server\\php\\php.exe\" \"C:\\MoodleWindowsInstaller-latest-404\\server\\moodle\\course\\format\\taggedtopics\\test_callback.php\")",
+      "Bash(git config:*)"
     ],
     "deny": [],
     "ask": []
