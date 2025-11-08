@@ -419,6 +419,10 @@ class observers {
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
+                // Enforce course visibility: keep only the latest archived as 'Previous Attempt'.
+                try {
+                    \local_personalcourse\generator_service::enforce_archive_visibility((int)$courseid, (int)$pq->sourcequizid, (int)$cm->instance);
+                } catch (\Throwable $evis) { }
                 // Detect inconsistent section sequences for this course (sequence referencing deleting/missing CMs).
                 $inconsistent = false;
                 $badexists = false;
