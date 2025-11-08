@@ -67,7 +67,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
         // Perform flags-only reconcile (non-deferred) outside request.
         try {
             $svc = new \local_personalcourse\generator_service();
-            $svc->generate_from_source((int)$userid, (int)$sourcequizid, null, 'flags_only', false);
+            $svc->generate_from_source((int)$userid, (int)$sourcequizid, null, 'flags_only', true);
             // After reconcile, queue a sequence cleanup to ensure section sequences do not reference deleted CMs.
             if ($pccourseid) {
                 $cleanup = new \local_personalcourse\task\sequence_cleanup_task();

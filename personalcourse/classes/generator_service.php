@@ -268,7 +268,12 @@ class generator_service {
                 ]);
                 if ($existingpcq && (int)$existingpcq->personalquizid !== (int)$pq->id) {
                     $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existingpcq->personalquizid], 'id, quizid');
-                    if ($oldpq) { $qb->remove_question((int)$oldpq->quizid, (int)$qid); }
+                    if ($oldpq) {
+                        $oldhasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$oldpq->quizid]);
+                        if (!$oldhasfinished) {
+                            $qb->remove_question((int)$oldpq->quizid, (int)$qid);
+                        }
+                    }
                     $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existingpcq->id]);
                 }
             }
@@ -283,6 +288,9 @@ class generator_service {
         }
         $currqids = array_map('intval', $currqids ?: []);
 
+        // If any finished attempts exist for this personal quiz, restrict structural changes to append-only.
+        $hasfinishedany = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$pq->quizid]);
+
         // Detect any existing placeholder description questions in this quiz by idnumber prefix.
         $placeholderprefix = 'pcq_placeholder_';
         $phqids = [];
@@ -296,6 +304,62 @@ class generator_service {
             $toadd = array_values(array_intersect($desired, $toadd));
         }
         $toremove = array_values(array_diff($currqids, $desired));
+
+        // If finished attempts exist and removals are needed, fork to a new quiz to preserve reviews.
+        if ($hasfinishedany && !empty($toremove)) {
+            // Delete in-progress/overdue attempts for this user to unlock CM changes.
+            $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
+            if (!empty($attempts)) {
+                $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
+                if ($quiz) {
+                    try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
+                    foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
+                }
+            }
+            // Archive current quiz (keep visible for direct links, hide on course page).
+            try {
+                $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
+                if ($oldname && stripos($oldname, '(Archived)') === false) {
+                    $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
+                }
+                $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                if ($oldcm) {
+                    $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
+                    $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$oldcm->id]);
+                    try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
+                }
+                // Archive record.
+                try {
+                    $archive = (object)[
+                        'ownerid' => (int)$userid,
+                        'personalcourseid' => (int)$personalcourseid,
+                        'sourcequizid' => (int)$sourcequizid,
+                        'archivedquizid' => (int)$pq->quizid,
+                        'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
+                        'archivedname' => (string)($oldname ?: ''),
+                        'reason' => 'fork_content_change',
+                        'archivedat' => time(),
+                        'notes' => null,
+                    ];
+                    $DB->insert_record('local_personalcourse_archives', $archive);
+                } catch (\Throwable $e3) { }
+            } catch (\Throwable $e) { }
+
+            // Create a fresh quiz and switch mapping.
+            $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
+            $newname = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+            $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
+            $pq->quizid = (int)$resnew->quizid;
+            $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
+
+            // Reset sets and plan to add everything desired to the new quiz.
+            $currqids = [];
+            $toadd = $desired;
+            $toremove = [];
+            $hasfinishedany = false;
+            // Clean sequences to ensure no stale CMIDs remain.
+            self::cleanup_course_sequences((int)$pccourseid);
+        }
 
         // Always remove placeholder when we have real desired questions.
         if (!empty($desired) && !empty($phqids)) {
@@ -401,7 +465,7 @@ class generator_service {
             }
         }
 
-        if (!empty($toremove)) {
+        if (!empty($toremove) && !$hasfinishedany) {
             foreach ($toremove as $qid) {
                 $qb->remove_question((int)$pq->quizid, (int)$qid);
                 $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id, 'questionid' => (int)$qid]);
@@ -536,7 +600,7 @@ class generator_service {
             } catch (\Throwable $e) {
                 $slotrows = $DB->get_records_sql("SELECT id AS slotid, slot AS slotnum, questionid AS qid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
             }
-            if (!empty($slotrows)) {
+            if (!empty($slotrows) && !$hasfinishedany) {
                 $byqid = [];
                 foreach ($slotrows as $r) { if (!isset($byqid[(int)$r->qid])) { $byqid[(int)$r->qid] = $r; } }
                 $trans = $DB->start_delegated_transaction();

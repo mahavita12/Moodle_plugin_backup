@@ -118,8 +118,15 @@ class observers {
                         ]);
                         if ($existing && (int)$existing->personalquizid !== (int)$pq->id) {
                             $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                            if ($oldpq) { self::delete_inprogress_attempts_for_user_at_quiz((int)$oldpq->quizid, (int)$targetuserid); $qb->remove_question((int)$oldpq->quizid, (int)$questionid); }
-                            $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
+                            if ($oldpq) {
+                                $oldhasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$oldpq->quizid]);
+                                if (!$oldhasfinished) {
+                                    self::delete_inprogress_attempts_for_user_at_quiz((int)$oldpq->quizid, (int)$targetuserid);
+                                    $qb->remove_question((int)$oldpq->quizid, (int)$questionid);
+                                    $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
+                                }
+                                // If finished attempts exist on the old PQ, skip removal and keep its mapping to preserve reviews.
+                            }
                         }
                         // Add to current PQ if not present.
                         $present = $DB->record_exists('local_personalcourse_questions', [
@@ -162,18 +169,24 @@ class observers {
                     } else if ($existing) {
                         $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
                         if ($targetpq) {
-                            self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid);
-                            $qb->remove_question((int)$targetpq->quizid, (int)$questionid);
+                            $hasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$targetpq->quizid]);
+                            if (!$hasfinished) {
+                                self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid);
+                                $qb->remove_question((int)$targetpq->quizid, (int)$questionid);
+                                $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
+                            }
                         }
-                        $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
                     } else if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                        $qb->remove_question((int)$pq->quizid, (int)$questionid);
-                        $DB->delete_records('local_personalcourse_questions', [
-                            'personalcourseid' => (int)$pc->id,
-                            'personalquizid' => (int)$pq->id,
-                            'questionid' => (int)$questionid,
-                        ]);
+                        $hasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$pq->quizid]);
+                        if (!$hasfinished) {
+                            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                            $qb->remove_question((int)$pq->quizid, (int)$questionid);
+                            $DB->delete_records('local_personalcourse_questions', [
+                                'personalcourseid' => (int)$pc->id,
+                                'personalquizid' => (int)$pq->id,
+                                'questionid' => (int)$questionid,
+                            ]);
+                        }
                     }
                 }
 
