@@ -74,17 +74,15 @@ class observers {
 
                 $qb = new \local_personalcourse\quiz_builder();
 
-                // Defer structural changes when flag change happens during an in-progress Personal Quiz attempt.
+                // Defer ONLY when the flag change originates from the attempt page of the personal quiz
+                // and there is an in-progress/overdue attempt. For all other origins (including review and
+                // public course), apply immediately and delete the in-progress attempt to regenerate.
                 $shoulddefer = false;
-                if ($ispcourse && !empty($pq) && $DB->record_exists_select(
+                if ($ispcourse && !empty($pq) && $origin === 'attempt' && $DB->record_exists_select(
                         'quiz_attempts',
                         "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
                         [(int)$pq->quizid, (int)$targetuserid]
                     )) {
-                    $shoulddefer = true;
-                }
-                // Also defer if the flag event originated from a review page to avoid mid-view mutations (both public and personal review).
-                if ($origin === 'review') {
                     $shoulddefer = true;
                 }
 
