@@ -48,3 +48,10 @@ $string['notify_pq_not_created_next_short'] = 'Keep going! Score 40%+ to unlock 
 
 // Background reconcile notice.
 $string['task_reconcile_scheduled'] = 'Personal Quiz updates are being applied in the background. Please refresh shortly.';
+
+// Settings.
+$string['settings'] = 'Personal Course settings';
+$string['setting_subjectmap'] = 'Subject mapping (regex => label)';
+$string['setting_subjectmap_desc'] = 'One mapping per line. Left side is a PCRE regex (delimited) or plain text; right side is the canonical Subject label. Example:\n/\\\bthinking\\\b/i => Thinking\n/\\\bmath(?:ematics)?\\\b/i => Math\n/\\\bread(?:ing)?\\\b/i => Reading\n/\\\bwriting\\\b/i => Writing';
+$string['setting_coderegex'] = 'Quiz code extraction regex';
+$string['setting_coderegex_desc'] = 'PCRE with one capturing group for the code. Default extracts a trailing bracket code, e.g. "(UTOC11)".';

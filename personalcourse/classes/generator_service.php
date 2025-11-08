@@ -32,7 +32,7 @@ class generator_service {
             );
         }
 
-        // Determine section prefix from source course shortname; include source section name if available.
+        // Determine section prefix from naming policy using user initials and detected subject.
         $sourcecourseid = (int)$DB->get_field('quiz', 'course', ['id' => $sourcequizid]);
         $srcourse = $DB->get_record('course', ['id' => $sourcecourseid], 'id,shortname,fullname', MUST_EXIST);
         $src_cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$sourcequizid, 'course' => $sourcecourseid], IGNORE_MISSING);
@@ -44,7 +44,7 @@ class generator_service {
                 if ($src_section) { $srsectionname = (string)($src_section->name ?: ('Section ' . (int)$src_section->section)); }
             }
         }
-        $prefix = trim($srsectionname !== '' ? $srsectionname : (string)$srcourse->shortname);
+        $prefix = \local_personalcourse\naming_policy::section_prefix((int)$userid, (int)$sourcecourseid, (int)$sourcequizid);
 
         // Settings mode based on qtypes.
         $qtypes = [];
@@ -68,9 +68,10 @@ class generator_service {
         $sm = new \local_personalcourse\section_manager();
 
         if (!$pq) {
+            $existingname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
             $existingquiz = $DB->get_record_sql(
                 "SELECT q.id FROM {quiz} q JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ? WHERE q.course = ? AND q.name = ? ORDER BY q.id DESC",
-                [$moduleidquiz, $pccourseid, (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid])]
+                [$moduleidquiz, $pccourseid, $existingname]
             );
             $reuseok = false;
             if ($existingquiz) {
@@ -91,7 +92,7 @@ class generator_service {
                 $pq = $pqrec;
             } else {
                 $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                $name = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+                $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
                 $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
                 $pqrec = (object)[
                     'personalcourseid' => $personalcourseid,
@@ -117,7 +118,7 @@ class generator_service {
             }
             if ($needrecreate) {
                 $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                $name = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+                $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
                 $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
                 $pq->quizid = (int)$res->quizid;
                 $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
@@ -348,7 +349,7 @@ class generator_service {
 
             // Create a fresh quiz and switch mapping.
             $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-            $newname = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+            $newname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
             $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
             $pq->quizid = (int)$resnew->quizid;
             $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
@@ -419,7 +420,7 @@ class generator_service {
 
                     // Create a fresh quiz and switch mapping.
                     $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                    $newname = (string)$DB->get_field('quiz', 'name', ['id' => $sourcequizid]);
+                    $newname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
                     $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
                     $pq->quizid = (int)$resnew->quizid;
                     $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
