@@ -11,6 +11,7 @@ $userid = required_param('userid', PARAM_INT);
 $courseid = optional_param('courseid', 0, PARAM_INT); // Source course.
 $quizid = optional_param('quizid', 0, PARAM_INT);     // Source quiz.
 $attemptid = optional_param('attemptid', 0, PARAM_INT); // Optional specific attempt.
+$background = optional_param('background', 0, PARAM_BOOL); // Optional async mode for admin action.
 
 $selfurl = new moodle_url('/local/personalcourse/create_quiz.php');
 $PAGE->set_url(new moodle_url('/local/personalcourse/create_quiz.php', ['userid' => $userid] + ($courseid ? ['courseid' => $courseid] : [])));
@@ -123,28 +124,43 @@ if ($courseid > 0 && ($quizid <= 0 || !$DB->record_exists('quiz', ['id' => $quiz
 // Step 3: Create the personal quiz mapping immediately (ignore thresholds).
 require_sesskey();
 
-// Asynchronous generation to avoid long-running request and session timeouts.
-try {
-    try { \core\session\manager::write_close(); } catch (\Throwable $e) { }
-    if (function_exists('ignore_user_abort')) { @ignore_user_abort(true); }
+if ($background) {
+    // Asynchronous generation to avoid long-running request and session timeouts.
+    try {
+        try { \core\session\manager::write_close(); } catch (\Throwable $e) { }
+        if (function_exists('ignore_user_abort')) { @ignore_user_abort(true); }
 
-    $classname = '\\local_personalcourse\\task\\create_generation_task';
-    // Deduplicate existing queued tasks for same user/source.
-    $cd1 = '"userid":' . (int)$userid;
-    $cd2 = '"sourcequizid":' . (int)$quizid;
-    $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
-    if (!$exists) {
-        $task = new \local_personalcourse\task\create_generation_task();
-        $task->set_component('local_personalcourse');
-        $task->set_custom_data([
-            'userid' => (int)$userid,
-            'sourcequizid' => (int)$quizid,
-            'attemptid' => ($attemptid > 0 ? (int)$attemptid : null),
-        ]);
-        \core\task\manager::queue_adhoc_task($task, true);
+        $classname = 'local_personalcourse\\task\\create_generation_task';
+        // Deduplicate existing queued tasks for same user/source.
+        $cd1 = '"userid":' . (int)$userid;
+        $cd2 = '"sourcequizid":' . (int)$quizid;
+        $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
+        if (!$exists) {
+            $task = new \local_personalcourse\task\create_generation_task();
+            $task->set_component('local_personalcourse');
+            $task->set_custom_data([
+                'userid' => (int)$userid,
+                'sourcequizid' => (int)$quizid,
+                'attemptid' => ($attemptid > 0 ? (int)$attemptid : null),
+            ]);
+            \core\task\manager::queue_adhoc_task($task, true);
+        }
+        // Redirect immediately to dashboard with background notice.
+        redirect(new moodle_url('/local/personalcourse/index.php'), get_string('task_reconcile_scheduled', 'local_personalcourse'), 0, \core\output\notification::NOTIFY_INFO);
+    } catch (\Throwable $e) {
+        redirect(new moodle_url('/local/personalcourse/index.php'), get_string('createquiz_error', 'local_personalcourse', $e->getMessage()), 0, \core\output\notification::NOTIFY_ERROR);
     }
-    // Redirect immediately to dashboard with background notice.
-    redirect(new moodle_url('/local/personalcourse/index.php'), get_string('task_reconcile_scheduled', 'local_personalcourse'), 0, \core\output\notification::NOTIFY_INFO);
+    exit;
+}
+
+// Synchronous generation (default) for admin action so it works even when cron isn't running.
+try {
+    $svc = new \local_personalcourse\generator_service();
+    $res = $svc->generate_from_source((int)$userid, (int)$quizid, $attemptid > 0 ? (int)$attemptid : null);
+    $cmid = (int)($res->cmid ?? 0);
+    $fallbackcourseid = $cmid ? 0 : (int)$DB->get_field('quiz', 'course', ['id' => (int)$res->quizid], IGNORE_MISSING);
+    $quizurl = $cmid ? new moodle_url('/mod/quiz/view.php', ['id' => $cmid]) : new moodle_url('/course/view.php', ['id' => $fallbackcourseid]);
+    redirect($quizurl, get_string('createquiz_success', 'local_personalcourse'), 0, \core\output\notification::NOTIFY_SUCCESS);
 } catch (\Throwable $e) {
     redirect(new moodle_url('/local/personalcourse/index.php'), get_string('createquiz_error', 'local_personalcourse', $e->getMessage()), 0, \core\output\notification::NOTIFY_ERROR);
 }

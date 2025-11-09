@@ -15,44 +15,46 @@ class generator_service {
         try { \core\session\manager::write_close(); } catch (\Throwable $e) { }
         if (function_exists('ignore_user_abort')) { @ignore_user_abort(true); }
 
-        // Soft cooldown to avoid repeated heavy work bursts within a short window per user/source.
-        $nowts = time();
-        $coolkey = 'cooldown_' . (int)$userid . '_' . (int)$sourcequizid;
-        try { $last = (int)\get_config('local_personalcourse', $coolkey); } catch (\Throwable $e) { $last = 0; }
-        if ($last && ($nowts - $last) < 8) {
-            return (object)[
-                'personalcourseid' => 0,
-                'mappingid' => 0,
-                'quizid' => 0,
-                'cmid' => 0,
-                'toadd' => [],
-                'toremove' => [],
-                'deferred' => true,
-            ];
-        }
+        // Apply soft cooldown/lock only for deferred/event-driven runs to avoid blocking admin synchronous actions.
+        if ($defer) {
+            $nowts = time();
+            $coolkey = 'cooldown_' . (int)$userid . '_' . (int)$sourcequizid;
+            try { $last = (int)\get_config('local_personalcourse', $coolkey); } catch (\Throwable $e) { $last = 0; }
+            if ($last && ($nowts - $last) < 8) {
+                return (object)[
+                    'personalcourseid' => 0,
+                    'mappingid' => 0,
+                    'quizid' => 0,
+                    'cmid' => 0,
+                    'toadd' => [],
+                    'toremove' => [],
+                    'deferred' => true,
+                ];
+            }
 
-        // Soft lock to prevent concurrent duplicate generation for same user/source.
-        $lockkey = 'genlock_' . (int)$userid . '_' . (int)$sourcequizid;
-        $lockedat = (int)\get_config('local_personalcourse', $lockkey);
-        if ($lockedat && ($nowts - $lockedat) < 120) {
-            return (object)[
-                'personalcourseid' => 0,
-                'mappingid' => 0,
-                'quizid' => 0,
-                'cmid' => 0,
-                'toadd' => [],
-                'toremove' => [],
-                'deferred' => true,
-            ];
+            // Soft lock to prevent concurrent duplicate generation for same user/source.
+            $lockkey = 'genlock_' . (int)$userid . '_' . (int)$sourcequizid;
+            $lockedat = (int)\get_config('local_personalcourse', $lockkey);
+            if ($lockedat && ($nowts - $lockedat) < 120) {
+                return (object)[
+                    'personalcourseid' => 0,
+                    'mappingid' => 0,
+                    'quizid' => 0,
+                    'cmid' => 0,
+                    'toadd' => [],
+                    'toremove' => [],
+                    'deferred' => true,
+                ];
+            }
+            \set_config($lockkey, $nowts, 'local_personalcourse');
+            // Always release soft-lock and set cooldown at end of request, regardless of exit path.
+            register_shutdown_function(function() use ($lockkey, $coolkey) {
+                try {
+                    \set_config($lockkey, 0, 'local_personalcourse');
+                    \set_config($coolkey, time(), 'local_personalcourse');
+                } catch (\Throwable $e) { }
+            });
         }
-        \set_config($lockkey, $nowts, 'local_personalcourse');
-        // Always release soft-lock and set cooldown at end of request, regardless of exit path.
-        register_shutdown_function(function() use ($lockkey, $coolkey) {
-            try {
-                \set_config($lockkey, 0, 'local_personalcourse');
-                \set_config($coolkey, time(), 'local_personalcourse');
-            } catch (\Throwable $e) { }
-        });
 
         $cg = new \local_personalcourse\course_generator();
         $pcctx = $cg->ensure_personal_course($userid);
