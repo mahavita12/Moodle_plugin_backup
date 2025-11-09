@@ -58,6 +58,15 @@ class naming_policy {
             $code = preg_replace('/[^A-Za-z0-9-]/', '', $code);
             if ($code !== '') { return $code; }
         }
+        // Heuristic fallback: pick the last bracketed token anywhere in the name.
+        if ($name !== '') {
+            if (preg_match_all('/\(([A-Za-z0-9-]{2,})\)/', $name, $mm) && !empty($mm[1])) {
+                $cand = end($mm[1]);
+                $cand = strtoupper(trim((string)$cand));
+                $cand = preg_replace('/[^A-Za-z0-9-]/', '', $cand);
+                if ($cand !== '') { return $cand; }
+            }
+        }
         $row = $DB->get_record_sql("SELECT qc.id, qc.name, qc.idnumber, COUNT(*) AS cnt\n                                     FROM {quiz_slots} qs\n                                     JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                     JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid\n                                     JOIN {question_categories} qc ON qc.id = qbe.questioncategoryid\n                                    WHERE qs.quizid = ?\n                                 GROUP BY qc.id, qc.name, qc.idnumber\n                                 ORDER BY cnt DESC, qc.id DESC", [$quizid]);
         if ($row) {
             $catname = (string)($row->name ?? '');
@@ -65,6 +74,14 @@ class naming_policy {
                 $code = strtoupper(trim($m2[1]));
                 $code = preg_replace('/[^A-Za-z0-9-]/', '', $code);
                 if ($code !== '') { return $code; }
+            }
+            if ($catname !== '') {
+                if (preg_match_all('/\(([A-Za-z0-9-]{2,})\)/', $catname, $mm2) && !empty($mm2[1])) {
+                    $cand = end($mm2[1]);
+                    $cand = strtoupper(trim((string)$cand));
+                    $cand = preg_replace('/[^A-Za-z0-9-]/', '', $cand);
+                    if ($cand !== '') { return $cand; }
+                }
             }
             $idn = (string)($row->idnumber ?? '');
             $idn = strtoupper(trim($idn));

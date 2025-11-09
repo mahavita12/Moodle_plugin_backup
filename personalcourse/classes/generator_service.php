@@ -124,6 +124,15 @@ class generator_service {
                 $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
                 // Heal sequences immediately after recreation to avoid stale CMIDs lingering next to the new CM.
                 self::cleanup_course_sequences((int)$pccourseid);
+            } else {
+                // Ensure the active personal quiz name mirrors the latest naming policy.
+                try {
+                    $desired = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
+                    $current = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
+                    if ($desired !== '' && $current !== '' && $current !== $desired && stripos($current, '(Archived)') === false && stripos($current, '(Previous Attempt)') === false) {
+                        $DB->set_field('quiz', 'name', $desired, ['id' => (int)$pq->quizid]);
+                    }
+                } catch (\Throwable $e) { }
             }
         }
 
@@ -206,9 +215,8 @@ class generator_service {
                     // Archive: rename and hide on course page, then detach mapping.
                     try {
                         $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                        if ($oldname && stripos($oldname, '(Archived)') === false) {
-                            $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                        }
+                        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
+                        $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
                         $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                         if ($oldcm) {
                             $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
@@ -321,9 +329,8 @@ class generator_service {
             // Archive current quiz (keep visible for direct links, hide on course page).
             try {
                 $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                if ($oldname && stripos($oldname, '(Archived)') === false) {
-                    $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                }
+                $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
+                $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
                 $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                 if ($oldcm) {
                     $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
@@ -390,9 +397,8 @@ class generator_service {
                     // Mark old quiz as archived and hide it from the course page (but keep accessible via direct links).
                     try {
                         $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                        if ($oldname && stripos($oldname, '(Archived)') === false) {
-                            $DB->set_field('quiz', 'name', ($oldname . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                        }
+                        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
+                        $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
                         $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
                         if ($oldcm) {
                             // Keep visible=1 so direct attempt/review links still work, but hide on course page.
@@ -657,20 +663,38 @@ class generator_service {
         $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
         if ($moduleidquiz <= 0) { return; }
 
-        $basename = (string)$DB->get_field('quiz', 'name', ['id' => (int)$sourcequizid], IGNORE_MISSING);
-        if ($basename === '') { return; }
+        $legacybase = (string)$DB->get_field('quiz', 'name', ['id' => (int)$sourcequizid], IGNORE_MISSING);
+        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$pc->userid, (int)$sourcequizid);
+        if ($legacybase === '' && $policybase === '') { return; }
 
-        // 1) Gather candidates by name pattern (covers legacy items without archive rows).
-        $likearch = $basename . ' (Archived)%';
-        $likeprev = $basename . ' (Previous Attempt)%';
-        $nameRows = $DB->get_records_sql(
-            "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
-            "  FROM {quiz} q\n" .
-            "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
-            " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
-            " ORDER BY q.timemodified DESC, q.id DESC",
-            [$moduleidquiz, (int)$courseid, $likearch, $likeprev]
-        );
+        // 1) Gather candidates by name pattern for both legacy and policy base.
+        $nameRows = [];
+        if ($policybase !== '') {
+            $polarch = $policybase . ' (Archived)%';
+            $polprev = $policybase . ' (Previous Attempt)%';
+            $rows1 = $DB->get_records_sql(
+                "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
+                "  FROM {quiz} q\n" .
+                "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
+                " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
+                " ORDER BY q.timemodified DESC, q.id DESC",
+                [$moduleidquiz, (int)$courseid, $polarch, $polprev]
+            );
+            if (!empty($rows1)) { foreach ($rows1 as $r) { $nameRows[] = $r; } }
+        }
+        if ($legacybase !== '') {
+            $legarch = $legacybase . ' (Archived)%';
+            $legprev = $legacybase . ' (Previous Attempt)%';
+            $rows2 = $DB->get_records_sql(
+                "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
+                "  FROM {quiz} q\n" .
+                "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
+                " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
+                " ORDER BY q.timemodified DESC, q.id DESC",
+                [$moduleidquiz, (int)$courseid, $legarch, $legprev]
+            );
+            if (!empty($rows2)) { foreach ($rows2 as $r) { $nameRows[] = $r; } }
+        }
 
         // 2) Gather candidates from archives table (preferred ordering by archivedat).
         $archives = $DB->get_records('local_personalcourse_archives', [
@@ -716,21 +740,21 @@ class generator_service {
         list($insql, $inparams) = $DB->get_in_or_equal(array_map('intval', $cmids), SQL_PARAMS_QM);
         $DB->execute("UPDATE {course_modules} SET visibleoncoursepage = 0, visible = 0 WHERE id $insql", $inparams);
 
-        // Rename all non-latest archives back to '(Archived)'.
+        // Rename all non-latest archives back to policy '(Archived)'.
         $othercmids = array_slice($cmids, 1);
         if (!empty($othercmids)) {
             foreach ($othercmids as $ocmid) {
                 $qid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$ocmid], IGNORE_MISSING);
                 if ($qid > 0) {
-                    $DB->set_field('quiz', 'name', ($basename . ' (Archived)'), ['id' => (int)$qid]);
+                    $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$qid]);
                 }
             }
         }
 
-        // Promote latest archived to '(Previous Attempt)' and show on course page.
+        // Promote latest archived to policy '(Previous Attempt)' and show on course page.
         $latestquizid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$latestcmid], IGNORE_MISSING);
         if ($latestquizid > 0 && $latestquizid !== (int)$activequizid) {
-            $DB->set_field('quiz', 'name', ($basename . ' (Previous Attempt)'), ['id' => (int)$latestquizid]);
+            $DB->set_field('quiz', 'name', ($policybase . ' (Previous Attempt)'), ['id' => (int)$latestquizid]);
             $DB->set_field('course_modules', 'visibleoncoursepage', 1, ['id' => (int)$latestcmid]);
             $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$latestcmid]);
         }
