@@ -87,4 +87,31 @@ class observer {
             debugging('quizdashboard observer error: '.$e->getMessage(), DEBUG_DEVELOPER);
         }
     }
+
+    /**
+     * Enqueue AI grading for Homework quizzes on attempt submission.
+     */
+    public static function homework_attempt_submitted(\mod_quiz\event\attempt_submitted $event): void {
+        global $DB;
+        try {
+            $attemptid = (int)$event->objectid;
+            if ($attemptid <= 0) { return; }
+            $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid], 'id,quiz,userid,state,uniqueid', \IGNORE_MISSING);
+            if (!$attempt) { return; }
+            $quiz = $DB->get_record('quiz', ['id' => (int)$attempt->quiz], 'id,course,name', \IGNORE_MISSING);
+            if (!$quiz) { return; }
+
+            // Gate: only homework quizzes by name prefix/containment.
+            $name = (string)$quiz->name;
+            $ishw = (stripos($name, 'homework') !== false);
+            if (!$ishw) { return; }
+
+            $task = new \local_quizdashboard\task\grade_homework_task();
+            $task->set_component('local_quizdashboard');
+            $task->set_custom_data(['attemptid' => (int)$attemptid]);
+            \core\task\manager::queue_adhoc_task($task, true);
+        } catch (\Throwable $e) {
+            debugging('quizdashboard homework enqueue error: '.$e->getMessage(), DEBUG_DEVELOPER);
+        }
+    }
 }

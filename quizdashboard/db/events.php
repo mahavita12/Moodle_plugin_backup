@@ -21,6 +21,14 @@ $observers = [
         'internal'    => false,
         'priority'    => 9999,
     ],
+    // Homework: grade single-essay homework on submission (queued to adhoc task).
+    [
+        'eventname'   => '\\mod_quiz\\event\\attempt_submitted',
+        'callback'    => 'local_quizdashboard\\observer::homework_attempt_submitted',
+        'includefile' => '/local/quizdashboard/classes/observer.php',
+        'internal'    => false,
+        'priority'    => 9999,
+    ],
 ];
 
 return $observers;
