@@ -37,10 +37,78 @@ function local_personalcourse_extend_navigation(\global_navigation $navigation) 
         if ($ispc) {
             $sess = sesskey();
             $endpoint = (new \moodle_url('/local/personalcourse/ajax/get_question_counts.php'))->out(false);
-            $href = $CFG->wwwroot . '/course/view.php?id=' . $courseid;
-            $js = "(function(){document.addEventListener('DOMContentLoaded',function(){try{var courseid=" . (int)$courseid . ";var sesskey=" . json_encode($sess) . ";var url=" . json_encode($endpoint) . ";var href=url+'?courseid='+encodeURIComponent(courseid)+'&sesskey='+encodeURIComponent(sesskey);fetch(href,{credentials:'same-origin'}).then(function(r){return r.ok?r.json():{items:[]};}).then(function(data){try{if(!data||!data.items||!data.items.length)return;var bycm={};data.items.forEach(function(it){bycm[Number(it.cmid)]=Number(it.count)||0;});function attach(){try{Object.keys(bycm).forEach(function(k){var cmid=Number(k);var count=bycm[k];var selectors=['a[href*="id='+cmid+'"]','a[data-action=\"view-activity\"][href*="id='+cmid+'"]'];var anchor=null;for(var s=0;s<selectors.length&&!anchor;s++){var list=document.querySelectorAll(selectors[s]);if(list&&list.length){for(var i=0;i<list.length;i++){var cand=list[i];if(cand.closest('.activity')||cand.closest('.activityinstance')||cand.closest('.modtype_quiz')){anchor=cand;break;}}if(!anchor)anchor=list[0];}}if(!anchor)return;var container=anchor;var inst=anchor.querySelector('.instancename');if(inst&&inst.parentNode===anchor){container=anchor;}else if(anchor.closest('.activityinstance')){container=anchor.closest('.activityinstance');}else if(anchor.parentNode){container=anchor.parentNode;}if(container.querySelector('.pcq-qcount-badge[data-cmid="'+cmid+'"]'))return;var b=document.createElement('span');b.className='pcq-qcount-badge';b.setAttribute('data-cmid',String(cmid));b.textContent=(count===1?'1 question':(count+' questions'));container.appendChild(b);});}catch(e){}}attach();var tgt=document.querySelector('#page')||document.body;if(tgt&&window.MutationObserver){var mo=new MutationObserver(function(){try{attach();}catch(e){}});mo.observe(tgt,{childList:true,subtree:true});}setTimeout(function(){try{attach();}catch(e){}},1000);}catch(e){});}).catch(function(){});}catch(e){});})();";
-            $css = ".pcq-qcount-badge{display:inline-block;margin-left:.5rem;padding:0 .5rem;font-size:.8rem;line-height:1.4;border-radius:999px;color:#3c4043;background:#eef3f8;border:1px solid #d6e0ea;vertical-align:baseline;white-space:nowrap}";
-            $PAGE->requires->css(new \moodle_url('data:text/css,' . rawurlencode($css)));
+            $courseidjs = (int)$courseid;
+            $sesskeyjs = json_encode($sess);
+            $endpointjs = json_encode($endpoint);
+            $js = <<<JS
+(function(){
+  document.addEventListener('DOMContentLoaded', function(){
+    try {
+      var courseid = {$courseidjs};
+      var sesskey = {$sesskeyjs};
+      var url = {$endpointjs};
+      var href = url + '?courseid=' + encodeURIComponent(courseid) + '&sesskey=' + encodeURIComponent(sesskey);
+      function ensureStyle(){
+        if (document.querySelector('style[data-pcq]')) return;
+        var st = document.createElement('style');
+        st.setAttribute('data-pcq','1');
+        st.textContent = '.pcq-qcount-badge{display:inline-block;margin-left:.5rem;padding:0 .5rem;font-size:.8rem;line-height:1.4;border-radius:999px;color:#3c4043;background:#eef3f8;border:1px solid #d6e0ea;vertical-align:baseline;white-space:nowrap}';
+        document.head.appendChild(st);
+      }
+      ensureStyle();
+      fetch(href, {credentials: 'same-origin'})
+        .then(function(r){ return r.ok ? r.json() : {items: []}; })
+        .then(function(data){
+          try {
+            if (!data || !data.items || !data.items.length) return;
+            var bycm = {};
+            data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
+            function attach(){
+              try {
+                Object.keys(bycm).forEach(function(k){
+                  var cmid = Number(k);
+                  var count = bycm[k];
+                  var selectors = ['a[href*="id='+cmid+'"]','a[data-action="view-activity"][href*="id='+cmid+'"]'];
+                  var anchor = null;
+                  for (var s=0; s<selectors.length && !anchor; s++){
+                    var list = document.querySelectorAll(selectors[s]);
+                    if (list && list.length){
+                      for (var i=0; i<list.length; i++){
+                        var cand = list[i];
+                        if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                      }
+                      if (!anchor) anchor = list[0];
+                    }
+                  }
+                  if (!anchor) return;
+                  var container = anchor;
+                  var inst = anchor.querySelector('.instancename');
+                  if (inst && inst.parentNode === anchor) { container = anchor; }
+                  else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
+                  else if (anchor.parentNode) { container = anchor.parentNode; }
+                  if (container.querySelector('.pcq-qcount-badge[data-cmid="'+cmid+'"]')) return;
+                  var b = document.createElement('span');
+                  b.className = 'pcq-qcount-badge';
+                  b.setAttribute('data-cmid', String(cmid));
+                  b.textContent = (count === 1 ? '1 question' : (count + ' questions'));
+                  container.appendChild(b);
+                });
+              } catch (e) {}
+            }
+            attach();
+            var tgt = document.querySelector('#page') || document.body;
+            if (tgt && window.MutationObserver) {
+              var mo = new MutationObserver(function(){ try { attach(); } catch(e){} });
+              mo.observe(tgt, {childList:true, subtree:true});
+            }
+            setTimeout(function(){ try { attach(); } catch(e){} }, 1000);
+          } catch (e) {}
+        })
+        .catch(function(){});
+    } catch (e) {}
+  });
+})();
+JS;
             $PAGE->requires->js_init_code($js);
         }
     }
@@ -63,7 +131,7 @@ function local_personalcourse_before_footer() {
   function patch(){
     var menu = document.querySelector('.quiz-dashboard-global-nav .nav-menu');
     if (!menu) { return false; }
-    var href = '$href';
+    var href = '{$href}';
     if (menu.querySelector("a[href='" + href + "']")) { return true; }
     var a = document.createElement('a');
     a.href = href;
@@ -93,7 +161,73 @@ JS;
         if ($ispc) {
             $sess = sesskey();
             $endpoint = (new \moodle_url('/local/personalcourse/ajax/get_question_counts.php'))->out(false);
-            $js2 = "(function(){if(window.__pcqCountsInit)return;window.__pcqCountsInit=true;console.log('[pcq-badge] init');document.addEventListener('DOMContentLoaded',function(){try{var courseid=" . (int)$courseid . ";var sesskey=" . json_encode($sess) . ";var url=" . json_encode($endpoint) . ";var href=url+'?courseid='+encodeURIComponent(courseid)+'&sesskey='+encodeURIComponent(sesskey);console.log('[pcq-badge] fetch',href);function ensureStyle(){if(document.querySelector('style[data-pcq]'))return;var st=document.createElement('style');st.setAttribute('data-pcq','1');st.textContent='.pcq-qcount-badge{display:inline-block;margin-left:.5rem;padding:0 .5rem;font-size:.8rem;line-height:1.4;border-radius:999px;color:#3c4043;background:#eef3f8;border:1px solid #d6e0ea;vertical-align:baseline;white-space:nowrap}';document.head.appendChild(st);}ensureStyle();fetch(href,{credentials:'same-origin'}).then(function(r){return r.ok?r.json():{items:[]};}).then(function(data){try{console.log('[pcq-badge] data',data);if(!data||!data.items||!data.items.length)return;var bycm={};data.items.forEach(function(it){bycm[Number(it.cmid)]=Number(it.count)||0;});function attach(){try{Object.keys(bycm).forEach(function(k){var cmid=Number(k);var count=bycm[k];var selectors=['a[href*="id='+cmid+'"]','a[data-action=\"view-activity\"][href*="id='+cmid+'"]'];var anchor=null;for(var s=0;s<selectors.length&&!anchor;s++){var list=document.querySelectorAll(selectors[s]);if(list&&list.length){for(var i=0;i<list.length;i++){var cand=list[i];if(cand.closest('.activity')||cand.closest('.activityinstance')||cand.closest('.modtype_quiz')){anchor=cand;break;}}if(!anchor)anchor=list[0];}}if(!anchor)return;var container=anchor;var inst=anchor.querySelector('.instancename');if(inst&&inst.parentNode===anchor){container=anchor;}else if(anchor.closest('.activityinstance')){container=anchor.closest('.activityinstance');}else if(anchor.parentNode){container=anchor.parentNode;}if(container.querySelector('.pcq-qcount-badge[data-cmid=\"'+cmid+'\"]'))return;var b=document.createElement('span');b.className='pcq-qcount-badge';b.setAttribute('data-cmid',String(cmid));b.textContent=(count===1?'1 question':(count+' questions'));container.appendChild(b);});}catch(e){console.error('[pcq-badge] attach error',e);}}attach();var tgt=document.querySelector('#page')||document.body;if(tgt&&window.MutationObserver){var mo=new MutationObserver(function(){try{attach();}catch(e){}});mo.observe(tgt,{childList:true,subtree:true});}setTimeout(function(){try{attach();}catch(e){}},1000);}catch(e){console.error('[pcq-badge] data error',e);}}).catch(function(e){console.error('[pcq-badge] fetch error',e);});}catch(e){console.error('[pcq-badge] init error',e);}});})();";
+            $courseidjs = (int)$courseid;
+            $sesskeyjs = json_encode($sess);
+            $endpointjs = json_encode($endpoint);
+            $js2 = <<<JS
+(function(){
+  if (window.__pcqCountsInit) return; window.__pcqCountsInit = true;
+  document.addEventListener('DOMContentLoaded', function(){
+    try {
+      var courseid = {$courseidjs};
+      var sesskey = {$sesskeyjs};
+      var url = {$endpointjs};
+      var href = url + '?courseid=' + encodeURIComponent(courseid) + '&sesskey=' + encodeURIComponent(sesskey);
+      function ensureStyle(){
+        if (document.querySelector('style[data-pcq]')) return;
+        var st = document.createElement('style'); st.setAttribute('data-pcq','1');
+        st.textContent = '.pcq-qcount-badge{display:inline-block;margin-left:.5rem;padding:0 .5rem;font-size:.8rem;line-height:1.4;border-radius:999px;color:#3c4043;background:#eef3f8;border:1px solid #d6e0ea;vertical-align:baseline;white-space:nowrap}';
+        document.head.appendChild(st);
+      }
+      ensureStyle();
+      fetch(href, {credentials: 'same-origin'})
+        .then(function(r){ return r.ok ? r.json() : {items: []}; })
+        .then(function(data){
+          try {
+            if (!data || !data.items || !data.items.length) return;
+            var bycm = {}; data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
+            function attach(){
+              try {
+                Object.keys(bycm).forEach(function(k){
+                  var cmid = Number(k); var count = bycm[k];
+                  var selectors = ['a[href*="id=' + cmid + '"]','a[data-action="view-activity"][href*="id=' + cmid + '"]'];
+                  var anchor = null;
+                  for (var s=0; s<selectors.length && !anchor; s++) {
+                    var list = document.querySelectorAll(selectors[s]);
+                    if (list && list.length) {
+                      for (var i=0; i<list.length; i++) {
+                        var cand = list[i];
+                        if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                      }
+                      if (!anchor) anchor = list[0];
+                    }
+                  }
+                  if (!anchor) return;
+                  var container = anchor; var inst = anchor.querySelector('.instancename');
+                  if (inst && inst.parentNode === anchor) { container = anchor; }
+                  else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
+                  else if (anchor.parentNode) { container = anchor.parentNode; }
+                  if (container.querySelector('.pcq-qcount-badge[data-cmid="' + cmid + '"]')) return;
+                  var b = document.createElement('span'); b.className = 'pcq-qcount-badge';
+                  b.setAttribute('data-cmid', String(cmid)); b.textContent = (count === 1 ? '1 question' : (count + ' questions'));
+                  container.appendChild(b);
+                });
+              } catch (e) {}
+            }
+            attach();
+            var tgt = document.querySelector('#page') || document.body;
+            if (tgt && window.MutationObserver) {
+              var mo = new MutationObserver(function(){ try { attach(); } catch(e){} });
+              mo.observe(tgt, {childList:true, subtree:true});
+            }
+            setTimeout(function(){ try { attach(); } catch(e){} }, 1000);
+          } catch (e) {}
+        })
+        .catch(function(){});
+    } catch (e) {}
+  });
+})();
+JS;
             $PAGE->requires->js_init_code($js2);
         }
     }
