@@ -19,12 +19,7 @@ if (!$context) {
 }
 require_capability('moodle/course:view', $context);
 
-$pcmap = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id,courseid', IGNORE_MISSING);
-if (!$pcmap || (int)$pcmap->courseid !== (int)$courseid) {
-    header('Content-Type: application/json');
-    echo json_encode(['items' => []]);
-    exit;
-}
+// Do not restrict to the personal course owner; allow any user with course:view to see counts.
 
 $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
 if ($moduleidquiz <= 0) {

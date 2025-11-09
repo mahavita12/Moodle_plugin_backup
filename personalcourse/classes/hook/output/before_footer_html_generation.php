@@ -39,17 +39,15 @@ class before_footer_html_generation {
 
         $messages = json_encode([$created, $exists, $first, $next], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
 
-        // Determine if we are on the student's personal course page to enable quiz count badges.
+        // Determine if we are on a personal course page (for any student) to enable quiz count badges.
         $enablecounts = false;
         $pcourseid = 0;
         try {
             $pagetype = (string)($PAGE->pagetype ?? '');
-            if (strpos($pagetype, 'course-view') === 0 && !empty($COURSE) && !empty($COURSE->id) && !empty($USER) && !empty($USER->id)) {
-                $pcmap = $DB->get_record('local_personalcourse_courses', ['userid' => (int)$USER->id], 'id,courseid');
-                if ($pcmap && (int)$pcmap->courseid === (int)$COURSE->id) {
-                    $enablecounts = true;
-                    $pcourseid = (int)$COURSE->id;
-                }
+            if (strpos($pagetype, 'course-view') === 0 && !empty($COURSE) && !empty($COURSE->id)) {
+                // Show badges for any course that is a personal course in our mapping.
+                $ispc = $DB->record_exists('local_personalcourse_courses', ['courseid' => (int)$COURSE->id]);
+                if ($ispc) { $enablecounts = true; $pcourseid = (int)$COURSE->id; }
             }
         } catch (\Throwable $e) { $enablecounts = false; }
 
