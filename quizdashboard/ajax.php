@@ -509,8 +509,8 @@ try {
         case 'inject_homework':
             // Inputs
             $userid = required_param('userid', PARAM_INT);
-            $label  = required_param('label', PARAM_TEXT);
-            $itemsj = required_param('items', PARAM_RAW_TRIMMED);
+            $label  = optional_param('label', '', PARAM_TEXT);
+            $itemsj = optional_param('items', '', PARAM_RAW_TRIMMED);
             $attemptid = optional_param('attemptid', 0, PARAM_INT);
 
             // Capability: prefer course-scoped if attemptid provided, else system manage
@@ -520,24 +520,75 @@ try {
                 require_capability('local/quizdashboard:manage', context_system::instance());
             }
 
-            $items = json_decode($itemsj, true);
-            if (!is_array($items) || empty($items)) {
-                while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode(['success'=>false,'message'=>'No items found for injection.'], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-            // Normalise item shape
             $norm = [];
-            foreach ($items as $it) {
-                $o = isset($it['original']) ? trim((string)$it['original']) : '';
-                $s = isset($it['suggested']) ? trim((string)$it['suggested']) : '';
-                if ($o === '') { continue; }
-                $norm[] = ['original'=>$o, 'suggested'=>$s];
+            $items = $itemsj !== '' ? json_decode($itemsj, true) : null;
+            if (is_array($items) && !empty($items)) {
+                foreach ($items as $it) {
+                    $o = isset($it['original']) ? trim((string)$it['original']) : '';
+                    $s = isset($it['suggested']) ? trim((string)$it['suggested']) : '';
+                    if ($o === '' && $s === '') { continue; }
+                    $norm[] = ['original'=>$o, 'suggested'=>$s];
+                }
             }
+
+            // If no client-provided items, try to derive from stored/generated homework for this attempt
+            if (empty($norm) && $attemptid > 0) {
+                if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                    require_once(__DIR__ . '/classes/essay_grader.php');
+                }
+                // Ensure grading record and homework exist
+                $grader = new \local_quizdashboard\essay_grader();
+                $grading = $grader->get_grading_result($attemptid);
+                if (!$grading || empty($grading->homework_html)) {
+                    $grader->generate_homework_for_attempt($attemptid, 'general');
+                    $grading = $grader->get_grading_result($attemptid);
+                }
+                $html = $grading && !empty($grading->homework_html) ? (string)$grading->homework_html : '';
+                if ($html !== '') {
+                    // Parse Sentence Improvement originals
+                    $orig = [];
+                    $sugg = [];
+                    // Originals: find the Sentence Improvement section and collect first text nodes inside <li>
+                    if (preg_match('/<h3[^>]*>\s*Sentence\s+Improvement\s*<\/h3>([\s\S]*?)<\/div>/i', $html, $m)) {
+                        $sec = $m[1];
+                        if (preg_match_all('/<li[^>]*>([\s\S]*?)<\/li>/i', $sec, $lm)) {
+                            foreach ($lm[1] as $li) {
+                                $t = trim(strip_tags($li));
+                                if ($t !== '') { $orig[] = $t; }
+                                if (count($orig) >= 10) break;
+                            }
+                        }
+                    }
+                    // Suggested: from Answer Key – lines beginning with number and "Improved:" or any numbered line
+                    if (preg_match('/<h3[^>]*>\s*Complete\s+Answer\s+Key\s*<\/h3>([\s\S]*?)<\/div>/i', $html, $am)) {
+                        $akey = $am[1];
+                        if (preg_match_all('/\b(?:Improved\s*:|\d+\s*[\).])\s*(.+?)(?=<br\s*\/>|<\/li>|\n|$)/i', strip_tags($akey, '<br><li>'), $sm)) {
+                            foreach ($sm[1] as $s) {
+                                $st = trim(html_entity_decode(strip_tags($s), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'));
+                                if ($st !== '') { $sugg[] = $st; }
+                                if (count($sugg) >= 10) break;
+                            }
+                        }
+                    }
+                    $n = max(count($orig), count($sugg));
+                    for ($i=0; $i<$n; $i++) {
+                        $o = $orig[$i] ?? '';
+                        $s = $sugg[$i] ?? '';
+                        if ($o === '' && $s === '') { continue; }
+                        $norm[] = ['original'=>$o, 'suggested'=>$s];
+                    }
+                }
+            }
+
             if (empty($norm)) {
                 while (ob_get_level() > 0) { @ob_end_clean(); }
-                echo json_encode(['success'=>false,'message'=>'No valid items to inject.'], JSON_UNESCAPED_UNICODE);
+                echo json_encode(['success'=>false,'message'=>'No homework items available to inject. Generate homework first or provide items.'], JSON_UNESCAPED_UNICODE);
                 exit;
+            }
+
+            if ($label === '') {
+                // Derive a safe default label
+                $label = 'Essay Homework #' . ($attemptid ?: time());
             }
             if (!class_exists('\\local_quizdashboard\\homework_injector')) {
                 require_once(__DIR__ . '/classes/homework_injector.php');
