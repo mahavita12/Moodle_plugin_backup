@@ -258,7 +258,6 @@ class generator_service {
             }
             // Rebuild cache and exit early; no personal quiz should remain active for this source.
             try { self::enforce_archive_visibility((int)$pccourseid, (int)$sourcequizid, 0); } catch (\Throwable $ee) {}
-            try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e) {}
             return (object)[
                 'personalcourseid' => $personalcourseid,
                 'mappingid' => 0,
@@ -335,7 +334,6 @@ class generator_service {
                 if ($oldcm) {
                     $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
                     $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
-                    try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
                 }
                 // Archive record.
                 try {
@@ -405,7 +403,6 @@ class generator_service {
                             $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
                             $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
                             // Rebuild course cache so the change is reflected immediately in the course index.
-                            try { rebuild_course_cache((int)$pccourseid, true); } catch (\Throwable $e2) {}
                         }
                         // Register archive record for full history.
                         try {
@@ -736,30 +733,39 @@ class generator_service {
         $cmids = array_keys($candidates);
         $latestcmid = (int)reset($cmids);
 
-        // Hide all candidates from course page.
-        list($insql, $inparams) = $DB->get_in_or_equal(array_map('intval', $cmids), SQL_PARAMS_QM);
-        $DB->execute("UPDATE {course_modules} SET visibleoncoursepage = 0, visible = 0 WHERE id $insql", $inparams);
+        // Apply only necessary changes and rebuild only if anything changed.
+        $touched = false;
+        foreach ($cmids as $cmid) {
+            $cmid = (int)$cmid;
+            $qid = (int)$DB->get_field('course_modules', 'instance', ['id' => $cmid], IGNORE_MISSING);
+            if ($qid <= 0 || $qid === (int)$activequizid) { continue; }
 
-        // Rename all non-latest archives back to policy '(Archived)'.
-        $othercmids = array_slice($cmids, 1);
-        if (!empty($othercmids)) {
-            foreach ($othercmids as $ocmid) {
-                $qid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$ocmid], IGNORE_MISSING);
-                if ($qid > 0) {
-                    $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$qid]);
+            $islatest = ($cmid === (int)$latestcmid);
+            $targetname = $policybase . ($islatest ? ' (Previous Attempt)' : ' (Archived)');
+            $currentname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$qid], IGNORE_MISSING);
+            if ($currentname !== '' && $currentname !== $targetname) {
+                $DB->set_field('quiz', 'name', $targetname, ['id' => (int)$qid]);
+                $touched = true;
+            }
+
+            $cmrec = $DB->get_record('course_modules', ['id' => (int)$cmid], 'id,visible,visibleoncoursepage');
+            if ($cmrec) {
+                $wantvis = $islatest ? 1 : 0;
+                $wantvison = $islatest ? 1 : 0;
+                if ((int)$cmrec->visible !== $wantvis) {
+                    $DB->set_field('course_modules', 'visible', $wantvis, ['id' => (int)$cmid]);
+                    $touched = true;
+                }
+                if ((int)$cmrec->visibleoncoursepage !== $wantvison) {
+                    $DB->set_field('course_modules', 'visibleoncoursepage', $wantvison, ['id' => (int)$cmid]);
+                    $touched = true;
                 }
             }
         }
 
-        // Promote latest archived to policy '(Previous Attempt)' and show on course page.
-        $latestquizid = (int)$DB->get_field('course_modules', 'instance', ['id' => (int)$latestcmid], IGNORE_MISSING);
-        if ($latestquizid > 0 && $latestquizid !== (int)$activequizid) {
-            $DB->set_field('quiz', 'name', ($policybase . ' (Previous Attempt)'), ['id' => (int)$latestquizid]);
-            $DB->set_field('course_modules', 'visibleoncoursepage', 1, ['id' => (int)$latestcmid]);
-            $DB->set_field('course_modules', 'visible', 1, ['id' => (int)$latestcmid]);
+        if ($touched) {
+            try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
         }
-
-        try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
     }
 
     /**
