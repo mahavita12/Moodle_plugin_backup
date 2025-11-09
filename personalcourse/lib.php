@@ -35,19 +35,24 @@ function local_personalcourse_extend_navigation(\global_navigation $navigation) 
     if ($courseid > 0 && strpos($pagetype, 'course-view') === 0) {
         $ispc = $DB->record_exists('local_personalcourse_courses', ['courseid' => $courseid]);
         if ($ispc) {
-            $sess = sesskey();
-            $endpoint = (new \moodle_url('/local/personalcourse/ajax/get_question_counts.php'))->out(false);
-            $courseidjs = (int)$courseid;
-            $sesskeyjs = json_encode($sess);
-            $endpointjs = json_encode($endpoint);
+            // Build question counts server-side to avoid any client-side 404s.
+            $rows = $DB->get_records_sql(
+                "SELECT cm.id AS cmid, COUNT(qs.id) AS cnt
+                   FROM {course_modules} cm
+                   JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                   JOIN {quiz} q ON q.id = cm.instance
+              LEFT JOIN {quiz_slots} qs ON qs.quizid = q.id
+                  WHERE cm.course = ? AND COALESCE(cm.deletioninprogress,0)=0
+               GROUP BY cm.id",
+                [$courseid]
+            );
+            $bycm = [];
+            if (!empty($rows)) { foreach ($rows as $r) { $bycm[(int)$r->cmid] = (int)$r->cnt; } }
+            $bycmjson = json_encode($bycm);
             $js = <<<JS
 (function(){
   document.addEventListener('DOMContentLoaded', function(){
     try {
-      var courseid = {$courseidjs};
-      var sesskey = {$sesskeyjs};
-      var url = {$endpointjs};
-      var href = url + '?courseid=' + encodeURIComponent(courseid) + '&sesskey=' + encodeURIComponent(sesskey);
       function ensureStyle(){
         if (document.querySelector('style[data-pcq]')) return;
         var st = document.createElement('style');
@@ -56,36 +61,37 @@ function local_personalcourse_extend_navigation(\global_navigation $navigation) 
         document.head.appendChild(st);
       }
       ensureStyle();
-      fetch(href, {credentials: 'same-origin'})
-        .then(function(r){ return r.ok ? r.json() : {items: []}; })
-        .then(function(data){
-          try {
-            if (!data || !data.items || !data.items.length) return;
-            var bycm = {};
-            data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
+      try {
+            var bycm = {$bycmjson};
+            if (!bycm || Object.keys(bycm).length === 0) return;
             function attach(){
               try {
                 Object.keys(bycm).forEach(function(k){
                   var cmid = Number(k);
                   var count = bycm[k];
-                  var selectors = ['a[href*="id='+cmid+'"]','a[data-action="view-activity"][href*="id='+cmid+'"]'];
+                  // Prefer container by data-cmid (robust for student view).
+                  var container = document.querySelector('.activity[data-cmid="' + cmid + '"] .activityinstance, .activity[data-cmid="' + cmid + '"]');
                   var anchor = null;
-                  for (var s=0; s<selectors.length && !anchor; s++){
-                    var list = document.querySelectorAll(selectors[s]);
-                    if (list && list.length){
-                      for (var i=0; i<list.length; i++){
-                        var cand = list[i];
-                        if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                  if (!container) {
+                    var selectors = ['a[href*="id='+cmid+'"]','a[data-action="view-activity"][href*="id='+cmid+'"]'];
+                    for (var s=0; s<selectors.length && !anchor; s++){
+                      var list = document.querySelectorAll(selectors[s]);
+                      if (list && list.length){
+                        for (var i=0; i<list.length; i++){
+                          var cand = list[i];
+                          if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                        }
+                        if (!anchor) anchor = list[0];
                       }
-                      if (!anchor) anchor = list[0];
+                    }
+                    if (anchor) {
+                      var inst = anchor.querySelector('.instancename');
+                      if (inst && inst.parentNode === anchor) { container = anchor; }
+                      else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
+                      else if (anchor.parentNode) { container = anchor.parentNode; }
                     }
                   }
-                  if (!anchor) return;
-                  var container = anchor;
-                  var inst = anchor.querySelector('.instancename');
-                  if (inst && inst.parentNode === anchor) { container = anchor; }
-                  else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
-                  else if (anchor.parentNode) { container = anchor.parentNode; }
+                  if (!container) return;
                   if (container.querySelector('.pcq-qcount-badge[data-cmid="'+cmid+'"]')) return;
                   var b = document.createElement('span');
                   b.className = 'pcq-qcount-badge';
@@ -102,9 +108,7 @@ function local_personalcourse_extend_navigation(\global_navigation $navigation) 
               mo.observe(tgt, {childList:true, subtree:true});
             }
             setTimeout(function(){ try { attach(); } catch(e){} }, 1000);
-          } catch (e) {}
-        })
-        .catch(function(){});
+      } catch (e) {}
     } catch (e) {}
   });
 })();
@@ -159,20 +163,24 @@ JS;
     if ($courseid > 0 && strpos($pagetype, 'course-view') === 0) {
         $ispc = $DB->record_exists('local_personalcourse_courses', ['courseid' => $courseid]);
         if ($ispc) {
-            $sess = sesskey();
-            $endpoint = (new \moodle_url('/local/personalcourse/ajax/get_question_counts.php'))->out(false);
-            $courseidjs = (int)$courseid;
-            $sesskeyjs = json_encode($sess);
-            $endpointjs = json_encode($endpoint);
+            $rows = $DB->get_records_sql(
+                "SELECT cm.id AS cmid, COUNT(qs.id) AS cnt
+                   FROM {course_modules} cm
+                   JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                   JOIN {quiz} q ON q.id = cm.instance
+              LEFT JOIN {quiz_slots} qs ON qs.quizid = q.id
+                  WHERE cm.course = ? AND COALESCE(cm.deletioninprogress,0)=0
+               GROUP BY cm.id",
+                [$courseid]
+            );
+            $bycm = [];
+            if (!empty($rows)) { foreach ($rows as $r) { $bycm[(int)$r->cmid] = (int)$r->cnt; } }
+            $bycmjson = json_encode($bycm);
             $js2 = <<<JS
 (function(){
   if (window.__pcqCountsInit) return; window.__pcqCountsInit = true;
   document.addEventListener('DOMContentLoaded', function(){
     try {
-      var courseid = {$courseidjs};
-      var sesskey = {$sesskeyjs};
-      var url = {$endpointjs};
-      var href = url + '?courseid=' + encodeURIComponent(courseid) + '&sesskey=' + encodeURIComponent(sesskey);
       function ensureStyle(){
         if (document.querySelector('style[data-pcq]')) return;
         var st = document.createElement('style'); st.setAttribute('data-pcq','1');
@@ -180,33 +188,36 @@ JS;
         document.head.appendChild(st);
       }
       ensureStyle();
-      fetch(href, {credentials: 'same-origin'})
-        .then(function(r){ return r.ok ? r.json() : {items: []}; })
-        .then(function(data){
-          try {
-            if (!data || !data.items || !data.items.length) return;
-            var bycm = {}; data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
+      try {
+            var bycm = {$bycmjson};
+            if (!bycm || Object.keys(bycm).length === 0) return;
             function attach(){
               try {
                 Object.keys(bycm).forEach(function(k){
                   var cmid = Number(k); var count = bycm[k];
-                  var selectors = ['a[href*="id=' + cmid + '"]','a[data-action="view-activity"][href*="id=' + cmid + '"]'];
+                  // Prefer container by data-cmid.
+                  var container = document.querySelector('.activity[data-cmid="' + cmid + '"] .activityinstance, .activity[data-cmid="' + cmid + '"]');
                   var anchor = null;
-                  for (var s=0; s<selectors.length && !anchor; s++) {
-                    var list = document.querySelectorAll(selectors[s]);
-                    if (list && list.length) {
-                      for (var i=0; i<list.length; i++) {
-                        var cand = list[i];
-                        if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                  if (!container) {
+                    var selectors = ['a[href*="id=' + cmid + '"]','a[data-action="view-activity"][href*="id=' + cmid + '"]'];
+                    for (var s=0; s<selectors.length && !anchor; s++) {
+                      var list = document.querySelectorAll(selectors[s]);
+                      if (list && list.length) {
+                        for (var i=0; i<list.length; i++) {
+                          var cand = list[i];
+                          if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                        }
+                        if (!anchor) anchor = list[0];
                       }
-                      if (!anchor) anchor = list[0];
+                    }
+                    if (anchor) {
+                      var inst = anchor.querySelector('.instancename');
+                      if (inst && inst.parentNode === anchor) { container = anchor; }
+                      else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
+                      else if (anchor.parentNode) { container = anchor.parentNode; }
                     }
                   }
-                  if (!anchor) return;
-                  var container = anchor; var inst = anchor.querySelector('.instancename');
-                  if (inst && inst.parentNode === anchor) { container = anchor; }
-                  else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
-                  else if (anchor.parentNode) { container = anchor.parentNode; }
+                  if (!container) return;
                   if (container.querySelector('.pcq-qcount-badge[data-cmid="' + cmid + '"]')) return;
                   var b = document.createElement('span'); b.className = 'pcq-qcount-badge';
                   b.setAttribute('data-cmid', String(cmid)); b.textContent = (count === 1 ? '1 question' : (count + ' questions'));
@@ -221,9 +232,7 @@ JS;
               mo.observe(tgt, {childList:true, subtree:true});
             }
             setTimeout(function(){ try { attach(); } catch(e){} }, 1000);
-          } catch (e) {}
-        })
-        .catch(function(){});
+      } catch (e) {}
     } catch (e) {}
   });
 })();
