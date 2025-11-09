@@ -545,35 +545,83 @@ try {
                 }
                 $html = $grading && !empty($grading->homework_html) ? (string)$grading->homework_html : '';
                 if ($html !== '') {
-                    // Parse Sentence Improvement originals
                     $orig = [];
                     $sugg = [];
-                    // Originals: find the Sentence Improvement section and collect first text nodes inside <li>
-                    if (preg_match('/<h3[^>]*>\s*Sentence\s+Improvement\s*<\/h3>([\s\S]*?)<\/div>/i', $html, $m)) {
-                        $sec = $m[1];
+
+                    // Extract Sentence Improvement section: header position → next <h3>
+                    if (preg_match('/<h3[^>]*>\s*Sentence\s+Improvement\s*<\/h3>/i', $html, $hm, PREG_OFFSET_CAPTURE)) {
+                        $hstart = $hm[0][1] + strlen($hm[0][0]);
+                        $after = substr($html, $hstart);
+                        $sec = $after;
+                        if (preg_match('/<h3[^>]*>/i', $after, $nm, PREG_OFFSET_CAPTURE)) {
+                            $sec = substr($after, 0, $nm[0][1]);
+                        }
+                        // Prefer the first ordered list within this section
+                        if (preg_match('/<ol[^>]*>([\s\S]*?)<\/ol>/i', $sec, $olm)) {
+                            $sec = $olm[1];
+                        }
                         if (preg_match_all('/<li[^>]*>([\s\S]*?)<\/li>/i', $sec, $lm)) {
                             foreach ($lm[1] as $li) {
-                                $t = trim(strip_tags($li));
-                                if ($t !== '') { $orig[] = $t; }
-                                if (count($orig) >= 10) break;
+                                $piece = $li;
+                                if (preg_match('/^(.*?)<(br|div)\b/is', $li, $pm)) {
+                                    $piece = $pm[1];
+                                }
+                                $t = trim(html_entity_decode(strip_tags($piece), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'));
+                                // Skip placeholders
+                                if ($t === '' || strpos($t, '[') !== false) { continue; }
+                                $orig[] = $t;
+                                if (count($orig) >= 10) { break; }
+                            }
+                        }
+                        // Fallback: numbered lines inside the section
+                        if (empty($orig)) {
+                            $secPlain = trim(html_entity_decode(strip_tags(preg_replace('/<\/(br|li)>/i', "\n", $sec)), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'));
+                            if (preg_match_all('/^\s*\d+\s*[\).]\s*(.+)$/m', $secPlain, $om)) {
+                                foreach ($om[1] as $s) {
+                                    $st = trim($s);
+                                    if ($st === '' || strpos($st, '[') !== false) { continue; }
+                                    $orig[] = $st;
+                                    if (count($orig) >= 10) { break; }
+                                }
                             }
                         }
                     }
-                    // Suggested: from Answer Key – lines beginning with number and "Improved:" or any numbered line
-                    if (preg_match('/<h3[^>]*>\s*Complete\s+Answer\s+Key\s*<\/h3>([\s\S]*?)<\/div>/i', $html, $am)) {
-                        $akey = $am[1];
-                        if (preg_match_all('/\b(?:Improved\s*:|\d+\s*[\).])\s*(.+?)(?=<br\s*\/>|<\/li>|\n|$)/i', strip_tags($akey, '<br><li>'), $sm)) {
-                            foreach ($sm[1] as $s) {
-                                $st = trim(html_entity_decode(strip_tags($s), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'));
+
+                    // Extract Answer Key suggestions
+                    if (preg_match('/<h3[^>]*>\s*Complete\s+Answer\s+Key\s*<\/h3>/i', $html, $am, PREG_OFFSET_CAPTURE)) {
+                        $akeyStart = $am[0][1] + strlen($am[0][0]);
+                        $akeyAfter = substr($html, $akeyStart);
+                        $akeySec = $akeyAfter;
+                        if (preg_match('/<h3[^>]*>/i', $akeyAfter, $nm2, PREG_OFFSET_CAPTURE)) {
+                            $akeySec = substr($akeyAfter, 0, $nm2[0][1]);
+                        }
+                        // Normalize to plain text lines
+                        $akeyNorm = preg_replace('/<\/(li|br)>/i', "\n", $akeySec);
+                        $akeyPlain = trim(html_entity_decode(strip_tags($akeyNorm), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'));
+
+                        // Prefer explicit 'Improved:' lines
+                        if (preg_match_all('/Improved\s*:\s*(.+)/i', $akeyPlain, $im)) {
+                            foreach ($im[1] as $s) {
+                                $st = trim($s);
                                 if ($st !== '') { $sugg[] = $st; }
-                                if (count($sugg) >= 10) break;
+                                if (count($sugg) >= 10) { break; }
+                            }
+                        }
+                        // Fallback: numbered lines
+                        if (empty($sugg) && preg_match_all('/^\s*\d+\s*[\).]\s*(.+)$/m', $akeyPlain, $nmv)) {
+                            foreach ($nmv[1] as $s) {
+                                $st = trim($s);
+                                if ($st !== '') { $sugg[] = $st; }
+                                if (count($sugg) >= 10) { break; }
                             }
                         }
                     }
+
+                    // Build pairs
                     $n = max(count($orig), count($sugg));
                     for ($i=0; $i<$n; $i++) {
-                        $o = $orig[$i] ?? '';
-                        $s = $sugg[$i] ?? '';
+                        $o = isset($orig[$i]) ? $orig[$i] : '';
+                        $s = isset($sugg[$i]) ? $sugg[$i] : '';
                         if ($o === '' && $s === '') { continue; }
                         $norm[] = ['original'=>$o, 'suggested'=>$s];
                     }
