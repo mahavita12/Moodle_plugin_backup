@@ -29,7 +29,7 @@ class before_footer_html_generation {
      * @param \core\hook\output\before_footer_html_generation $hook
      */
     public static function callback(\core\hook\output\before_footer_html_generation $hook): void {
-        global $PAGE;
+        global $PAGE, $COURSE, $USER, $DB;
 
         // Prepare the four localized messages so we only style our own notifications.
         $created = get_string('notify_pq_created_short', 'local_personalcourse');
@@ -38,6 +38,20 @@ class before_footer_html_generation {
         $next    = get_string('notify_pq_not_created_next_short', 'local_personalcourse');
 
         $messages = json_encode([$created, $exists, $first, $next], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+
+        // Determine if we are on the student's personal course page to enable quiz count badges.
+        $enablecounts = false;
+        $pcourseid = 0;
+        try {
+            $pagetype = (string)($PAGE->pagetype ?? '');
+            if (strpos($pagetype, 'course-view') === 0 && !empty($COURSE) && !empty($COURSE->id) && !empty($USER) && !empty($USER->id)) {
+                $pcmap = $DB->get_record('local_personalcourse_courses', ['userid' => (int)$USER->id], 'id,courseid');
+                if ($pcmap && (int)$pcmap->courseid === (int)$COURSE->id) {
+                    $enablecounts = true;
+                    $pcourseid = (int)$COURSE->id;
+                }
+            }
+        } catch (\Throwable $e) { $enablecounts = false; }
 
         ob_start();
         ?>
@@ -51,6 +65,20 @@ class before_footer_html_generation {
                 background: rgba(31, 140, 230, 0.08) !important;
             }
             .pcq-highlight .alert-heading { color: #1f8ce6 !important; }
+            /* Personal Course: Quiz count badge */
+            .pcq-qcount-badge {
+                display: inline-block;
+                margin-left: .5rem;
+                padding: 0 .5rem;
+                font-size: 0.8rem;
+                line-height: 1.4;
+                border-radius: 999px;
+                color: #3c4043;
+                background: #eef3f8;
+                border: 1px solid #d6e0ea;
+                vertical-align: baseline;
+                white-space: nowrap;
+            }
         </style>
         <script>
             (function() {
@@ -77,6 +105,50 @@ class before_footer_html_generation {
                 });
             })();
         </script>
+        <?php if ($enablecounts) { $sess = sesskey(); $cid = (int)$pcourseid; ?>
+        <script>
+            (function() {
+                document.addEventListener('DOMContentLoaded', function() {
+                    try {
+                        var courseid = <?php echo (int)$cid; ?>;
+                        var sesskey = <?php echo json_encode($sess, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT); ?>;
+                        var url = <?php echo json_encode((new \moodle_url('/local/personalcourse/ajax/get_question_counts.php'))->out(false), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_AMP|JSON_HEX_QUOT); ?>;
+                        var href = url + '?courseid=' + encodeURIComponent(courseid) + '&sesskey=' + encodeURIComponent(sesskey);
+                        fetch(href, {credentials: 'same-origin'})
+                            .then(function(r){ return r.ok ? r.json() : {items: []}; })
+                            .then(function(data){
+                                try {
+                                    if (!data || !data.items || !data.items.length) return;
+                                    var bycm = {};
+                                    data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
+                                    var anchors = document.querySelectorAll('a[href*="/mod/quiz/view.php?id="]');
+                                    if (!anchors || !anchors.length) return;
+                                    anchors.forEach(function(a){
+                                        try {
+                                            var m = a.getAttribute('href').match(/[?&]id=(\d+)/);
+                                            if (!m) return;
+                                            var cmid = Number(m[1]);
+                                            if (!cmid || !(cmid in bycm)) return;
+                                            var count = bycm[cmid];
+                                            // Avoid duplicates.
+                                            if (a.parentNode && a.parentNode.querySelector('.pcq-qcount-badge')) return;
+                                            var badge = document.createElement('span');
+                                            badge.className = 'pcq-qcount-badge';
+                                            badge.textContent = (count === 1 ? '1 question' : (count + ' questions'));
+                                            // Prefer to append inside the link, after the instance name.
+                                            var inst = a.querySelector('.instancename');
+                                            if (inst && inst.parentNode === a) { a.appendChild(badge); }
+                                            else if (a.parentNode) { a.parentNode.appendChild(badge); }
+                                        } catch (e) {}
+                                    });
+                                } catch (e) {}
+                            })
+                            .catch(function(){ /* ignore */ });
+                    } catch (e) { }
+                });
+            })();
+        </script>
+        <?php } ?>
         <?php
         $hook->add_html(ob_get_clean());
     }
