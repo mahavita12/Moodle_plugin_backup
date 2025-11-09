@@ -78,7 +78,7 @@ try {
         }
     </style>';
 
-    // IMPROVED: Better print button layout
+    // IMPROVED: Better print button layout and homework injection
     if (!$print_view && !$clean_view && $grading_result && !empty($grading_result->feedback_html)) {
         echo '<div class="print-buttons screen-only">';
         echo '<div class="btn-group float-right" role="group">';
@@ -88,9 +88,17 @@ try {
         echo '<button type="button" class="btn btn-outline-secondary" onclick="printInNewWindow()" title="Open in new window for printing">';
         echo '<i class="fa fa-external-link"></i> Print Window';
         echo '</button>';
+        if ($is_admin_view) {
+            echo '<button type="button" id="qd-inject-homework" class="btn btn-primary ml-2" title="Create Homework in Personal Course">';
+            echo '<i class="fa fa-upload"></i> Inject Homework';
+            echo '</button>';
+        }
         echo '</div>';
         echo '<div class="clearfix"></div>';
         echo '</div>';
+        if ($is_admin_view) {
+            echo '<div id="qd-inject-result" class="alert mt-2" style="display:none"></div>';
+        }
     }
 
     // Add wrapper for admin view
@@ -113,6 +121,72 @@ try {
     }
 
     echo '</div>'; // Close wrapper div
+
+    if (!$print_view && !$clean_view && $is_admin_view) {
+        $ajaxurl = (new moodle_url('/local/quizdashboard/ajax.php'))->out(false);
+        $sess = sesskey();
+        $defaultlabel = 'Homework – ' . format_string($quiz->name);
+        $useridjs = (int)$attempt->userid;
+        $attemptidjs = (int)$attemptid;
+        $ajaxurljs = json_encode($ajaxurl);
+        $sessjs = json_encode($sess);
+        $labeljs = json_encode($defaultlabel);
+        $js = <<<JS
+(function(){
+  var btn = document.getElementById('qd-inject-homework');
+  if(!btn) return;
+  var ajax = {$ajaxurljs};
+  var sess = {$sessjs};
+  var userid = {$useridjs};
+  var attemptid = {$attemptidjs};
+  var label = {$labeljs};
+  function collectItems(){
+    var items = [];
+    var scripts = document.querySelectorAll('script[type="application/json"][data-qdhw-items]');
+    if(scripts.length){
+      try {
+        var j = JSON.parse(scripts[0].textContent||'[]');
+        if(Array.isArray(j)){
+          j.forEach(function(it){ if(it && it.original){ items.push({original:String(it.original), suggested:String(it.suggested||'')}); } });
+        }
+      } catch(e){}
+    }
+    if(!items.length){
+      var candidates = Array.from(document.querySelectorAll('p,li,div,strong'));
+      var seen = {};
+      candidates.forEach(function(el){
+        var t=(el.textContent||'').replace(/\n/g,' ').trim();
+        var m=t.match(/^\s*(\d+)\s*\.?\s*Original\s*:?(.*)$/i);
+        if(m){ var idx=m[1]; var rest=m[2]||''; if(!seen[idx]){ items.push({original:rest.trim(), suggested:''}); seen[idx]=true; } }
+      });
+    }
+    return items;
+  }
+  function show(msg, ok, url){
+    var box=document.getElementById('qd-inject-result'); if(!box) return;
+    box.className = 'alert mt-2 ' + (ok? 'alert-success':'alert-danger');
+    box.style.display='block';
+    box.innerHTML = ok && url ? ('Homework created: <a href="'+url+'" target="_blank">Open quiz</a>') : msg;
+  }
+  btn.addEventListener('click', function(){
+    try{ var items=collectItems(); if(!items.length){ show('No homework items found on this page.', false); return; } }
+    catch(e){ show('Failed to collect items.', false); return; }
+    var fd=new FormData();
+    fd.append('action','inject_homework');
+    fd.append('sesskey', sess);
+    fd.append('userid', String(userid));
+    fd.append('label', label);
+    fd.append('items', JSON.stringify(items));
+    fd.append('attemptid', String(attemptid));
+    fetch(ajax, { method:'POST', body: fd, credentials:'same-origin'})
+      .then(function(r){ return r.json().catch(function(){ return {success:false,message:'Invalid response'}; }); })
+      .then(function(j){ if(j && j.success){ show('', true, j.url||''); } else { show((j&&j.message)||'Failed to inject', false); } })
+      .catch(function(){ show('Request failed.', false); });
+  });
+})();
+JS;
+        $PAGE->requires->js_init_code($js);
+    }
 
 } catch (Exception $e) {
     echo $OUTPUT->header();

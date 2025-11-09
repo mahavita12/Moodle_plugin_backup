@@ -506,6 +506,48 @@ try {
             while (ob_get_level() > 0) { @ob_end_clean(); }
             echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
+        case 'inject_homework':
+            // Inputs
+            $userid = required_param('userid', PARAM_INT);
+            $label  = required_param('label', PARAM_TEXT);
+            $itemsj = required_param('items', PARAM_RAW_TRIMMED);
+            $attemptid = optional_param('attemptid', 0, PARAM_INT);
+
+            // Capability: prefer course-scoped if attemptid provided, else system manage
+            if ($attemptid > 0) {
+                $require_for($attemptid, 'mod/quiz:grade');
+            } else {
+                require_capability('local/quizdashboard:manage', context_system::instance());
+            }
+
+            $items = json_decode($itemsj, true);
+            if (!is_array($items) || empty($items)) {
+                while (ob_get_level() > 0) { @ob_end_clean(); }
+                echo json_encode(['success'=>false,'message'=>'No items found for injection.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            // Normalise item shape
+            $norm = [];
+            foreach ($items as $it) {
+                $o = isset($it['original']) ? trim((string)$it['original']) : '';
+                $s = isset($it['suggested']) ? trim((string)$it['suggested']) : '';
+                if ($o === '') { continue; }
+                $norm[] = ['original'=>$o, 'suggested'=>$s];
+            }
+            if (empty($norm)) {
+                while (ob_get_level() > 0) { @ob_end_clean(); }
+                echo json_encode(['success'=>false,'message'=>'No valid items to inject.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            if (!class_exists('\\local_quizdashboard\\homework_injector')) {
+                require_once(__DIR__ . '/classes/homework_injector.php');
+            }
+            $res = \local_quizdashboard\homework_injector::inject_single_essay((int)$userid, (string)$label, $norm);
+            $cmid = (int)($res->cmid ?? 0);
+            $url = $cmid > 0 ? (new moodle_url('/mod/quiz/view.php', ['id' => $cmid]))->out(false) : '';
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>(int)$res->courseid,'url'=>$url], JSON_UNESCAPED_UNICODE);
+            exit;
         case 'grade_resubmission':
             $attemptid = required_param('attemptid', PARAM_INT);
             $level = optional_param('level', 'general', PARAM_ALPHA);
