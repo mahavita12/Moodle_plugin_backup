@@ -119,26 +119,51 @@ class before_footer_html_generation {
                                     if (!data || !data.items || !data.items.length) return;
                                     var bycm = {};
                                     data.items.forEach(function(it){ bycm[Number(it.cmid)] = Number(it.count)||0; });
-                                    var anchors = document.querySelectorAll('a[href*="/mod/quiz/view.php?id="]');
-                                    if (!anchors || !anchors.length) return;
-                                    anchors.forEach(function(a){
+
+                                    function attachBadges() {
                                         try {
-                                            var m = a.getAttribute('href').match(/[?&]id=(\d+)/);
-                                            if (!m) return;
-                                            var cmid = Number(m[1]);
-                                            if (!cmid || !(cmid in bycm)) return;
-                                            var count = bycm[cmid];
-                                            // Avoid duplicates.
-                                            if (a.parentNode && a.parentNode.querySelector('.pcq-qcount-badge')) return;
-                                            var badge = document.createElement('span');
-                                            badge.className = 'pcq-qcount-badge';
-                                            badge.textContent = (count === 1 ? '1 question' : (count + ' questions'));
-                                            // Prefer to append inside the link, after the instance name.
-                                            var inst = a.querySelector('.instancename');
-                                            if (inst && inst.parentNode === a) { a.appendChild(badge); }
-                                            else if (a.parentNode) { a.parentNode.appendChild(badge); }
+                                            Object.keys(bycm).forEach(function(k){
+                                                var cmid = Number(k);
+                                                var count = bycm[k];
+                                                var sel = [
+                                                    'a[href*="id=' + cmid + '"]',
+                                                    'a[data-action="view-activity"][href*="id=' + cmid + '"]'
+                                                ];
+                                                var anchor = null;
+                                                for (var s = 0; s < sel.length && !anchor; s++) {
+                                                    var list = document.querySelectorAll(sel[s]);
+                                                    if (list && list.length) {
+                                                        for (var i = 0; i < list.length; i++) {
+                                                            var cand = list[i];
+                                                            if (cand.closest('.activity') || cand.closest('.activityinstance') || cand.closest('.modtype_quiz')) { anchor = cand; break; }
+                                                        }
+                                                        if (!anchor) anchor = list[0];
+                                                    }
+                                                }
+                                                if (!anchor) return;
+                                                var container = anchor;
+                                                var inst = anchor.querySelector('.instancename');
+                                                if (inst && inst.parentNode === anchor) { container = anchor; }
+                                                else if (anchor.closest('.activityinstance')) { container = anchor.closest('.activityinstance'); }
+                                                else if (anchor.parentNode) { container = anchor.parentNode; }
+
+                                                if (container.querySelector('.pcq-qcount-badge[data-cmid="' + cmid + '"]')) return;
+                                                var badge = document.createElement('span');
+                                                badge.className = 'pcq-qcount-badge';
+                                                badge.setAttribute('data-cmid', String(cmid));
+                                                badge.textContent = (count === 1 ? '1 question' : (count + ' questions'));
+                                                container.appendChild(badge);
+                                            });
                                         } catch (e) {}
-                                    });
+                                    }
+
+                                    attachBadges();
+                                    var target = document.querySelector('#page') || document.body;
+                                    if (target && window.MutationObserver) {
+                                        var mo = new MutationObserver(function(){ try { attachBadges(); } catch(e){} });
+                                        mo.observe(target, {childList: true, subtree: true});
+                                    }
+                                    setTimeout(function(){ try { attachBadges(); } catch(e){} }, 1000);
                                 } catch (e) {}
                             })
                             .catch(function(){ /* ignore */ });
