@@ -2822,15 +2822,37 @@ PROMPT;
         $schema = [
             'version' => '1.0',
             'meta' => [ 'attemptid' => $attempt_id, 'level' => $level ],
-            'items' => 'Flat array in section order: first 20 MCQ items (4 sections x 5 each: 3 MCQ sections plus Vocabulary Builder), then 10 SI items. MCQ item shape: {"type":"mcq","exercise":"...","tips":"...","stem":"...","single":true|false,"options":[{"text":"...","correct":true|false},...],"explanation":"..."}. SI item shape: {"type":"si","original":"...","improved":"..."}.'
+            'items' => [
+                [
+                    'type' => 'mcq',
+                    'exercise' => 'Subject-Verb Agreement',
+                    'tips' => 'Ensure the verb agrees with the subject in number.',
+                    'stem' => 'Which sentence is correct?',
+                    'single' => true,
+                    'options' => [
+                        ['text' => 'The group are meeting after school.', 'correct' => false],
+                        ['text' => 'The group is meeting after school.', 'correct' => true],
+                        ['text' => 'The group meet after school.', 'correct' => false],
+                        ['text' => 'The group were meeting after school.', 'correct' => false]
+                    ],
+                    'explanation' => '“Group” is a collective noun treated as singular here; “is” agrees with the singular subject.'
+                ],
+                [
+                    'type' => 'si',
+                    'original' => 'Original sentence from the essay.',
+                    'improved' => 'Improved version written as a clear, correct sentence.'
+                ]
+            ]
         ];
 
         $rules = "Requirements:\n".
-                 "- Return ONLY a single valid JSON object. No markdown, no backticks.\n".
-                 "- Include meta.level = '$level'.\n".
-                 "- Structure: 5 sections total → 4 MCQ sections (5 items each), then SI last (exactly 10).\n".
-                 "- MCQ items: include 'exercise' (same across the 5 items of the section), 'tips' (same across the section), 'stem', 4 'options' with ≥1 correct (exactly one preferred), and a brief 'explanation'.\n".
-                 "- SI: exactly 10 items from the student's essay; each improved must be >= original in character length.\n";
+                 "- Return ONLY a single valid JSON object. No markdown, no backticks, no commentary.\n".
+                 "- Must include keys: version, meta, items.\n".
+                 "- meta.level must equal '$level'.\n".
+                 "- items MUST be an array with EXACTLY 30 elements: first 20 are MCQ, last 10 are SI.\n".
+                 "- MCQ items: include 'exercise' (same across the 5 items of its section), 'tips' (same across that section), 'stem', exactly 4 'options' with exactly 1 correct (set 'single': true), and a brief 'explanation'.\n".
+                 "- SI items: 'type'='si', 'original', 'improved'; improved length must be >= original.\n".
+                 "- Output is flat array (no nested sections). Order strictly: all 20 MCQ first, then 10 SI.\n";
 
         $user_content = "Create structured homework JSON based on this student's essay and feedback.\n\n".
                         "ESSAY (truncated):\n$essay_text\n\n".
