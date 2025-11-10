@@ -389,6 +389,10 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <option value="homework-general">Generate Homework (General)</option>
                             <option value="homework-advanced">Generate Homework (Advanced)</option>
                         </optgroup>
+                        <optgroup label="Homework Injection">
+                            <option value="inject-json-general">Inject Homework (General)</option>
+                            <option value="inject-json-advanced">Inject Homework (Advanced)</option>
+                        </optgroup>
                         <optgroup label="Resubmission Grading">
                             <option value="grade-resubmission-general">Grade Resubmission (General)</option>
                             <option value="grade-resubmission-advanced">Grade Resubmission (Advanced)</option>
@@ -449,7 +453,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <?php foreach ($rows as $row): ?>
                         <!-- FIXED: Add trashed-row class for abandoned items -->
                         <tr<?php echo $row->status === 'Abandoned' ? ' class="trashed-row"' : ''; ?>>
-                            <td class="bulk-select-cell"><input type="checkbox" class="row-checkbox" value="<?php echo $row->attemptid; ?>" onchange="updateSelectedCount()"></td>
+                            <td class="bulk-select-cell"><input type="checkbox" class="row-checkbox" value="<?php echo $row->attemptid; ?>" data-userid="<?php echo $row->userid; ?>" data-label="<?php echo htmlspecialchars($row->quizname . ' – Attempt ' . $row->attemptno, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" onchange="updateSelectedCount()"></td>
                             <td><a href="<?php echo $row->reviewurl; ?>" class="quiz-link"><?php echo htmlspecialchars($row->quizname); ?></a></td>
                             <td>
                                 <?php if (!empty($row->question_edit_url)): ?>
@@ -602,6 +606,13 @@ function executeBulkAction() {
         actionType = 'auto_grade';
         level = 'advanced';
         confirmMessage = `Auto-grade ${attemptIds.length} essay(s) using advanced level?`;
+    } else if (selectedAction === 'inject-json-general') {
+        actionType = 'inject_homework_json';
+        confirmMessage = `Inject homework (General) for ${attemptIds.length} essay(s)?`;
+    } else if (selectedAction === 'inject-json-advanced') {
+        actionType = 'inject_homework_json';
+        level = 'advanced';
+        confirmMessage = `Inject homework (Advanced) for ${attemptIds.length} essay(s)?`;
     } else if (selectedAction === 'grade-resubmission-general') {
         actionType = 'grade_resubmission';
         level = 'general';
@@ -620,14 +631,12 @@ function executeBulkAction() {
     } else if (selectedAction === 'delete') {
         actionType = 'delete_attempts';
         confirmMessage = `⚠️ WARNING: This will PERMANENTLY DELETE ${attemptIds.length} quiz attempt(s).\n\nThis action CANNOT be undone!\n\nProceed?`;
-
-
     } else if (selectedAction === 'move-to-trash') {
         actionType = 'trash_attempts';
         confirmMessage = `Move ${attemptIds.length} attempt(s) to trash?`;
     } else if (selectedAction === 'delete') {
         actionType = 'delete_attempts';
-        confirmMessage = `⚠️ WARNING: This will PERMANENTLY DELETE ${attemptIds.length} quiz attempt(s).\\n\\nThis action CANNOT be undone!\\n\\nProceed?`;
+        confirmMessage = `⚠️ WARNING: This will PERMANENTLY DELETE ${attemptIds.length} quiz attempt(s).\n\nThis action CANNOT be undone!\n\nProceed?`;
     } else if (selectedAction === 'restore') {
         actionType = 'restore_attempts';
         confirmMessage = `Restore ${attemptIds.length} attempt(s) from trash?`;
@@ -646,14 +655,24 @@ function executeBulkAction() {
     button.disabled = true;
 
     // For grading actions (including resubmissions), process individually
-    if (actionType === 'auto_grade' || actionType === 'grade_resubmission' || actionType === 'generate_homework') {
-        let promises = attemptIds.map(attemptId => {
+    if (actionType === 'auto_grade' || actionType === 'grade_resubmission' || actionType === 'generate_homework' || actionType === 'inject_homework_json') {
+        const rows = Array.from(checkboxes).map(cb => ({
+            attemptid: cb.value,
+            userid: cb.dataset.userid || '',
+            label: cb.dataset.label || ''
+        }));
+
+        let promises = rows.map(row => {
             const params = new URLSearchParams({
                 action: actionType,
-                attemptid: attemptId,
+                attemptid: row.attemptid,
                 level: level,
                 sesskey: SESSKEY
             });
+            if (actionType === 'inject_homework_json') {
+                params.set('userid', row.userid);
+                params.set('label', row.label);
+            }
 
             return fetch(AJAXURL, {
                 method: 'POST',
@@ -664,11 +683,11 @@ function executeBulkAction() {
                 try {
                     return JSON.parse(text);
                 } catch (e) {
-                    console.error('Invalid JSON for attempt', attemptId, 'raw:', text);
+                    console.error('Invalid JSON for attempt', row.attemptid, 'raw:', text);
                     return { success: false, message: 'Server returned invalid JSON. Response: ' + text.substring(0, 500) };
                 }
             }).catch(err => {
-                console.error('Request failed for attempt', attemptId, ':', err);
+                console.error('Request failed for attempt', row.attemptid, ':', err);
                 return {success: false, message: err.message};
             });
         });
@@ -697,6 +716,8 @@ function executeBulkAction() {
                     }
                 } else if (actionType === 'generate_homework') {
                     message = `${successes} homework exercise(s) generated successfully.`;
+                } else if (actionType === 'inject_homework_json') {
+                    message = `${successes} quiz(es) injected successfully.`;
                 }
                 
                 if (failures > 0) {
@@ -844,6 +865,47 @@ function injectHomework(attemptId, userId, label, button) {
         button.disabled = false;
     });
 }
+
+// JSON-based injection function
+function injectHomeworkJSON(attemptId, userId, label, level, button) {
+    const originalHTML = button.innerHTML;
+    button.textContent = 'Injecting...';
+    button.disabled = true;
+
+    const params = new URLSearchParams({
+        action: 'inject_homework_json',
+        attemptid: String(attemptId),
+        userid: String(userId),
+        label: label,
+        level: level || 'general',
+        sesskey: SESSKEY
+    });
+
+    fetch(AJAXURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+        credentials: 'same-origin'
+    })
+    .then(async res => {
+        const text = await res.text();
+        try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON: ' + text.substring(0, 300)); }
+    })
+    .then(data => {
+        if (!data || !data.success) { throw new Error(data && data.message ? data.message : 'Injection failed'); }
+        const url = data.url || '';
+        const parent = button.parentElement;
+        if (parent) {
+            parent.innerHTML = url ? ('<a class="btn btn-sm btn-success" target="_blank" href="'+url+'">Open</a>') : '<span class="homework-status homework-yes">Injected</span>';
+        }
+    })
+    .catch(err => {
+        alert('Injection error: ' + err.message);
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+    });
+}
+window.injectHomeworkJSON = injectHomeworkJSON;
 
 // --- END: MODIFIED JavaScript for Bulk Actions ---
 
