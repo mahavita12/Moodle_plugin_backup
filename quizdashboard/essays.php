@@ -27,46 +27,6 @@ function render_submission_chain($chain, $resubmission_info = null) {
     return $html;
 }
 
-// JSON-based injection (General/Advanced)
-function injectHomeworkJSON(attemptId, userId, label, level, button) {
-    const originalHTML = button.innerHTML;
-    button.textContent = 'Injecting...';
-    button.disabled = true;
-
-    const params = new URLSearchParams({
-        action: 'inject_homework_json',
-        attemptid: String(attemptId),
-        userid: String(userId),
-        level: level || 'general',
-        label: label,
-        sesskey: SESSKEY
-    });
-
-    fetch(AJAXURL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-        credentials: 'same-origin'
-    })
-    .then(async res => {
-        const text = await res.text();
-        try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON: ' + text.substring(0, 300)); }
-    })
-    .then(data => {
-        if (!data || !data.success) { throw new Error(data && data.message ? data.message : 'JSON injection failed'); }
-        const url = data.url || '';
-        const parent = button.parentElement;
-        if (parent) {
-            parent.innerHTML = url ? ('<a class="btn btn-sm btn-success" target="_blank" href="'+url+'">Open</a>') : '<span class="homework-status homework-yes">Injected</span>';
-        }
-    })
-    .catch(err => {
-        alert('Injection error: ' + err.message);
-        button.innerHTML = originalHTML;
-        button.disabled = false;
-    });
-}
-
 require_login();
 
 // The page context is set to system for navigation purposes.
