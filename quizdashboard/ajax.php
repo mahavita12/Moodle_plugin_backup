@@ -647,6 +647,53 @@ try {
             while (ob_get_level() > 0) { @ob_end_clean(); }
             echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>(int)$res->courseid,'url'=>$url], JSON_UNESCAPED_UNICODE);
             exit;
+        case 'inject_homework_json':
+            // Inputs
+            $attemptid = required_param('attemptid', PARAM_INT);
+            $userid    = required_param('userid', PARAM_INT);
+            $level     = optional_param('level', 'general', PARAM_ALPHA);
+            $label     = optional_param('label', '', PARAM_TEXT);
+
+            // Capability
+            $require_for($attemptid, 'mod/quiz:grade');
+
+            if (!class_exists('\\local_quizdashboard\\essay_grader')) {
+                require_once(__DIR__ . '/classes/essay_grader.php');
+            }
+            if (!class_exists('\\local_quizdashboard\\homework_injector')) {
+                require_once(__DIR__ . '/classes/homework_injector.php');
+            }
+
+            $grader = new \local_quizdashboard\essay_grader();
+            $grading = $grader->get_grading_result($attemptid);
+
+            $jsontext = '';
+            if ($grading && !empty($grading->homework_json)) {
+                $tmp = json_decode((string)$grading->homework_json, true);
+                $jlvl = is_array($tmp) && isset($tmp['meta']['level']) ? strtolower((string)$tmp['meta']['level']) : '';
+                if ($jlvl === strtolower($level)) {
+                    $jsontext = (string)$grading->homework_json;
+                }
+            }
+
+            if ($jsontext === '') {
+                $gen = $grader->generate_homework_json_for_attempt($attemptid, $level);
+                if (!is_array($gen) || empty($gen['success'])) {
+                    while (ob_get_level() > 0) { @ob_end_clean(); }
+                    echo json_encode(['success' => false, 'message' => $gen['message'] ?? 'Failed to generate homework JSON'], JSON_UNESCAPED_UNICODE);
+                    exit;
+                }
+                $jsontext = (string)$gen['homework_json'];
+            }
+
+            if ($label === '') { $label = 'Homework ('.($level ?: 'general').') – Attempt '.$attemptid; }
+
+            $res = \local_quizdashboard\homework_injector::inject_from_json((int)$userid, (string)$label, (string)$jsontext, (string)$level);
+            $cmid = (int)($res->cmid ?? 0);
+            $url = $cmid > 0 ? (new moodle_url('/mod/quiz/view.php', ['id' => $cmid]))->out(false) : '';
+            while (ob_get_level() > 0) { @ob_end_clean(); }
+            echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>(int)$res->courseid,'questioncount'=>(int)($res->questioncount ?? 0),'url'=>$url], JSON_UNESCAPED_UNICODE);
+            exit;
         case 'grade_resubmission':
             $attemptid = required_param('attemptid', PARAM_INT);
             $level = optional_param('level', 'general', PARAM_ALPHA);

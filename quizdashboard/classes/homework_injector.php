@@ -88,7 +88,139 @@ class homework_injector {
         ];
         $DB->insert_record('qtype_essay_options', $opts);
         $qb->add_questions($quizid, [(int)$qid]);
-        $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
+        $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], IGNORE_MISSING);
         return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questionid' => (int)$qid];
+    }
+
+    /**
+     * Inject a homework quiz from structured JSON (SI + MCQ)
+     * JSON example: { "meta": {"level":"general"}, "items": [ {"type":"si","original":"...","improved":"..."}, {"type":"mcq","stem":"...","single":true,"options":[{"text":"...","correct":true},...] } ] }
+     */
+    public static function inject_from_json(int $userid, string $label, string $jsontext, string $level = 'general'): object {
+        global $DB, $CFG, $USER;
+        require_once($CFG->dirroot . '/local/personalcourse/classes/course_generator.php');
+        require_once($CFG->dirroot . '/local/personalcourse/classes/enrollment_manager.php');
+        require_once($CFG->dirroot . '/local/personalcourse/classes/section_manager.php');
+        require_once($CFG->dirroot . '/local/personalcourse/classes/quiz_builder.php');
+        require_once($CFG->dirroot . '/local/quiz_uploader/classes/question_importer.php');
+
+        $cg = new \local_personalcourse\course_generator();
+        $pcctx = $cg->ensure_personal_course($userid);
+        $courseid = (int)$pcctx->course->id;
+        try { $en = new \local_personalcourse\enrollment_manager(); $en->ensure_manual_instance_and_enrol_student($courseid, $userid); } catch (\Throwable $e) {}
+        $sm = new \local_personalcourse\section_manager();
+        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Homework');
+        $qb = new \local_personalcourse\quiz_builder();
+        $name = 'Homework – ' . trim($label);
+        $res = $qb->create_quiz($courseid, $sectionnum, $name, '', 'default');
+        $quizid = (int)$res->quizid;
+
+        $coursectx = \context_course::instance($courseid);
+        $qcat = $DB->get_record('question_categories', ['contextid' => (int)$coursectx->id, 'idnumber' => 'pc_homework'], 'id,contextid');
+        if (!$qcat) {
+            $qcat = (object)[
+                'name' => 'Personal Course Homework',
+                'contextid' => (int)$coursectx->id,
+                'info' => '',
+                'infoformat' => 1,
+                'stamp' => uniqid('pc_hw'),
+                'parent' => 0,
+                'sortorder' => 9999,
+                'idnumber' => 'pc_homework',
+            ];
+            $qcat->id = (int)$DB->insert_record('question_categories', $qcat);
+        }
+
+        $j = json_decode($jsontext, true);
+        if (!is_array($j)) { throw new \moodle_exception('Invalid JSON for injection'); }
+        $items = isset($j['items']) && is_array($j['items']) ? $j['items'] : [];
+
+        // Split SI and MCQ
+        $si = [];
+        $mcq = [];
+        foreach ($items as $it) {
+            $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
+            if ($type === 'si') { $si[] = $it; }
+            if ($type === 'mcq') { $mcq[] = $it; }
+        }
+
+        // Enforce SI length rule and cap at 10
+        $siFiltered = [];
+        foreach ($si as $it) {
+            $orig = trim((string)($it['original'] ?? ''));
+            $impr = trim((string)($it['improved'] ?? ''));
+            if ($orig === '' || $impr === '') { continue; }
+            if (mb_strlen($impr) < mb_strlen($orig)) { continue; }
+            $siFiltered[] = ['original' => $orig, 'improved' => $impr];
+            if (count($siFiltered) >= 10) { break; }
+        }
+
+        // Build Moodle XML
+        $xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><quiz>";
+
+        // Short Answer for SI
+        $index = 0;
+        foreach ($siFiltered as $it) {
+            $index++;
+            $orig = $it['original'];
+            $impr = $it['improved'];
+            $minlen = min( max(mb_strlen($orig), 10), 60 ); // cap pattern length
+            $pattern = str_repeat('?', $minlen) . '*';
+            $qname = htmlspecialchars('SI '.$index, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $qtext = '<p>Rewrite the following sentence clearly and correctly:</p><p><em>Original: '.htmlspecialchars($orig, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</em></p>';
+            $gfb = 'Suggested improvement: '.htmlspecialchars($impr, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $xml .= '<question type="shortanswer">'
+                 . '<name><text>'.$qname.'</text></name>'
+                 . '<questiontext format="html"><text><![CDATA['.$qtext.']]></text></questiontext>'
+                 . '<generalfeedback format="html"><text><![CDATA['.$gfb.']]></text></generalfeedback>'
+                 . '<defaultgrade>1</defaultgrade>'
+                 . '<penalty>0</penalty>'
+                 . '<usecase>0</usecase>'
+                 . '<answer fraction="100" format="moodle_auto_format"><text>'.$pattern.'</text><feedback><text></text></feedback></answer>'
+                 . '</question>';
+        }
+
+        // MCQ
+        $qnum = 0;
+        foreach ($mcq as $m) {
+            $stem = trim((string)($m['stem'] ?? ''));
+            $options = isset($m['options']) && is_array($m['options']) ? $m['options'] : [];
+            if ($stem === '' || count($options) < 4) { continue; }
+            $hasCorrect = false; foreach ($options as $o) { if (!empty($o['correct'])) { $hasCorrect = true; break; } }
+            if (!$hasCorrect) { continue; }
+            $single = !empty($m['single']) ? 'true' : 'false';
+            $qnum++;
+            $qname = htmlspecialchars('MCQ '.$qnum, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $qtext = '<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
+            $xml .= '<question type="multichoice">'
+                 . '<name><text>'.$qname.'</text></name>'
+                 . '<questiontext format="html"><text><![CDATA['.$qtext.']]></text></questiontext>'
+                 . '<generalfeedback format="html"><text></text></generalfeedback>'
+                 . '<defaultgrade>1</defaultgrade>'
+                 . '<penalty>0</penalty>'
+                 . '<single>'.$single.'</single>'
+                 . '<shuffleanswers>1</shuffleanswers>'
+                 . '<answernumbering>abc</answernumbering>';
+            foreach ($options as $o) {
+                $txt = htmlspecialchars((string)($o['text'] ?? ''), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+                if ($txt === '') { continue; }
+                $frac = !empty($o['correct']) ? '100' : '0';
+                $xml .= '<answer fraction="'.$frac.'" format="moodle_auto_format"><text>'.$txt.'</text>'
+                     . '<feedback><text>'.htmlspecialchars((string)($o['feedback'] ?? ''), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</text></feedback></answer>';
+            }
+            $xml .= '</question>';
+        }
+
+        $xml .= '</quiz>';
+
+        // Import XML and add questions
+        $category = (object)['id' => (int)$qcat->id, 'contextid' => (int)$qcat->contextid];
+        $import = \local_quiz_uploader\question_importer::import_from_xml($xml, $category, $courseid);
+        if (empty($import->success) || empty($import->questionids)) {
+            throw new \moodle_exception('Failed to import generated questions');
+        }
+        $qb->add_questions($quizid, array_map('intval', $import->questionids));
+        $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
+        return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questioncount' => count($import->questionids)];
     }
 }

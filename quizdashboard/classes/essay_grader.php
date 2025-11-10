@@ -2906,4 +2906,99 @@ PROMPT;
         return $text;
     }
 
+    /**
+     * Generate structured JSON homework for injection (SI + MCQ), store to gradings.homework_json, and return it.
+     * The JSON includes meta.level and enforces SI improved-length guidance at the prompt level.
+     */
+    public function generate_homework_json_for_attempt(int $attempt_id, string $level = 'general'): array {
+        global $DB;
+        $level = ($level === 'advanced') ? 'advanced' : 'general';
+
+        // Ensure grading record exists
+        $grading = $this->get_grading_result($attempt_id);
+        if (!$grading) {
+            return ['success' => false, 'message' => 'Essay must be graded first before generating homework JSON.'];
+        }
+
+        // Get essay data and brief feedback text
+        $essay = $this->extract_essay_data($attempt_id);
+        if (!$essay) {
+            return ['success' => false, 'message' => 'Could not extract essay data.'];
+        }
+        $essay_text = $this->sanitize_original_essay_text($essay['answer_text'] ?? '');
+        $feedback_text = strip_tags($grading->feedback_html ?? '');
+        $feedback_text = mb_strimwidth($feedback_text, 0, 2500, '...');
+        $essay_text = mb_strimwidth($essay_text, 0, 2000, '...');
+
+        // Strict JSON-only instruction and schema
+        $schema = [
+            'version' => '1.0',
+            'meta' => [ 'attemptid' => $attempt_id, 'level' => $level ],
+            'items' => 'Array of items; each item is either: 
+                {"type":"si","original":"...","improved":"..."} OR 
+                {"type":"mcq","stem":"...","single":true|false,
+                 "options":[{"text":"...","correct":true|false},...],"explanation":"..."}]'
+        ];
+
+        $rules = "Requirements:\n".
+                 "- Return ONLY a single valid JSON object. No markdown, no backticks.\n".
+                 "- Include meta.level = '$level'.\n".
+                 "- Sentence Improvement (SI): exactly 10 items; each improved must be >= original in character length.\n".
+                 "- MCQ: at least 4 options per item and at least 1 correct.\n";
+
+        $user_content = "Create structured homework JSON based on this student's essay and feedback.\n\n".
+                        "ESSAY (truncated):\n$essay_text\n\n".
+                        "FEEDBACK (truncated):\n$feedback_text\n\n".
+                        "LEVEL: $level\n\n".
+                        "JSON schema (example keys):\n".json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n\n".
+                        $rules;
+
+        $provider = $this->get_provider();
+        if ($provider === 'anthropic') {
+            $data = [
+                'model' => $this->get_anthropic_model(),
+                'system' => 'Return only a single valid JSON object. No prose.',
+                'messages' => [ [ 'role' => 'user', 'content' => [ ['type'=>'text','text'=>$user_content] ] ] ],
+                'max_tokens' => 4000,
+                'temperature' => 0.2,
+            ];
+            $resp = $this->make_anthropic_api_call($data, 'homework json');
+            if (!$resp['success']) { return $resp; }
+            $text = trim((string)$resp['response']);
+        } else {
+            $data = [
+                'model' => $this->get_openai_model(),
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Return only a single valid JSON object. No prose.'],
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'response_format' => ['type' => 'json_object'],
+                'max_completion_tokens' => 4000,
+                'temperature' => 0.2,
+            ];
+            $resp = $this->make_openai_api_call($data, 'homework json');
+            if (!$resp['success']) { return $resp; }
+            $text = trim((string)$resp['response']);
+        }
+
+        // Trim to the outermost JSON object just in case
+        $start = strpos($text, '{'); $end = strrpos($text, '}');
+        if ($start !== false && $end !== false && $end > $start) { $text = substr($text, $start, $end - $start + 1); }
+        $json = json_decode($text, true);
+        if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
+            return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+        }
+
+        // Persist JSON onto grading record if field exists
+        try {
+            $grading->homework_json = $text;
+            $grading->timemodified = time();
+            $DB->update_record('local_quizdashboard_gradings', $grading);
+        } catch (\Throwable $e) {
+            // Swallow if the column does not exist yet
+        }
+
+        return ['success' => true, 'homework_json' => $text];
+    }
+
 }

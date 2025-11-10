@@ -113,6 +113,17 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025101301, 'local', 'quizdashboard');
     }
 
+    // Add homework_json field to store structured JSON for injection
+    if ($oldversion < 2025111001) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+        $field = new xmldb_field('homework_json', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'homework_html');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2025111001, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 

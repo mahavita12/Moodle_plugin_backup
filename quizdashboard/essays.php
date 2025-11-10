@@ -27,6 +27,46 @@ function render_submission_chain($chain, $resubmission_info = null) {
     return $html;
 }
 
+// JSON-based injection (General/Advanced)
+function injectHomeworkJSON(attemptId, userId, label, level, button) {
+    const originalHTML = button.innerHTML;
+    button.textContent = 'Injecting...';
+    button.disabled = true;
+
+    const params = new URLSearchParams({
+        action: 'inject_homework_json',
+        attemptid: String(attemptId),
+        userid: String(userId),
+        level: level || 'general',
+        label: label,
+        sesskey: SESSKEY
+    });
+
+    fetch(AJAXURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+        credentials: 'same-origin'
+    })
+    .then(async res => {
+        const text = await res.text();
+        try { return JSON.parse(text); } catch (e) { throw new Error('Invalid JSON: ' + text.substring(0, 300)); }
+    })
+    .then(data => {
+        if (!data || !data.success) { throw new Error(data && data.message ? data.message : 'JSON injection failed'); }
+        const url = data.url || '';
+        const parent = button.parentElement;
+        if (parent) {
+            parent.innerHTML = url ? ('<a class="btn btn-sm btn-success" target="_blank" href="'+url+'">Open</a>') : '<span class="homework-status homework-yes">Injected</span>';
+        }
+    })
+    .catch(err => {
+        alert('Injection error: ' + err.message);
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+    });
+}
+
 require_login();
 
 // The page context is set to system for navigation purposes.
@@ -518,11 +558,15 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <div class="btn-group" role="group">
                                         <span class="homework-status homework-yes" style="line-height: 22px; padding-right:6px;">Yes</span>
                                         <button type="button" class="btn btn-sm btn-primary" onclick="injectHomework(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', this)">Inject</button>
+                                        <button type="button" class="btn btn-sm btn-outline-success" title="Inject from JSON (General)" onclick="injectHomeworkJSON(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', 'general', this)">Inject (Gen)</button>
+                                        <button type="button" class="btn btn-sm btn-outline-warning" title="Inject from JSON (Advanced)" onclick="injectHomeworkJSON(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', 'advanced', this)">Inject (Adv)</button>
                                     </div>
                                 <?php elseif ($row->is_graded): ?>
                                     <div class="btn-group" role="group">
                                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="generateHomework(<?php echo $row->attemptid; ?>, this)">Generate</button>
                                         <button type="button" class="btn btn-sm btn-primary" onclick="injectHomework(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', this)">Inject</button>
+                                        <button type="button" class="btn btn-sm btn-outline-success" title="Inject from JSON (General)" onclick="injectHomeworkJSON(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', 'general', this)">Inject (Gen)</button>
+                                        <button type="button" class="btn btn-sm btn-outline-warning" title="Inject from JSON (Advanced)" onclick="injectHomeworkJSON(<?php echo $row->attemptid; ?>, <?php echo $row->userid; ?>, '<?php echo addslashes($row->quizname . ' – Attempt ' . $row->attemptno); ?>', 'advanced', this)">Inject (Adv)</button>
                                     </div>
                                 <?php else: ?>
                                     <span class="homework-status homework-no">Grade First</span>
