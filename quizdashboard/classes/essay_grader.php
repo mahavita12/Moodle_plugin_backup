@@ -2453,201 +2453,89 @@ Provide an encouraging but factual commentary about the student's writing journe
 
         if ($level === 'advanced') {
             $system_prompt = <<<'PROMPT'
-You are an expert homework generator for Australian students aged 11-16. Create comprehensive personalized homework exercises that EXACTLY match the following structure and quality.
+You are an expert homework generator for Australian students aged 11–16. Create comprehensive personalized homework that follows EXACTLY these 5 sections in this order:
 
-**CRITICAL: You MUST create ALL of these sections, including a COMPLETE ANSWER KEY at the end. The answer key is NOT optional.**
+1) Exercise 1 (MCQ): Advanced Style/Register topic derived from the student's writing patterns – 5 questions.
+2) Exercise 2 (MCQ): Advanced Grammar/Rhetoric topic – 5 questions.
+3) Exercise 3 (MCQ): Second grammar topic aligned to the student's next most important skill – 5 questions.
+4) Vocabulary Builder (MCQ): 5 questions testing precise academic/discipline-appropriate word choice in context.
+5) Sentence Improvement: exactly 10 of the student's own problematic sentences (improvement to be written by the student; do not show solutions here).
 
-1. Exercise 1: [Advanced Style/Register topic from the **author's writing patterns**] - 5 questions.
-2. Exercise 2: [Advanced Grammar/Sophistication topic from the **author's writing patterns**] - 5 questions.
-3. Exercise 3: [Second grammar topic from the **author's second common mistakes**] - 5 questions.
-4. Vocabulary Builder table - exactly 6 rows with sophisticated words.
-5. Sentence Improvement - up to 10 of the author's actual problematic sentences (maximum 10).
-6. Complete Answer Key for ALL exercises above.
+Per MCQ section:
+- Include a single Exercise Type line (e.g., “Exercise Type: Parallelism”) and a single Tips for Improvement line that apply to all 5 questions in the section.
+- All 5 stems must target the SAME rule and use contexts aligned to the student's essay theme.
+- Provide exactly four options (a–d) with only ONE correct answer. Include a brief teacher explanation for the correct option (kept separate from the student-facing stem/options).
 
-**ADVANCED MODIFICATIONS FOR EXERCISES 1 & 2 ONLY:**
+Formatting rules:
+- Output ONLY raw HTML (no backticks). Main heading must be exactly: <h2 style="font-size:18px; color:#003366;">Homework Exercises</h2>
+- Each MCQ section uses the same list/heading structure as shown. Keep Exercise Type and Tips visible once at the top of that section.
+- Sentence Improvement must be last and contain exactly 10 items from the student's essay.
 
-**Exercise 1 - Advanced Style and Register (7 questions):**
-Instead of basic grammar errors, test sophisticated concepts like:
-- Formal vs informal register appropriateness
-- Academic tone and vocabulary choices
-- Sentence sophistication and variety
-- Audience-appropriate language selection
-- Professional writing conventions
+Advanced focus:
+- Style/Register: academic tone, audience-appropriate choices, sentence sophistication.
+- Grammar/Rhetoric: parallelism, subjunctive, complex conditionals, sentence combining for sophistication, cohesive devices.
 
-**Exercise 2 - Advanced Grammar and Rhetoric (7 questions):**
-Instead of basic grammar errors, test complex concepts like:
-- Subjunctive mood usage
-- Complex conditional structures
-- Parallel structure for rhetorical effect
-- Sentence combining for sophistication
-
-**ADVANCED QUESTION EXAMPLES:**
-- Which sentence demonstrates the most appropriate academic register for a formal essay?
-- Which option shows the most effective use of parallel structure?
-- Which revision best employs the subjunctive mood?
-- Which word choice creates the most precise professional tone?
-
-**ADVANCED VOCABULARY BUILDER:**
-Use sophisticated but age-appropriate words like: articulate, comprehensive, facilitate, contemporary, paradigm, intrinsic, etc.
-
-**KEEP EXERCISES IN THE EXACT FORMAT SHOWN BELOW**
-
-**ABSOLUTE FORMATTING RULES:**
-- The final output must be ONLY the raw HTML content. Do NOT wrap the output in ```html or ```.
-- The main heading must be exactly: `<h2 style="font-size:18px; color:#003366;">Homework Exercises</h2>`.
-- For all grammar and spelling exercises, you MUST provide four multiple-choice options on new lines.
-
-**ENHANCED QUESTION GENERATION RULES:**
-Your primary goal is to create questions that test a specific grammatical rule within a sentence that provides enough context to make only ONE answer correct as shown in the examples below.
-
-###The sentences must contain clear clues (like time markers or plural/singular identifiers) that force the verb to take a specific number (singular/plural) and tense (past/present).
-* **BAD EXAMPLE:** `The children ___ curious about the exhibit.`
-* **GOOD EXAMPLE:** `During the tour yesterday, the children ___ very curious about the mummy exhibit and asked many questions.`
-* **GOOD EXAMPLE:** `Although the museum contains thousands of items, each individual exhibit ___ a unique story to tell.`
-* **GOOD EXAMPLE:** `In the archives right now, one of the ancient manuscripts ___ beginning to fade under the harsh lights.`
-
-###The sentences must include either a clear time marker (e.g., "yesterday," "every Tuesday," "next year") or another verb that establishes a dominant tense for the narrative.
-* **BAD EXAMPLE:** `When the kids threw tomatoes, the knight ___ silent.`
-* **GOOD EXAMPLE:** `As the children looked at the detailed display, they ___ at the ridiculous size of the knight's armor.`
-* **GOOD EXAMPLE:** `According to the museum's schedule, next week's special demonstration ___ the art of sword fighting.`
-* **GOOD EXAMPLE:** `Every time my family visits that museum, it ___ more crowded than the last.`
-
-###The context must establish whether the noun is specific (previously mentioned or unique) or non-specific (being introduced for the first time).
-* **BAD EXAMPLE:** `At the museum, there was ___ forgotten object.`
-* **GOOD EXAMPLE:** `The tour guide pointed to a dusty corner. "Here," she said, "is ___ forgotten object I was telling you about earlier."`
-* **GOOD EXAMPLE:** `While walking through the gallery, my little brother spotted ___ unusual sculpture tucked away behind a curtain.`
-
-- **VOCABULARY BUILDER FORMAT:** The 'Complete the sentence' column MUST be a fill-in-the-blank exercise. Replace the target word in the sentence with a long underscore `__________`.
-- The correct answer in the multiple-choice questions should NOT be bolded. It should only be bolded in the Answer Key.
-- For the sentence improvement section, provide adequate writing space above each line for handwritten responses.
- - In the Complete Answer Key, PROVIDE a model "Improved:" sentence for EACH of the 10 Sentence Improvement items. Number them 1 through 10 and show only the improved revision for each.
-
-**EXACT HTML TEMPLATE TO USE:**
-<div class="page-break"></div>
+EXACT HTML SCAFFOLD TO USE (abbreviated for one MCQ section; repeat for Exercises 1–3 and Vocabulary as MCQ):
 <div class="feedback-section" style="background: #ffffff; margin-bottom: 25px; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border: 2px solid #007bff;">
 <h2 style="font-size:16px; color:#003366;">Homework Exercises</h2>
 <hr style="border:0;border-top:2px solid #003366;margin:18px 0;">
 
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Exercise 1: [Advanced Style/Register Topic]</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
-
-<ol style="font-family: Calibri, Arial, sans-serif;">
-<li style="margin-bottom:20px; line-height:1.4;">[Question 1]<br><br><ul style="list-style-type: none; padding-left: 20px; margin-top: 10px; line-height:1.6;"><li style="margin-bottom:4px;">a) option</li><li style="margin-bottom:4px;">b) option</li><li style="margin-bottom:4px;">c) option</li><li style="margin-bottom:4px;">d) option</li></ul></li>
-<li>[Question 2]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 3]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 4]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 5]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-
-</ol>
+<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px;">
+  <h3 style="color:#0066cc;">Exercise 1: [Exercise Type]</h3>
+  <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tips for Improvement:</strong> [One concise tip for this rule]</p>
+  <ol>
+    <li>[Stem 1 with rich context]<br><ul style="list-style-type:none; padding-left:20px; margin-top:5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
+    <li>[Stem 2] ...</li>
+    <li>[Stem 3] ...</li>
+    <li>[Stem 4] ...</li>
+    <li>[Stem 5] ...</li>
+  </ol>
 </div>
 
-<div class="exercise-section" style="margin-bottom:30px; background-color:white; padding:15px; border-radius:5px;">
-<h3 style="color:#0066cc;">Exercise 2: [Advanced Grammar/Sophistication Topic]</h3>
-<p><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
+<!-- Repeat similar block for Exercise 2, Exercise 3, and Vocabulary Builder (as MCQ) -->
 
-<ol>
-<li>[Question 1]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 2]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 3]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 4]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-<li>[Question 5]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
-
-</ol>
+<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px;">
+  <h3 style="color:#0066cc;">Sentence Improvement</h3>
+  <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tips for Improvement:</strong> Focus on clarity, coherence, and correctness.</p>
+  <ol>
+    <li style="margin-bottom:35px;">[Original problematic sentence 1]<br><br><div style="margin-top:25px;"><hr style="border:0; border-top:1px solid #ccc; margin:15px 0;"></div></li>
+    <!-- Continue up to 10 items total -->
+  </ol>
 </div>
-
-
-
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Exercise 3: [Third Grammar Topic]</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
-<p style="font-family: Calibri, Arial, sans-serif; margin-bottom:15px;"><strong>Instructions:</strong> Choose the correct option for each sentence.</p>
-[Continue with 5 questions using same format]
-</div>
-
-<!-- Exercise 4 removed intentionally -->
-
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Vocabulary Builder</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> Learning precise vocabulary will make your writing more sophisticated and engaging.</p>
-[Vocabulary table with 6 words]
-</div>
-
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#0066cc; font-family: Calibri, Arial, sans-serif; margin-bottom:8px;">Sentence Improvement</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px; font-family: Calibri, Arial, sans-serif;"><strong>Tip for Improvement:</strong> Rewriting sentences helps you develop better sentence structure and clarity in your writing.</p>
-
-<ol style="font-family: Calibri, Arial, sans-serif;">
-<li style="margin-bottom:35px; line-height:1.4;">
-[Original problematic sentence from student's essay]<br><br>
-<div style="margin-top:25px;">
-<hr style="border:0; border-top:1px solid #ccc; margin:15px 0;">
-</div>
-</li>
-[Continue with remaining 9 sentences using same format with writing lines]
-</ol>
-</div>
-
-<div class="exercise-section" style="margin-bottom:20px; background-color:#e8f4f8; padding:20px; border-radius:5px; font-family: Calibri, Arial, sans-serif;">
-<h3 style="color:#003366; font-family: Calibri, Arial, sans-serif; margin-bottom:15px;">Complete Answer Key</h3>
-[Complete answer key for all exercises above]
-</div>
-
-
 </div>
 PROMPT;
         } else {
             // General prompt
             $system_prompt = <<<'PROMPT'
-You are an expert homework generator for Australian students aged 11-16. Create comprehensive personalized homework exercises that EXACTLY match the following structure and quality.
+You are an expert homework generator for Australian students aged 11–16. Create comprehensive personalized homework that follows EXACTLY these 5 sections in this order:
 
-**CRITICAL: You MUST create ALL of these sections, including a COMPLETE ANSWER KEY at the end. The answer key is NOT optional.**
+1) Exercise 1 (MCQ): Grammar topic from the student's most common mistakes – 5 questions.
+2) Exercise 2 (MCQ): Second grammar topic from the student's second most common mistakes – 5 questions.
+3) Exercise 3 (MCQ): Third grammar topic from the student's third most common mistakes – 5 questions.
+4) Vocabulary Builder (MCQ): 5 questions testing word meaning/usage in context aligned to the essay theme.
+5) Sentence Improvement: exactly 10 of the student's problematic sentences.
 
-1. Exercise 1: [Grammar topic from the **author's most common mistakes**] - 5 questions.
-2. Exercise 2: [Second grammar topic from the **author's second common mistakes**] - 5 questions.
-3. Exercise 3: [Third grammar topic from the **author's third common mistakes**] - 5 questions.
-4. Vocabulary Builder table - exactly 6 rows with their actual words.
-5. Sentence Improvement - up to 10 of the author's actual problematic sentences (maximum 10).
-6. Complete Answer Key for ALL exercises above.
+Per MCQ section:
+- Include a single Exercise Type and a single Tips for Improvement that apply to all 5 questions in that section.
+- Each stem must have context cues so that only one option is correct. Exactly four options (a–d), one correct. Include a brief teacher explanation for the correct answer.
+- Use the essay's topic/theme for context to increase relevance.
 
-**ABSOLUTE FORMATTING RULES:**
-- The final output must be ONLY the raw HTML content. Do NOT wrap the output in ```html or ```.
-- The main heading must be exactly: `<h2 style="font-size:18px; color:#003366;">Homework Exercises</h2>`.
-- For all grammar and spelling exercises, you MUST provide four multiple-choice options on new lines.
+Formatting rules:
+- Output ONLY raw HTML (no backticks). Main heading must be exactly: <h2 style="font-size:18px; color:#003366;">Homework Exercises</h2>
+- Keep section scaffold consistent (heading, tip paragraph, ordered list with MCQs). Place Sentence Improvement last with 10 items.
 
-**ENHANCED QUESTION GENERATION RULES:**
-Your primary goal is to create questions that test a specific grammatical rule within a sentence that provides enough context to make only ONE answer correct as shown in the examples below.
-
-###The sentences must contain clear clues (like time markers or plural/singular identifiers) that force the verb to take a specific number (singular/plural) and tense (past/present).
-* **BAD EXAMPLE:** `The children ___ curious about the exhibit.`
-* **GOOD EXAMPLE:** `During the tour yesterday, the children ___ very curious about the mummy exhibit and asked many questions.`
-* **GOOD EXAMPLE:** `Although the museum contains thousands of items, each individual exhibit ___ a unique story to tell.`
-* **GOOD EXAMPLE:** `In the archives right now, one of the ancient manuscripts ___ beginning to fade under the harsh lights.`
-
-###The sentences must include either a clear time marker (e.g., "yesterday," "every Tuesday," "next year") or another verb that establishes a dominant tense for the narrative.
-* **BAD EXAMPLE:** `When the kids threw tomatoes, the knight ___ silent.`
-* **GOOD EXAMPLE:** `As the children looked at the detailed display, they ___ at the ridiculous size of the knight's armor.`
-* **GOOD EXAMPLE:** `According to the museum's schedule, next week's special demonstration ___ the art of sword fighting.`
-* **GOOD EXAMPLE:** `Every time my family visits that museum, it ___ more crowded than the last.`
-
-###The context must establish whether the noun is specific (previously mentioned or unique) or non-specific (being introduced for the first time).
-* **BAD EXAMPLE:** `At the museum, there was ___ forgotten object.`
-* **GOOD EXAMPLE:** `The tour guide pointed to a dusty corner. "Here," she said, "is ___ forgotten object I was telling you about earlier."`
-* **GOOD EXAMPLE:** `While walking through the gallery, my little brother spotted ___ unusual sculpture tucked away behind a curtain.`
-
-- **VOCABULARY BUILDER FORMAT:** The 'Complete the sentence' column MUST be a fill-in-the-blank exercise. Replace the target word in the sentence with a long underscore `__________`.
-- The correct answer in the multiple-choice questions should NOT be bolded. It should only be bolded in the Answer Key.
-- For the sentence improvement section, provide adequate writing space above each line for handwritten responses.
- - In the Complete Answer Key, PROVIDE a model "Improved:" sentence for EACH of the 10 Sentence Improvement items. Number them 1 through 10 and show only the improved revision for each.
-
-**EXACT HTML TEMPLATE TO USE:**
+EXACT HTML SCAFFOLD TO USE (abbreviated):
 <div class="feedback-section" style="background: #ffffff; margin-bottom: 25px; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); border: 2px solid #007bff;">
 <h2 style="font-size:16px; color:#003366;">Homework Exercises</h2>
 <hr style="border:0;border-top:2px solid #003366;margin:18px 0;">
 
-<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-<h3 style="color:#0066cc;">Exercise 1: [Grammar Topic]</h3>
-<p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tip for Improvement:</strong> [A short, actionable tip related to the specific topic]</p>
+<div class="exercise-section" style="margin-bottom:35px; background-color:white; padding:20px; border-radius:5px;">
+  <h3 style="color:#0066cc;">Exercise 1: [Exercise Type]</h3>
+  <p style="background-color:#e8f4f8; padding:8px; border-radius:4px; margin-bottom:15px;"><strong>Tips for Improvement:</strong> [One concise tip]</p>
+  <ol>
+    <li>[Question 1]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
+    <!-- Continue to 5 items -->
+  </ol>
 <ol>
 <li>[Question 1]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
 <li>[Question 2]<br><ul style="list-style-type: none; padding-left: 20px; margin-top: 5px;"><li>a) option</li><li>b) option</li><li>c) option</li><li>d) option</li></ul></li>
@@ -2934,17 +2822,15 @@ PROMPT;
         $schema = [
             'version' => '1.0',
             'meta' => [ 'attemptid' => $attempt_id, 'level' => $level ],
-            'items' => 'Array of items; each item is either: 
-                {"type":"si","original":"...","improved":"..."} OR 
-                {"type":"mcq","stem":"...","single":true|false,
-                 "options":[{"text":"...","correct":true|false},...],"explanation":"..."}]'
+            'items' => 'Flat array in section order: first 20 MCQ items (4 sections x 5 each: 3 MCQ sections plus Vocabulary Builder), then 10 SI items. MCQ item shape: {"type":"mcq","exercise":"...","tips":"...","stem":"...","single":true|false,"options":[{"text":"...","correct":true|false},...],"explanation":"..."}. SI item shape: {"type":"si","original":"...","improved":"..."}.'
         ];
 
         $rules = "Requirements:\n".
                  "- Return ONLY a single valid JSON object. No markdown, no backticks.\n".
                  "- Include meta.level = '$level'.\n".
-                 "- Sentence Improvement (SI): exactly 10 items; each improved must be >= original in character length.\n".
-                 "- MCQ: at least 4 options per item and at least 1 correct.\n";
+                 "- Structure: 5 sections total → 4 MCQ sections (5 items each), then SI last (exactly 10).\n".
+                 "- MCQ items: include 'exercise' (same across the 5 items of the section), 'tips' (same across the section), 'stem', 4 'options' with ≥1 correct (exactly one preferred), and a brief 'explanation'.\n".
+                 "- SI: exactly 10 items from the student's essay; each improved must be >= original in character length.\n";
 
         $user_content = "Create structured homework JSON based on this student's essay and feedback.\n\n".
                         "ESSAY (truncated):\n$essay_text\n\n".
