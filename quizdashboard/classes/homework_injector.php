@@ -27,10 +27,24 @@ class homework_injector {
         }
         $topic = trim((string)$topic);
         $name = 'Essay Homework - ' . $topic;
+
+        // Overwrite existing quiz for the same topic by deleting any prior quiz with the same name.
+        require_once($CFG->dirroot . '/course/lib.php');
+        $existingquiz = $DB->get_record('quiz', ['course' => (int)$courseid, 'name' => (string)$name], 'id', \IGNORE_MISSING);
+        if ($existingquiz && !empty($existingquiz->id)) {
+            $cm = get_coursemodule_from_instance('quiz', (int)$existingquiz->id, (int)$courseid, \IGNORE_MISSING);
+            if ($cm && !empty($cm->id)) {
+                try { course_delete_module((int)$cm->id); } catch (\Throwable $e) { /* ignore and continue */ }
+            } else {
+                // Fallback: remove the quiz record if CM lookup failed.
+                $DB->delete_records('quiz', ['id' => (int)$existingquiz->id]);
+            }
+        }
+
         $res = $qb->create_quiz($courseid, $sectionnum, $name, '', 'default');
         $quizid = (int)$res->quizid;
         $coursectx = \context_course::instance($courseid);
-        $qcat = $DB->get_record('question_categories', ['contextid' => (int)$coursectx->id, 'idnumber' => 'pc_homework'], 'id');
+        $qcat = $DB->get_record('question_categories', ['contextid' => (int)$coursectx->id, 'idnumber' => 'pc_homework'], 'id,contextid');
         if (!$qcat) {
             $qcat = (object)[
                 'name' => 'Personal Course Homework',

@@ -665,26 +665,14 @@ try {
             }
 
             $grader = new \local_quizdashboard\essay_grader();
-            $grading = $grader->get_grading_result($attemptid);
-
-            $jsontext = '';
-            if ($grading && !empty($grading->homework_json)) {
-                $tmp = json_decode((string)$grading->homework_json, true);
-                $jlvl = is_array($tmp) && isset($tmp['meta']['level']) ? strtolower((string)$tmp['meta']['level']) : '';
-                if ($jlvl === strtolower($level)) {
-                    $jsontext = (string)$grading->homework_json;
-                }
+            // Always generate fresh JSON for injection to keep generation and injection paths separate.
+            $gen = $grader->generate_homework_json_for_attempt($attemptid, $level);
+            if (!is_array($gen) || empty($gen['success'])) {
+                while (ob_get_level() > 0) { @ob_end_clean(); }
+                echo json_encode(['success' => false, 'message' => $gen['message'] ?? 'Failed to generate homework JSON'], JSON_UNESCAPED_UNICODE);
+                exit;
             }
-
-            if ($jsontext === '') {
-                $gen = $grader->generate_homework_json_for_attempt($attemptid, $level);
-                if (!is_array($gen) || empty($gen['success'])) {
-                    while (ob_get_level() > 0) { @ob_end_clean(); }
-                    echo json_encode(['success' => false, 'message' => $gen['message'] ?? 'Failed to generate homework JSON'], JSON_UNESCAPED_UNICODE);
-                    exit;
-                }
-                $jsontext = (string)$gen['homework_json'];
-            }
+            $jsontext = (string)$gen['homework_json'];
 
             if ($label === '') { $label = 'Homework ('.($level ?: 'general').') – Attempt '.$attemptid; }
 
