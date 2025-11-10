@@ -2889,13 +2889,162 @@ PROMPT;
             $text = trim((string)$resp['response']);
         }
 
-        // Trim to the outermost JSON object just in case
-        $start = strpos($text, '{'); $end = strrpos($text, '}');
-        if ($start !== false && $end !== false && $end > $start) { $text = substr($text, $start, $end - $start + 1); }
-        $json = json_decode($text, true);
-        if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
-            return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+        // Trim to the outermost JSON object or array just in case
+        $raw = $text;
+        $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
+        $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
+        if ($startObj !== false && $endObj !== false && $endObj > $startObj) {
+            $text = substr($text, $startObj, $endObj - $startObj + 1);
+        } else if ($startArr !== false && $endArr !== false && $endArr > $startArr) {
+            $text = substr($text, $startArr, $endArr - $startArr + 1);
         }
+
+        $json = json_decode($text, true);
+
+        // SALVAGE: if decode produced a list (top-level array), wrap as object with items
+        if (is_array($json) && !isset($json['items'])) {
+            $keys = array_keys($json);
+            $islist = ($keys === range(0, count($json) - 1));
+            if ($islist) {
+                $json = [
+                    'version' => '1.0',
+                    'meta' => [ 'attemptid' => $attempt_id, 'level' => $level ],
+                    'items' => $json
+                ];
+            }
+        }
+
+        // SALVAGE: if items missing but sections present, try flattening sections[*].items
+        if (is_array($json) && !isset($json['items']) && isset($json['sections']) && is_array($json['sections'])) {
+            $flatten = [];
+            foreach ($json['sections'] as $sec) {
+                if (isset($sec['items']) && is_array($sec['items'])) {
+                    foreach ($sec['items'] as $it) { $flatten[] = $it; }
+                }
+            }
+            if (!empty($flatten)) {
+                $json['items'] = $flatten;
+            }
+        }
+
+        if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
+            // Log snippet for debugging
+            $snippet = mb_substr($raw, 0, 300);
+            error_log("🚨 Quiz Dashboard: invalid homework JSON (pre-repair); snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet));
+
+            // One-shot repair fallback
+            $repair_rules = "Repair into a single JSON object with keys: version, meta, items.\n".
+                           "- meta.level must be '$level'.\n".
+                           "- items must be an array of exactly 30 elements: first 20 MCQ then 10 SI.\n".
+                           "- Preserve the original content as much as possible.\n".
+                           "- Do NOT include code fences or any prose; output only JSON.\n";
+            $repair_payload = "SCHEMA EXAMPLE:\n".json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n\n".
+                              $repair_rules."\n\nORIGINAL OUTPUT TO REPAIR (may contain non-JSON):\n".$raw;
+
+            if ($provider === 'anthropic') {
+                $data2 = [
+                    'model' => $this->get_anthropic_model(),
+                    'system' => 'Return only a single valid JSON object. No prose.',
+                    'messages' => [ [ 'role' => 'user', 'content' => [ ['type'=>'text','text'=>$repair_payload] ] ] ],
+                    'max_tokens' => 3000,
+                    'temperature' => 0,
+                ];
+                $resp2 = $this->make_anthropic_api_call($data2, 'homework json repair');
+                if ($resp2['success']) {
+                    $text = trim((string)$resp2['response']);
+                }
+            } else {
+                $data2 = [
+                    'model' => $this->get_openai_model(),
+                    'messages' => [
+                        ['role' => 'system', 'content' => 'Return only a single valid JSON object. No prose.'],
+                        ['role' => 'user', 'content' => $repair_payload]
+                    ],
+                    'response_format' => ['type' => 'json_object'],
+                    'max_completion_tokens' => 3000,
+                    'temperature' => 0,
+                ];
+                $resp2 = $this->make_openai_api_call($data2, 'homework json repair');
+                if ($resp2['success']) {
+                    $text = trim((string)$resp2['response']);
+                }
+            }
+
+            // Re-run trimming and salvage on repaired text
+            $raw2 = $text;
+            $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
+            $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
+            if ($startObj !== false && $endObj !== false && $endObj > $startObj) {
+                $text = substr($text, $startObj, $endObj - $startObj + 1);
+            } else if ($startArr !== false && $endArr !== false && $endArr > $startArr) {
+                $text = substr($text, $startArr, $endArr - $startArr + 1);
+            }
+            $json = json_decode($text, true);
+            if (is_array($json) && !isset($json['items'])) {
+                $keys = array_keys($json);
+                $islist = ($keys === range(0, count($json) - 1));
+                if ($islist) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$json]; }
+            }
+            if (is_array($json) && !isset($json['items']) && isset($json['sections']) && is_array($json['sections'])) {
+                $flatten = [];
+                foreach ($json['sections'] as $sec) {
+                    if (isset($sec['items']) && is_array($sec['items'])) { foreach ($sec['items'] as $it) { $flatten[] = $it; } }
+                }
+                if (!empty($flatten)) { $json['items'] = $flatten; }
+            }
+
+            if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
+                $snippet2 = mb_substr($raw2 ?? '', 0, 300);
+                error_log("🚨 Quiz Dashboard: invalid homework JSON after repair; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet2));
+
+                // Cross-provider fallback: try OpenAI if current provider is Anthropic
+                if ($provider === 'anthropic') {
+                    $data3 = [
+                        'model' => $this->get_openai_model(),
+                        'messages' => [
+                            ['role' => 'system', 'content' => 'Return only a single valid JSON object. No prose.'],
+                            ['role' => 'user', 'content' => $user_content]
+                        ],
+                        'response_format' => ['type' => 'json_object'],
+                        'max_completion_tokens' => 4000,
+                        'temperature' => 0.2,
+                    ];
+                    $resp3 = $this->make_openai_api_call($data3, 'homework json fallback');
+                    if (!empty($resp3['success'])) {
+                        $text = trim((string)$resp3['response']);
+                        // Re-run trimming and salvage parse
+                        $raw3 = $text;
+                        $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
+                        $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
+                        if ($startObj !== false && $endObj !== false && $endObj > $startObj) { $text = substr($text, $startObj, $endObj - $startObj + 1); }
+                        else if ($startArr !== false && $endArr !== false && $endArr > $startArr) { $text = substr($text, $startArr, $endArr - $startArr + 1); }
+                        $json = json_decode($text, true);
+                        if (is_array($json) && !isset($json['items'])) {
+                            $keys = array_keys($json);
+                            $islist = ($keys === range(0, count($json) - 1));
+                            if ($islist) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$json]; }
+                        }
+                        if (is_array($json) && !isset($json['items']) && isset($json['sections']) && is_array($json['sections'])) {
+                            $flatten = [];
+                            foreach ($json['sections'] as $sec) { if (isset($sec['items']) && is_array($sec['items'])) { foreach ($sec['items'] as $it) { $flatten[] = $it; } } }
+                            if (!empty($flatten)) { $json['items'] = $flatten; }
+                        }
+                        if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
+                            $snippet3 = mb_substr($raw3 ?? '', 0, 300);
+                            error_log("🚨 Quiz Dashboard: invalid homework JSON after OpenAI fallback; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet3));
+                            return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                        }
+                    } else {
+                        return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                    }
+                } else {
+                    return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                }
+            }
+        }
+
+        // Ensure we return and persist the sanitized/normalized JSON
+        $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         // Persist JSON onto grading record if field exists
         try {
