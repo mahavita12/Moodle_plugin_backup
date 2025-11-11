@@ -2915,6 +2915,16 @@ PROMPT;
             $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
             $json = json_decode($text, true);
         }
+        if ($json === null) {
+            // Heuristic: convert single-quoted keys/values to double-quoted JSON
+            if (preg_match("/('\s*:|:\s*')/", $text)) {
+                // Quote object keys: 'key': -> "key":
+                $text = preg_replace("/'([A-Za-z0-9_\-\s]+)'\s*:/u", '"$1":', $text);
+                // Quote simple string values: : 'value' -> : "value"
+                $text = preg_replace("/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/u", ': "$1"', $text);
+                $json = json_decode($text, true);
+            }
+        }
 
         // SALVAGE: if decode produced a list (top-level array), wrap as object with items
         if (is_array($json) && !isset($json['items'])) {
@@ -2971,6 +2981,16 @@ PROMPT;
             }
             if (!empty($items)) {
                 $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items];
+                // Short-circuit: accept salvaged items without invoking repair/fallback
+                $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                try {
+                    $grading->homework_json = $text;
+                    $grading->timemodified = time();
+                    $DB->update_record('local_quizdashboard_gradings', $grading);
+                } catch (\Throwable $e) {
+                    // ignore if column not present
+                }
+                return ['success' => true, 'homework_json' => $text];
             }
 
             // One-shot repair fallback
@@ -3032,6 +3052,13 @@ PROMPT;
             if ($json === null) {
                 $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
                 $json = json_decode($text, true);
+            }
+            if ($json === null) {
+                if (preg_match("/('\s*:|:\s*')/", $text)) {
+                    $text = preg_replace("/'([A-Za-z0-9_\-\s]+)'\s*:/u", '"$1":', $text);
+                    $text = preg_replace("/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/u", ': "$1"', $text);
+                    $json = json_decode($text, true);
+                }
             }
             if (is_array($json) && !isset($json['items'])) {
                 $keys = array_keys($json);
@@ -3104,6 +3131,13 @@ PROMPT;
                         if ($json === null) {
                             $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
                             $json = json_decode($text, true);
+                        }
+                        if ($json === null) {
+                            if (preg_match("/('\s*:|:\s*')/", $text)) {
+                                $text = preg_replace("/'([A-Za-z0-9_\-\s]+)'\s*:/u", '"$1":', $text);
+                                $text = preg_replace("/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/u", ': "$1"', $text);
+                                $json = json_decode($text, true);
+                            }
                         }
                         if (is_array($json) && !isset($json['items'])) {
                             $keys = array_keys($json);
