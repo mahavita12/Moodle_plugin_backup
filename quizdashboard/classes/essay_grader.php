@@ -42,6 +42,41 @@ class essay_grader {
         @file_put_contents($file, '['.date('Y-m-d H:i:s').'] '.$line.PHP_EOL, FILE_APPEND);
     }
 
+    // Auto-close truncated JSON by closing open strings and appending missing brackets/braces.
+    // This is a best-effort salvage to turn partial outputs into decodable JSON.
+    protected function json_autoclose(string $text): string {
+        $s = (string)$text;
+        $len = strlen($s);
+        $stack = [];
+        $in = false; // inside string
+        $q = '';
+        $esc = false;
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $s[$i];
+            if ($in) {
+                if ($esc) { $esc = false; continue; }
+                if ($ch === '\\') { $esc = true; continue; }
+                if ($ch === $q) { $in = false; $q = ''; continue; }
+                continue;
+            } else {
+                if ($ch === '"' || $ch === "'") { $in = true; $q = $ch; continue; }
+                if ($ch === '{' || $ch === '[') { $stack[] = $ch; continue; }
+                if ($ch === '}' || $ch === ']') {
+                    if (!empty($stack)) {
+                        $open = array_pop($stack);
+                        // ignore mismatches quietly
+                    }
+                }
+            }
+        }
+        if ($in && $q) { $s .= $q; $in = false; $q = ''; }
+        while (!empty($stack)) {
+            $open = array_pop($stack);
+            $s .= ($open === '{') ? '}' : ']';
+        }
+        return $s;
+    }
+
     /**
      * Get current AI provider from Quiz Dashboard config.
      */
@@ -2916,6 +2951,9 @@ PROMPT;
             $text = substr($text, $startArr, $endArr - $startArr + 1);
         }
 
+        // Attempt to auto-close truncated JSON (quotes/brackets/braces)
+        $text = $this->json_autoclose($text);
+
         // Remove trailing commas and normalize curly quotes before decoding
         $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
         $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
@@ -3059,6 +3097,8 @@ PROMPT;
             } else if ($startArr !== false && $endArr !== false && $endArr > $startArr) {
                 $text = substr($text, $startArr, $endArr - $startArr + 1);
             }
+            // Attempt to auto-close truncated JSON (quotes/brackets/braces)
+            $text = $this->json_autoclose($text);
             // Remove trailing commas and normalize curly quotes
             $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
             $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
@@ -3126,57 +3166,67 @@ PROMPT;
                         'temperature' => 0.2,
                     ];
                     $resp3 = $this->make_openai_api_call($data3, 'homework json fallback');
-                    if (!empty($resp3['success'])) {
-                        $text = trim((string)$resp3['response']);
-                        // Re-run trimming and salvage parse
-                        // Pre-clean common wrappers and artifacts for fallback
-                        $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
-                        $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
-                        $text = preg_replace('/\s*```+\s*$/', '', $text);
-                        $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
-                        $text = str_replace(["\r\n", "\r", "\n"], ' ', $text);
-                        $raw3 = $text;
-                        $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
-                        $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
-                        if ($startObj !== false && $endObj !== false && $endObj > $startObj) { $text = substr($text, $startObj, $endObj - $startObj + 1); }
-                        else if ($startArr !== false && $endArr !== false && $endArr > $startArr) { $text = substr($text, $startArr, $endArr - $startArr + 1); }
-                        // Remove trailing commas and normalize curly quotes
-                        $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
-                        $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
-                        $json = json_decode($text, true);
-                        if ($json === null) {
-                            $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
+                    try {
+                        if (!empty($resp3['success'])) {
+                            $text = trim((string)$resp3['response']);
+                            // Re-run trimming and salvage parse
+                            // Pre-clean common wrappers and artifacts for fallback
+                            $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
+                            $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
+                            $text = preg_replace('/\s*```+\s*$/', '', $text);
+                            $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
+                            $text = str_replace(["\r\n", "\r", "\n"], ' ', $text);
+                            $raw3 = $text;
+                            $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
+                            $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
+                            if ($startObj !== false && $endObj !== false && $endObj > $startObj) { $text = substr($text, $startObj, $endObj - $startObj + 1); }
+                            else if ($startArr !== false && $endArr !== false && $endArr > $startArr) { $text = substr($text, $startArr, $endArr - $startArr + 1); }
+                            // Attempt to auto-close truncated JSON (quotes/brackets/braces)
+                            $text = $this->json_autoclose($text);
+                            // Remove trailing commas and normalize curly quotes
+                            $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
+                            $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
                             $json = json_decode($text, true);
-                        }
-                        if ($json === null) {
-                            if (preg_match("/('\s*:|:\s*')/", $text)) {
-                                $text = preg_replace("/'([A-Za-z0-9_\-\s]+)'\s*:/u", '"$1":', $text);
-                                $text = preg_replace("/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/u", ': "$1"', $text);
+                            if ($json === null) {
+                                $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
                                 $json = json_decode($text, true);
                             }
+                            if ($json === null) {
+                                if (preg_match("/('\s*:|:\s*')/", $text)) {
+                                    $text = preg_replace("/'([A-Za-z0-9_\-\s]+)'\s*:/u", '"$1":', $text);
+                                    $text = preg_replace("/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/u", ': "$1"', $text);
+                                    $json = json_decode($text, true);
+                                }
+                            }
+                            if (is_array($json) && !isset($json['items'])) {
+                                $keys = array_keys($json);
+                                $islist = ($keys === range(0, count($json) - 1));
+                                if ($islist) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$json]; }
+                            }
+                            if (is_array($json) && !isset($json['items']) && isset($json['sections']) && is_array($json['sections'])) {
+                                $flatten = [];
+                                foreach ($json['sections'] as $sec) { if (isset($sec['items']) && is_array($sec['items'])) { foreach ($sec['items'] as $it) { $flatten[] = $it; } } }
+                                if (!empty($flatten)) { $json['items'] = $flatten; }
+                            }
+                            if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
+                                $snippet3 = mb_substr($raw3 ?? '', 0, 300);
+                                error_log("🚨 Quiz Dashboard: invalid homework JSON after OpenAI fallback; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet3));
+                                $this->write_plugin_log("invalid (after OpenAI fallback); attemptid=".$attempt_id."; provider=".$provider."; snippet=".str_replace(["\n","\r"], ['\\n',''], $snippet3));
+                                return ['success' => false, 'message' => 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet3)];
+                            }
+                        } else {
+                            $this->write_plugin_log("openai_fallback_failed; attemptid=".$attempt_id."; error=".(isset($resp3['error']) ? $resp3['error'] : 'unknown'));
+                            return ['success' => false, 'message' => $msg2];
                         }
-                        if (is_array($json) && !isset($json['items'])) {
-                            $keys = array_keys($json);
-                            $islist = ($keys === range(0, count($json) - 1));
-                            if ($islist) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$json]; }
-                        }
-                        if (is_array($json) && !isset($json['items']) && isset($json['sections']) && is_array($json['sections'])) {
-                            $flatten = [];
-                            foreach ($json['sections'] as $sec) { if (isset($sec['items']) && is_array($sec['items'])) { foreach ($sec['items'] as $it) { $flatten[] = $it; } } }
-                            if (!empty($flatten)) { $json['items'] = $flatten; }
-                        }
-                        if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
-                            $snippet3 = mb_substr($raw3 ?? '', 0, 300);
-                            error_log("🚨 Quiz Dashboard: invalid homework JSON after OpenAI fallback; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet3));
-                            $this->write_plugin_log("invalid (after OpenAI fallback); attemptid=".$attempt_id."; provider=".$provider."; snippet=".str_replace(["\n","\r"], ['\\n',''], $snippet3));
-                            return ['success' => false, 'message' => 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet3)];
-                        }
-                    } else {
+                    } catch (\Throwable $e) {
+                        $this->write_plugin_log("openai_fallback_exception; attemptid=".$attempt_id."; message=".$e->getMessage());
                         return ['success' => false, 'message' => $msg2];
                     }
                 } else {
                     return ['success' => false, 'message' => $msg2];
                 }
+            } else {
+                return ['success' => false, 'message' => $msg2];
             }
         }
 
