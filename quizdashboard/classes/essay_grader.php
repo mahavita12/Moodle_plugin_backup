@@ -3030,18 +3030,23 @@ PROMPT;
                 }
             }
             if (!empty($items)) {
-                $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items];
-                $this->write_plugin_log("salvaged; attemptid=".$attempt_id."; count=".count($items));
-                // Short-circuit: accept salvaged items without invoking repair/fallback
-                $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                try {
-                    $grading->homework_json = $text;
-                    $grading->timemodified = time();
-                    $DB->update_record('local_quizdashboard_gradings', $grading);
-                } catch (\Throwable $e) {
-                    // ignore if column not present
+                if (count($items) >= 30) {
+                    $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items];
+                    $this->write_plugin_log("salvaged; attemptid=".$attempt_id."; count=".count($items));
+                    // Short-circuit: accept salvaged items without invoking repair/fallback
+                    $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    try {
+                        $grading->homework_json = $text;
+                        $grading->timemodified = time();
+                        $DB->update_record('local_quizdashboard_gradings', $grading);
+                    } catch (\Throwable $e) {
+                        // ignore if column not present
+                    }
+                    return ['success' => true, 'homework_json' => $text];
+                } else {
+                    $this->write_plugin_log("salvage_partial_below_threshold; attemptid=".$attempt_id."; count=".count($items));
+                    // Do not return yet; proceed to repair and fallback paths
                 }
-                return ['success' => true, 'homework_json' => $text];
             }
 
             // One-shot repair fallback

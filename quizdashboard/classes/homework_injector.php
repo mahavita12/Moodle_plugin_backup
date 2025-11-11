@@ -14,8 +14,13 @@ class homework_injector {
         $pcctx = $cg->ensure_personal_course($userid);
         $courseid = (int)$pcctx->course->id;
         try { $en = new \local_personalcourse\enrollment_manager(); $en->ensure_manual_instance_and_enrol_student($courseid, $userid); } catch (\Throwable $e) {}
+        // Compute student initials for section and quiz naming
+        $u = $DB->get_record('user', ['id' => (int)$userid], 'id,firstname,lastname,username');
+        $fi = $u && !empty($u->firstname) ? mb_substr($u->firstname, 0, 1, 'UTF-8') : '';
+        $li = $u && !empty($u->lastname) ? mb_substr($u->lastname, 0, 1, 'UTF-8') : '';
+        $initial = strtoupper(($fi.$li) !== '' ? ($fi.$li) : ($u && !empty($u->username) ? mb_substr($u->username, 0, 2, 'UTF-8') : 'HW'));
         $sm = new \local_personalcourse\section_manager();
-        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Essay Homework');
+        $sectionnum = $sm->ensure_section_by_prefix($courseid, $initial.'-Essay Feedback Homework');
         $qb = new \local_personalcourse\quiz_builder();
         // Derive topic from label: remove trailing "- / – Attempt N" and leading class code like "5A - "
         $topic = (string)$label;
@@ -25,8 +30,10 @@ class homework_injector {
         if (preg_match('/^\s*([0-9]+[A-Za-z]?)\s*-\s*(.+)$/u', (string)$topic, $m)) {
             $topic = $m[2];
         }
+        // Remove leading "Writing - " (or variants) from topic if present
+        $topic = preg_replace('/^\s*Writing\s*[-–—:]\s*/iu', '', (string)$topic);
         $topic = trim((string)$topic);
-        $name = 'Essay Homework - ' . $topic;
+        $name = $initial . '-' . $topic;
 
         // Overwrite existing quiz for the same topic by deleting any prior quiz with the same name.
         require_once($CFG->dirroot . '/course/lib.php');
@@ -131,8 +138,13 @@ class homework_injector {
         $pcctx = $cg->ensure_personal_course($userid);
         $courseid = (int)$pcctx->course->id;
         try { $en = new \local_personalcourse\enrollment_manager(); $en->ensure_manual_instance_and_enrol_student($courseid, $userid); } catch (\Throwable $e) {}
+        // Compute student initials for section and quiz naming
+        $u = $DB->get_record('user', ['id' => (int)$userid], 'id,firstname,lastname,username');
+        $fi = $u && !empty($u->firstname) ? mb_substr($u->firstname, 0, 1, 'UTF-8') : '';
+        $li = $u && !empty($u->lastname) ? mb_substr($u->lastname, 0, 1, 'UTF-8') : '';
+        $initial = strtoupper(($fi.$li) !== '' ? ($fi.$li) : ($u && !empty($u->username) ? mb_substr($u->username, 0, 2, 'UTF-8') : 'HW'));
         $sm = new \local_personalcourse\section_manager();
-        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Essay Homework');
+        $sectionnum = $sm->ensure_section_by_prefix($courseid, $initial.'-Essay Feedback Homework');
         $qb = new \local_personalcourse\quiz_builder();
         // Derive topic from label: remove trailing "- / – Attempt N" and leading class code like "5A - "
         $topic = (string)$label;
@@ -142,8 +154,21 @@ class homework_injector {
         if (preg_match('/^\s*([0-9]+[A-Za-z]?)\s*-\s*(.+)$/u', (string)$topic, $m)) {
             $topic = $m[2];
         }
+        // Remove leading "Writing - " (or variants) from topic if present
+        $topic = preg_replace('/^\s*Writing\s*[-–—:]\s*/iu', '', (string)$topic);
         $topic = trim((string)$topic);
-        $name = 'Essay Homework - ' . $topic;
+        $name = $initial . '-' . $topic;
+        // Overwrite existing quiz for the same topic by deleting any prior quiz with the same name.
+        require_once($CFG->dirroot . '/course/lib.php');
+        $existingquiz = $DB->get_record('quiz', ['course' => (int)$courseid, 'name' => (string)$name], 'id', \IGNORE_MISSING);
+        if ($existingquiz && !empty($existingquiz->id)) {
+            $cm = get_coursemodule_from_instance('quiz', (int)$existingquiz->id, (int)$courseid, \IGNORE_MISSING);
+            if ($cm && !empty($cm->id)) {
+                try { course_delete_module((int)$cm->id); } catch (\Throwable $e) { /* ignore */ }
+            } else {
+                $DB->delete_records('quiz', ['id' => (int)$existingquiz->id]);
+            }
+        }
         $res = $qb->create_quiz($courseid, $sectionnum, $name, '', 'default');
         $quizid = (int)$res->quizid;
 
@@ -172,15 +197,20 @@ class homework_injector {
         $mcq = [];
         foreach ($items as $it) {
             $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
-            if ($type === 'si') { $si[] = $it; }
-            if ($type === 'mcq') { $mcq[] = $it; }
+            if ($type !== '') {
+                if ($type !== 'si' && (strpos($type, 'sentence') !== false || $type === 'sa' || $type === 'shortanswer')) { $type = 'si'; }
+                if ($type !== 'mcq' && (strpos($type, 'mcq') !== false || strpos($type, 'multi') !== false || strpos($type, 'choice') !== false)) { $type = 'mcq'; }
+                if ($type === 'si') { $si[] = $it; }
+                if ($type === 'mcq') { $mcq[] = $it; }
+            }
         }
 
         // Enforce SI length rule and cap at 10
         $siFiltered = [];
         foreach ($si as $it) {
             $orig = trim((string)($it['original'] ?? ''));
-            $impr = trim((string)($it['improved'] ?? ''));
+            $imprRaw = isset($it['improved']) ? $it['improved'] : (isset($it['suggested']) ? $it['suggested'] : (isset($it['rewrite']) ? $it['rewrite'] : (isset($it['improved_sentence']) ? $it['improved_sentence'] : '')));
+            $impr = trim((string)$imprRaw);
             if ($orig === '' || $impr === '') { continue; }
             if (mb_strlen($impr) < mb_strlen($orig)) { continue; }
             $siFiltered[] = ['original' => $orig, 'improved' => $impr];
@@ -213,10 +243,7 @@ class homework_injector {
             $single = !empty($m['single']) ? 'true' : 'false';
             $qnum++;
             $qname = htmlspecialchars('MCQ '.$qnum, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-            $qtext = '<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
 
-            // Build general feedback with Exercise Type / Tips / Explanation if provided
-            $gfparts = [];
             // Keep Exercise/Tips consistent within a 5-question section
             $incomingExercise = isset($m['exercise']) ? trim((string)$m['exercise']) : '';
             $incomingTips = isset($m['tips']) ? trim((string)$m['tips']) : '';
@@ -224,6 +251,19 @@ class homework_injector {
             if ($sectionTips === '' && $incomingTips !== '') { $sectionTips = $incomingTips; }
             $exercise = $sectionExercise !== '' ? $sectionExercise : $incomingExercise;
             $tips = $sectionTips !== '' ? $sectionTips : $incomingTips;
+
+            // Build question text with section-level Exercise Type and Tips header
+            $header = '';
+            if ($exercise !== '' || $tips !== '') {
+                $hp = [];
+                if ($exercise !== '') { $hp[] = '<strong>Exercise Type:</strong> '.htmlspecialchars($exercise, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
+                if ($tips !== '') { $hp[] = '<strong>Tips for Improvement:</strong> '.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
+                $header = '<div class="hw-context">'.implode('<br>', $hp).'</div>';
+            }
+            $qtext = $header.'<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
+
+            // Build general feedback with Exercise Type / Tips / Explanation if provided
+            $gfparts = [];
             $expl = isset($m['explanation']) ? trim((string)$m['explanation']) : '';
             if ($exercise !== '') { $gfparts[] = 'Exercise Type: '.htmlspecialchars($exercise, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
             if ($tips !== '') { $gfparts[] = 'Tips for Improvement: '.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
