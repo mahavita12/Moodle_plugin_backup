@@ -33,6 +33,15 @@ class essay_grader {
         $this->service_account_path = $this->get_service_account_path();
     }
 
+    protected function write_plugin_log($line): void {
+        global $CFG;
+        $file = $CFG->dirroot . '/local/quizdashboard/logs/homework_json.log';
+        $dir = dirname($file);
+        if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+        $line = preg_replace('/[\r\n]+/', ' ', (string)$line);
+        @file_put_contents($file, '['.date('Y-m-d H:i:s').'] '.$line.PHP_EOL, FILE_APPEND);
+    }
+
     /**
      * Get current AI provider from Quiz Dashboard config.
      */
@@ -2894,6 +2903,8 @@ PROMPT;
         $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
         $text = preg_replace('/\s*```+\s*$/', '', $text);
         $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
+        // Normalize newlines to spaces (JSON strings cannot contain raw newlines)
+        $text = str_replace(["\r\n", "\r", "\n"], ' ', $text);
 
         // Trim to the outermost JSON object or array just in case
         $raw = $text;
@@ -2956,6 +2967,7 @@ PROMPT;
             // Log snippet for debugging
             $snippet = mb_substr($raw, 0, 300);
             error_log("🚨 Quiz Dashboard: invalid homework JSON (pre-repair); snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet));
+            $this->write_plugin_log("invalid (pre-repair); attemptid=".$attempt_id."; provider=".$provider."; snippet=".str_replace(["\n","\r"], ['\\n',''], $snippet));
             $msg = 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet);
 
             $items = [];
@@ -2981,6 +2993,7 @@ PROMPT;
             }
             if (!empty($items)) {
                 $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items];
+                $this->write_plugin_log("salvaged; attemptid=".$attempt_id."; count=".count($items));
                 // Short-circuit: accept salvaged items without invoking repair/fallback
                 $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 try {
@@ -3037,6 +3050,7 @@ PROMPT;
             $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
             $text = preg_replace('/\s*```+\s*$/', '', $text);
             $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
+            $text = str_replace(["\r\n", "\r", "\n"], ' ', $text);
             $raw2 = $text;
             $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
             $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
@@ -3076,6 +3090,7 @@ PROMPT;
             if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
                 $snippet2 = mb_substr($raw2 ?? '', 0, 300);
                 error_log("🚨 Quiz Dashboard: invalid homework JSON after repair; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet2));
+                $this->write_plugin_log("invalid (after repair); attemptid=".$attempt_id."; provider=".$provider."; snippet=".str_replace(["\n","\r"], ['\\n',''], $snippet2));
                 $msg2 = 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet2);
 
                 $items = [];
@@ -3119,6 +3134,7 @@ PROMPT;
                         $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
                         $text = preg_replace('/\s*```+\s*$/', '', $text);
                         $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
+                        $text = str_replace(["\r\n", "\r", "\n"], ' ', $text);
                         $raw3 = $text;
                         $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
                         $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
@@ -3152,6 +3168,7 @@ PROMPT;
                         if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
                             $snippet3 = mb_substr($raw3 ?? '', 0, 300);
                             error_log("🚨 Quiz Dashboard: invalid homework JSON after OpenAI fallback; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet3));
+                            $this->write_plugin_log("invalid (after OpenAI fallback); attemptid=".$attempt_id."; provider=".$provider."; snippet=".str_replace(["\n","\r"], ['\\n',''], $snippet3));
                             return ['success' => false, 'message' => 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet3)];
                         }
                     } else {
