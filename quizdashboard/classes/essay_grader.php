@@ -2931,6 +2931,32 @@ PROMPT;
             // Log snippet for debugging
             $snippet = mb_substr($raw, 0, 300);
             error_log("🚨 Quiz Dashboard: invalid homework JSON (pre-repair); snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet));
+            $msg = 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet);
+
+            $items = [];
+            $s = $raw; $L = strlen($s);
+            for ($i=0; $i<$L; $i++) {
+                if ($s[$i] === '{') {
+                    $depth = 0; $j = $i;
+                    for (; $j<$L; $j++) {
+                        $c = $s[$j];
+                        if ($c === '{') { $depth++; }
+                        elseif ($c === '}') { $depth--; if ($depth === 0) { break; } }
+                    }
+                    if ($j < $L) {
+                        $frag = substr($s, $i, $j - $i + 1);
+                        $obj = json_decode($frag, true);
+                        if (is_array($obj) && isset($obj['type'])) {
+                            $t = strtolower((string)$obj['type']);
+                            if ($t === 'mcq' || $t === 'si') { $items[] = $obj; }
+                        }
+                        $i = $j;
+                    } else { break; }
+                }
+            }
+            if (!empty($items)) {
+                $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items];
+            }
 
             // One-shot repair fallback
             $repair_rules = "Repair into a single JSON object with keys: version, meta, items.\n".
@@ -2996,6 +3022,27 @@ PROMPT;
             if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
                 $snippet2 = mb_substr($raw2 ?? '', 0, 300);
                 error_log("🚨 Quiz Dashboard: invalid homework JSON after repair; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet2));
+                $msg2 = 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet2);
+
+                $items = [];
+                $s = $raw2 ?? ''; $L = strlen($s);
+                for ($i=0; $i<$L; $i++) {
+                    if ($s[$i] === '{') {
+                        $depth = 0; $j = $i;
+                        for (; $j<$L; $j++) {
+                            $c = $s[$j];
+                            if ($c === '{') { $depth++; }
+                            elseif ($c === '}') { $depth--; if ($depth === 0) { break; } }
+                        }
+                        if ($j < $L) {
+                            $frag = substr($s, $i, $j - $i + 1);
+                            $obj = json_decode($frag, true);
+                            if (is_array($obj) && isset($obj['type'])) { $t = strtolower((string)$obj['type']); if ($t === 'mcq' || $t === 'si') { $items[] = $obj; } }
+                            $i = $j;
+                        } else { break; }
+                    }
+                }
+                if (!empty($items)) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items]; }
 
                 // Cross-provider fallback: try OpenAI if current provider is Anthropic
                 if ($provider === 'anthropic') {
@@ -3032,13 +3079,13 @@ PROMPT;
                         if (!is_array($json) || empty($json['items']) || !is_array($json['items'])) {
                             $snippet3 = mb_substr($raw3 ?? '', 0, 300);
                             error_log("🚨 Quiz Dashboard: invalid homework JSON after OpenAI fallback; snippet=" . str_replace(["\n","\r"], ['\\n',''], $snippet3));
-                            return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                            return ['success' => false, 'message' => 'Model did not return valid JSON items. Snippet: ' . str_replace(["\n","\r"], [' ', ' '], $snippet3)];
                         }
                     } else {
-                        return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                        return ['success' => false, 'message' => $msg2];
                     }
                 } else {
-                    return ['success' => false, 'message' => 'Model did not return valid JSON items.'];
+                    return ['success' => false, 'message' => $msg2];
                 }
             }
         }
