@@ -2889,6 +2889,12 @@ PROMPT;
             $text = trim((string)$resp['response']);
         }
 
+        // Pre-clean common wrappers and artifacts
+        $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
+        $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
+        $text = preg_replace('/\s*```+\s*$/', '', $text);
+        $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
+
         // Trim to the outermost JSON object or array just in case
         $raw = $text;
         $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
@@ -2899,7 +2905,16 @@ PROMPT;
             $text = substr($text, $startArr, $endArr - $startArr + 1);
         }
 
+        // Remove trailing commas and normalize curly quotes before decoding
+        $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
+        $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
+
         $json = json_decode($text, true);
+        if ($json === null) {
+            // Retry after stripping control chars that can break decoding
+            $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
+            $json = json_decode($text, true);
+        }
 
         // SALVAGE: if decode produced a list (top-level array), wrap as object with items
         if (is_array($json) && !isset($json['items'])) {
@@ -2997,6 +3012,11 @@ PROMPT;
             }
 
             // Re-run trimming and salvage on repaired text
+            // Pre-clean common wrappers and artifacts again (repair may include fences)
+            $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
+            $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
+            $text = preg_replace('/\s*```+\s*$/', '', $text);
+            $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
             $raw2 = $text;
             $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
             $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
@@ -3005,7 +3025,14 @@ PROMPT;
             } else if ($startArr !== false && $endArr !== false && $endArr > $startArr) {
                 $text = substr($text, $startArr, $endArr - $startArr + 1);
             }
+            // Remove trailing commas and normalize curly quotes
+            $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
+            $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
             $json = json_decode($text, true);
+            if ($json === null) {
+                $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
+                $json = json_decode($text, true);
+            }
             if (is_array($json) && !isset($json['items'])) {
                 $keys = array_keys($json);
                 $islist = ($keys === range(0, count($json) - 1));
@@ -3060,12 +3087,24 @@ PROMPT;
                     if (!empty($resp3['success'])) {
                         $text = trim((string)$resp3['response']);
                         // Re-run trimming and salvage parse
+                        // Pre-clean common wrappers and artifacts for fallback
+                        $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
+                        $text = preg_replace('/^\s*```(?:json)?\s*/i', '', $text);
+                        $text = preg_replace('/\s*```+\s*$/', '', $text);
+                        $text = preg_replace('/^\s*json\s*(?=\{|\[)/i', '', $text);
                         $raw3 = $text;
                         $startObj = strpos($text, '{'); $endObj = strrpos($text, '}');
                         $startArr = strpos($text, '['); $endArr = strrpos($text, ']');
                         if ($startObj !== false && $endObj !== false && $endObj > $startObj) { $text = substr($text, $startObj, $endObj - $startObj + 1); }
                         else if ($startArr !== false && $endArr !== false && $endArr > $startArr) { $text = substr($text, $startArr, $endArr - $startArr + 1); }
+                        // Remove trailing commas and normalize curly quotes
+                        $text = preg_replace('/,(\s*[}\]])/', '$1', $text);
+                        $text = str_replace(["\xE2\x80\x9C","\xE2\x80\x9D","\xE2\x80\x98","\xE2\x80\x99"], ['"','"','\'','\''], $text);
                         $json = json_decode($text, true);
+                        if ($json === null) {
+                            $text = preg_replace('/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFD]/u', ' ', $text);
+                            $json = json_decode($text, true);
+                        }
                         if (is_array($json) && !isset($json['items'])) {
                             $keys = array_keys($json);
                             $islist = ($keys === range(0, count($json) - 1));
