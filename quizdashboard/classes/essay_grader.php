@@ -3235,7 +3235,29 @@ PROMPT;
             }
         }
 
-        // Ensure we return and persist the sanitized/normalized JSON
+        // Ensure we have at least 20 MCQ and 10 SI before persisting
+        $mcqcount = 0; $sicount = 0;
+        if (isset($json['items']) && is_array($json['items'])) {
+            foreach ($json['items'] as $it) {
+                $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
+                if ($type === 'mcq') {
+                    $stem = trim((string)($it['stem'] ?? ''));
+                    $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
+                    $nonempty = 0; foreach ($options as $o) { if (trim((string)($o['text'] ?? '')) !== '') { $nonempty++; } }
+                    if ($stem !== '' && $nonempty > 0) { $mcqcount++; }
+                } elseif ($type === 'si') {
+                    $orig = trim((string)($it['original'] ?? ''));
+                    $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? '')))));
+                    if ($orig !== '' && $impr !== '' && mb_strlen($impr) >= mb_strlen($orig)) { $sicount++; }
+                }
+            }
+        }
+        if ($mcqcount < 20 || $sicount < 10) {
+            $this->write_plugin_log("homework_incomplete; attemptid=".$attempt_id."; mcq=".$mcqcount."; si=".$sicount);
+            return ['success' => false, 'message' => 'Homework generation incomplete ('.$mcqcount.' MCQ, '.$sicount.' SI). Please retry.'];
+        }
+
+        // Persist the sanitized/normalized JSON
         $text = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         // Persist JSON onto grading record if field exists

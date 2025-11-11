@@ -217,6 +217,33 @@ class homework_injector {
             if (count($siFiltered) >= 10) { break; }
         }
 
+        // Pre-validate MCQs using the same acceptance criteria as the builder loop
+        $acceptedMcq = 0;
+        foreach ($mcq as $m) {
+            $stem = trim((string)($m['stem'] ?? ''));
+            $options = isset($m['options']) && is_array($m['options']) ? $m['options'] : [];
+            if ($stem === '') { continue; }
+            $opts = [];
+            foreach ($options as $o) {
+                $txt = isset($o['text']) ? trim((string)$o['text']) : '';
+                if ($txt !== '') { $opts[] = ['text' => $txt, 'correct' => !empty($o['correct'])]; }
+            }
+            if (count($opts) < 4) { continue; }
+            $acceptedMcq++;
+            if ($acceptedMcq >= 20) { break; }
+        }
+
+        if ($acceptedMcq < 20 || count($siFiltered) < 10) {
+            // Clean up the quiz we just created to avoid leaving partial/empty quizzes
+            try {
+                require_once($CFG->dirroot . '/course/lib.php');
+                $cm = get_coursemodule_from_instance('quiz', (int)$quizid, (int)$courseid, \IGNORE_MISSING);
+                if ($cm && !empty($cm->id)) { course_delete_module((int)$cm->id); }
+                else { $DB->delete_records('quiz', ['id' => (int)$quizid]); }
+            } catch (\Throwable $e) { /* non-fatal */ }
+            throw new \moodle_exception('Homework generation incomplete: accepted '.$acceptedMcq.' MCQ and '.count($siFiltered).' SI. Please retry.');
+        }
+
         // Build Moodle XML - MCQs first, then SI last
         $xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><quiz>";
 
