@@ -15,7 +15,7 @@ class homework_injector {
         $courseid = (int)$pcctx->course->id;
         try { $en = new \local_personalcourse\enrollment_manager(); $en->ensure_manual_instance_and_enrol_student($courseid, $userid); } catch (\Throwable $e) {}
         $sm = new \local_personalcourse\section_manager();
-        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Homework');
+        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Essay Homework');
         $qb = new \local_personalcourse\quiz_builder();
         // Derive topic from label: remove trailing "- / – Attempt N" and leading class code like "5A - "
         $topic = (string)$label;
@@ -132,7 +132,7 @@ class homework_injector {
         $courseid = (int)$pcctx->course->id;
         try { $en = new \local_personalcourse\enrollment_manager(); $en->ensure_manual_instance_and_enrol_student($courseid, $userid); } catch (\Throwable $e) {}
         $sm = new \local_personalcourse\section_manager();
-        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Homework');
+        $sectionnum = $sm->ensure_section_by_prefix($courseid, 'Essay Homework');
         $qb = new \local_personalcourse\quiz_builder();
         // Derive topic from label: remove trailing "- / – Attempt N" and leading class code like "5A - "
         $topic = (string)$label;
@@ -192,12 +192,24 @@ class homework_injector {
 
         // MCQ (includes Vocabulary Builder as MCQ)
         $qnum = 0;
+        $sectionExercise = '';
+        $sectionTips = '';
+        $acceptedInSection = 0; // reset after every 5 accepted MCQs
         foreach ($mcq as $m) {
             $stem = trim((string)($m['stem'] ?? ''));
             $options = isset($m['options']) && is_array($m['options']) ? $m['options'] : [];
-            if ($stem === '' || count($options) < 4) { continue; }
-            $hasCorrect = false; foreach ($options as $o) { if (!empty($o['correct'])) { $hasCorrect = true; break; } }
-            if (!$hasCorrect) { continue; }
+            if ($stem === '') { continue; }
+            $opts = [];
+            foreach ($options as $o) {
+                $txt = isset($o['text']) ? trim((string)$o['text']) : '';
+                if ($txt !== '') { $opts[] = ['text' => $txt, 'correct' => !empty($o['correct']), 'feedback' => isset($o['feedback']) ? (string)$o['feedback'] : '' ]; }
+            }
+            if (count($opts) < 4) { continue; }
+            if (count($opts) > 4) { $opts = array_slice($opts, 0, 4); }
+            $firstCorrect = null;
+            foreach ($opts as $idx => $o) { if (!empty($o['correct']) && $firstCorrect === null) { $firstCorrect = $idx; } }
+            if ($firstCorrect === null) { $firstCorrect = 0; }
+            foreach ($opts as $idx => $o) { $opts[$idx]['correct'] = ($idx === $firstCorrect); }
             $single = !empty($m['single']) ? 'true' : 'false';
             $qnum++;
             $qname = htmlspecialchars('MCQ '.$qnum, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
@@ -205,8 +217,13 @@ class homework_injector {
 
             // Build general feedback with Exercise Type / Tips / Explanation if provided
             $gfparts = [];
-            $exercise = isset($m['exercise']) ? trim((string)$m['exercise']) : '';
-            $tips = isset($m['tips']) ? trim((string)$m['tips']) : '';
+            // Keep Exercise/Tips consistent within a 5-question section
+            $incomingExercise = isset($m['exercise']) ? trim((string)$m['exercise']) : '';
+            $incomingTips = isset($m['tips']) ? trim((string)$m['tips']) : '';
+            if ($sectionExercise === '' && $incomingExercise !== '') { $sectionExercise = $incomingExercise; }
+            if ($sectionTips === '' && $incomingTips !== '') { $sectionTips = $incomingTips; }
+            $exercise = $sectionExercise !== '' ? $sectionExercise : $incomingExercise;
+            $tips = $sectionTips !== '' ? $sectionTips : $incomingTips;
             $expl = isset($m['explanation']) ? trim((string)$m['explanation']) : '';
             if ($exercise !== '') { $gfparts[] = 'Exercise Type: '.htmlspecialchars($exercise, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
             if ($tips !== '') { $gfparts[] = 'Tips for Improvement: '.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
@@ -222,14 +239,21 @@ class homework_injector {
                  . '<single>'.$single.'</single>'
                  . '<shuffleanswers>1</shuffleanswers>'
                  . '<answernumbering>abc</answernumbering>';
-            foreach ($options as $o) {
-                $txt = htmlspecialchars((string)($o['text'] ?? ''), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-                if ($txt === '') { continue; }
+            foreach ($opts as $o) {
+                $txt = htmlspecialchars((string)$o['text'], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
                 $frac = !empty($o['correct']) ? '100' : '0';
                 $xml .= '<answer fraction="'.$frac.'" format="moodle_auto_format"><text>'.$txt.'</text>'
-                     . '<feedback><text>'.htmlspecialchars((string)($o['feedback'] ?? ''), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</text></feedback></answer>';
+                     . '<feedback><text>'.htmlspecialchars((string)$o['feedback'], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</text></feedback></answer>';
             }
             $xml .= '</question>';
+            $acceptedInSection++;
+            if ($acceptedInSection >= 5) {
+                // Start a new section
+                $acceptedInSection = 0;
+                $sectionExercise = '';
+                $sectionTips = '';
+            }
+            if ($qnum >= 20) { break; }
         }
 
         // Short Answer for SI (last)
