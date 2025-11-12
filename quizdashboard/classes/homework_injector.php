@@ -207,15 +207,42 @@ class homework_injector {
 
         // Enforce SI length rule and cap at 10
         $siFiltered = [];
-        foreach ($si as $it) {
+        $siDropped = 0;
+        $siDropReasons = [];
+        foreach ($si as $idx => $it) {
             $orig = trim((string)($it['original'] ?? ''));
             $imprRaw = isset($it['improved']) ? $it['improved'] : (isset($it['suggested']) ? $it['suggested'] : (isset($it['rewrite']) ? $it['rewrite'] : (isset($it['improved_sentence']) ? $it['improved_sentence'] : '')));
-            $impr = trim((string)$imprRaw);
-            if ($orig === '' || $impr === '') { continue; }
-            if (mb_strlen($impr) < mb_strlen($orig)) { continue; }
+            $impr = trim((string)($imprRaw);
+            
+            if ($orig === '' || $impr === '') {
+                $siDropped++;
+                $siDropReasons[] = "SI[$idx]: empty (orig=".mb_strlen($orig).", impr=".mb_strlen($impr).")";
+                continue;
+            }
+            
+            $origLen = mb_strlen($orig);
+            $imprLen = mb_strlen($impr);
+            
+            if ($imprLen < $origLen) {
+                $siDropped++;
+                $siDropReasons[] = "SI[$idx]: too_short (orig=$origLen, impr=$imprLen)";
+                continue;
+            }
+            
             $siFiltered[] = ['original' => $orig, 'improved' => $impr];
             if (count($siFiltered) >= 10) { break; }
         }
+        
+        // Log SI filtering details
+        $logPath = $CFG->dirroot . '/local/quizdashboard/logs/homework_json.log';
+        $logDir = dirname($logPath);
+        if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }
+        $logMsg = "[".date('Y-m-d H:i:s')."] SI_FILTER; total=".count($si)."; accepted=".count($siFiltered)."; dropped=$siDropped";
+        if ($siDropped > 0 && count($siDropReasons) > 0) {
+            $logMsg .= "; reasons: " . implode('; ', array_slice($siDropReasons, 0, 5));
+        }
+        $logMsg .= "\n";
+        @file_put_contents($logPath, $logMsg, FILE_APPEND);
 
         // Pre-validate MCQs using the same acceptance criteria as the builder loop
         $acceptedMcq = 0;

@@ -3237,8 +3237,11 @@ PROMPT;
 
         // Ensure we have at least 20 MCQ and 10 SI before persisting
         $mcqcount = 0; $sicount = 0;
+        $si_details = [];
+        $si_dropped_details = [];
+
         if (isset($json['items']) && is_array($json['items'])) {
-            foreach ($json['items'] as $it) {
+            foreach ($json['items'] as $idx => $it) {
                 $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
                 if ($type === 'mcq') {
                     $stem = trim((string)($it['stem'] ?? ''));
@@ -3248,10 +3251,28 @@ PROMPT;
                 } elseif ($type === 'si') {
                     $orig = trim((string)($it['original'] ?? ''));
                     $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? '')))));
-                    if ($orig !== '' && $impr !== '' && mb_strlen($impr) >= mb_strlen($orig)) { $sicount++; }
+                    $origLen = mb_strlen($orig);
+                    $imprLen = mb_strlen($impr);
+
+                    if ($orig === '' || $impr === '') {
+                        $si_dropped_details[] = "SI[$idx]: empty (orig=$origLen, impr=$imprLen)";
+                    } elseif ($imprLen < $origLen) {
+                        $si_dropped_details[] = "SI[$idx]: too_short (orig=$origLen, impr=$imprLen)";
+                    } else {
+                        $sicount++;
+                        $si_details[] = "SI[$idx]: OK (orig=$origLen, impr=$imprLen)";
+                    }
                 }
             }
         }
+
+        // Log SI generation details
+        $si_log = "SI_GENERATION; total_si_items=".count(array_merge($si_details, $si_dropped_details))."; accepted=$sicount; dropped=".count($si_dropped_details);
+        if (count($si_dropped_details) > 0) {
+            $si_log .= "; reasons: " . implode(', ', array_slice($si_dropped_details, 0, 5));
+        }
+        $this->write_plugin_log($si_log."; attemptid=".$attempt_id);
+
         if ($mcqcount < 20 || $sicount < 10) {
             $this->write_plugin_log("homework_incomplete; attemptid=".$attempt_id."; mcq=".$mcqcount."; si=".$sicount);
             return ['success' => false, 'message' => 'Homework generation incomplete ('.$mcqcount.' MCQ, '.$sicount.' SI). Please retry.'];
