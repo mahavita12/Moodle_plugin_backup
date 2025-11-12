@@ -531,29 +531,54 @@ class before_footer_html_generation {
     private static function extract_original_improved_pairs(string $examplesHtml, int $limit = 5): array {
         $pairs = [];
         if (trim($examplesHtml) === '') { return $pairs; }
-        // Look for <li>..Original: ... <br> Improved: ...</li>
+
+        // Prefer list items, but be resilient to nesting and extra spans.
         if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $examplesHtml, $lis)) {
             foreach ($lis[1] as $liHtml) {
+                // Convert to plain text to avoid brittle tag ordering assumptions.
+                $plain = html_entity_decode(trim(preg_replace('/\s+/u', ' ', strip_tags($liHtml))), ENT_QUOTES, 'UTF-8');
+
                 $orig = '';
                 $impr = '';
-                if (preg_match('/Original:\s*<\/?span[^>]*>\s*([^<]+)/i', $liHtml, $m1)) {
+                if (preg_match('/Original:\s*(.+?)(?:\s*(Improved:|$))/i', $plain, $m1)) {
                     $orig = trim($m1[1]);
-                } elseif (preg_match('/Original:\s*([^<]+)/i', $liHtml, $m1b)) {
-                    $orig = trim($m1b[1]);
                 }
-                if (preg_match('/Improved:\s*<\/?span[^>]*>\s*([^<]+)/i', $liHtml, $m2)) {
+                if (preg_match('/Improved:\s*(.+)$/i', $plain, $m2)) {
                     $impr = trim($m2[1]);
-                } elseif (preg_match('/Improved:\s*([^<]+)/i', $liHtml, $m2b)) {
-                    $impr = trim($m2b[1]);
                 }
-                $orig = trim(strip_tags($orig));
-                $impr = trim(strip_tags($impr));
+
+                // Clean quotes and trailing punctuation commonly present in examples.
+                $clean = function ($s) {
+                    $s = trim($s);
+                    $s = trim($s, " \t\n\r\0\x0B\"'“”‘’");
+                    return $s;
+                };
+
+                $orig = $clean($orig);
+                $impr = $clean($impr);
+
                 if ($orig !== '' && $impr !== '') {
                     $pairs[] = ['original' => $orig, 'improved' => $impr];
                     if (count($pairs) >= $limit) break;
                 }
             }
         }
+
+        // Fallback: try to extract sequentially from the whole block if no <li> found.
+        if (empty($pairs)) {
+            $plainBlock = html_entity_decode(trim(preg_replace('/\s+/u', ' ', strip_tags($examplesHtml))), ENT_QUOTES, 'UTF-8');
+            if (preg_match_all('/Original:\s*(.+?)\s*Improved:\s*(.+?)(?=\s*Original:|$)/i', $plainBlock, $mm, PREG_SET_ORDER)) {
+                foreach ($mm as $m) {
+                    $o = trim($m[1], " \t\n\r\0\x0B\"'“”‘’");
+                    $i = trim($m[2], " \t\n\r\0\x0B\"'“”‘’");
+                    if ($o !== '' && $i !== '') {
+                        $pairs[] = ['original' => $o, 'improved' => $i];
+                        if (count($pairs) >= $limit) break;
+                    }
+                }
+            }
+        }
+
         return $pairs;
     }
 
