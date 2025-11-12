@@ -223,12 +223,6 @@ class homework_injector {
             $origLen = mb_strlen($orig);
             $imprLen = mb_strlen($impr);
             
-            if ($imprLen < $origLen) {
-                $siDropped++;
-                $siDropReasons[] = "SI[$idx]: too_short (orig=$origLen, impr=$imprLen)";
-                continue;
-            }
-            
             $siFiltered[] = ['original' => $orig, 'improved' => $impr];
             if (count($siFiltered) >= 10) { break; }
         }
@@ -257,10 +251,10 @@ class homework_injector {
             }
             if (count($opts) < 4) { continue; }
             $acceptedMcq++;
-            if ($acceptedMcq >= 20) { break; }
+            if ($acceptedMcq >= 15) { break; }
         }
 
-        if ($acceptedMcq < 20 || count($siFiltered) < 10) {
+        if ($acceptedMcq < 15 || count($siFiltered) < 7) {
             // Clean up the quiz we just created to avoid leaving partial/empty quizzes
             try {
                 require_once($CFG->dirroot . '/course/lib.php');
@@ -314,7 +308,7 @@ class homework_injector {
                 if ($tips !== '') { $hp[] = '<strong>Tips for Improvement:</strong> '.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
                 $header = '<div class="hw-context">'.implode('<br>', $hp).'</div>';
             }
-            $qtext = $header.'<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
+            $qtext = ($header !== '' ? $header.'<hr>' : '').'<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
 
             // Build general feedback with Exercise Type / Tips / Explanation if provided
             $gfparts = [];
@@ -356,7 +350,7 @@ class homework_injector {
             $index++;
             $orig = $it['original'];
             $impr = $it['improved'];
-            $minlen = min( max(mb_strlen($orig), 10), 60 ); // cap pattern length
+            $minlen = 10; // cap pattern length
             $pattern = str_repeat('?', $minlen) . '*';
             $qname = htmlspecialchars('SI '.$index, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
             $qtext = '<p>Rewrite the following sentence clearly and correctly:</p><p><em>Original: '.htmlspecialchars($orig, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</em></p>';

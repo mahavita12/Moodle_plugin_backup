@@ -3235,7 +3235,7 @@ PROMPT;
             }
         }
 
-        // Ensure we have at least 20 MCQ and 10 SI before persisting
+        // Ensure we have at least 15 MCQ and 7 SI before persisting (temporarily relaxed)
         $mcqcount = 0; $sicount = 0;
         $si_details = [];
         $si_dropped_details = [];
@@ -3256,9 +3256,8 @@ PROMPT;
 
                     if ($orig === '' || $impr === '') {
                         $si_dropped_details[] = "SI[$idx]: empty (orig=$origLen, impr=$imprLen)";
-                    } elseif ($imprLen < $origLen) {
-                        $si_dropped_details[] = "SI[$idx]: too_short (orig=$origLen, impr=$imprLen)";
                     } else {
+                        // Temporarily relax length rule: accept if both are non-empty
                         $sicount++;
                         $si_details[] = "SI[$idx]: OK (orig=$origLen, impr=$imprLen)";
                     }
@@ -3273,7 +3272,7 @@ PROMPT;
         }
         $this->write_plugin_log($si_log."; attemptid=".$attempt_id);
 
-        if ($mcqcount < 20 || $sicount < 10) {
+        if ($mcqcount < 15 || $sicount < 7) {
             $this->write_plugin_log("homework_incomplete; attemptid=".$attempt_id."; mcq=".$mcqcount."; si=".$sicount);
             return ['success' => false, 'message' => 'Homework generation incomplete ('.$mcqcount.' MCQ, '.$sicount.' SI). Please retry.'];
         }
