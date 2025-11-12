@@ -2912,7 +2912,7 @@ PROMPT;
                 'model' => $this->get_anthropic_model(),
                 'system' => 'Return only a single valid JSON object. No prose.',
                 'messages' => [ [ 'role' => 'user', 'content' => [ ['type'=>'text','text'=>$user_content] ] ] ],
-                'max_tokens' => 4000,
+                'max_tokens' => 8000,
                 'temperature' => 0.2,
             ];
             $resp = $this->make_anthropic_api_call($data, 'homework json');
@@ -2926,7 +2926,7 @@ PROMPT;
                     ['role' => 'user', 'content' => $user_content]
                 ],
                 'response_format' => ['type' => 'json_object'],
-                'max_completion_tokens' => 4000,
+                'max_completion_tokens' => 8000,
                 'temperature' => 0.2,
             ];
             $resp = $this->make_openai_api_call($data, 'homework json');
@@ -3070,7 +3070,7 @@ PROMPT;
                     'model' => $this->get_anthropic_model(),
                     'system' => 'Return only a single valid JSON object. No prose.',
                     'messages' => [ [ 'role' => 'user', 'content' => [ ['type'=>'text','text'=>$repair_payload] ] ] ],
-                    'max_tokens' => 3000,
+                    'max_tokens' => 8000,
                     'temperature' => 0,
                 ];
                 $resp2 = $this->make_anthropic_api_call($data2, 'homework json repair');
@@ -3085,7 +3085,7 @@ PROMPT;
                         ['role' => 'user', 'content' => $repair_payload]
                     ],
                     'response_format' => ['type' => 'json_object'],
-                    'max_completion_tokens' => 3000,
+                    'max_completion_tokens' => 8000,
                     'temperature' => 0,
                 ];
                 $resp2 = $this->make_openai_api_call($data2, 'homework json repair');
