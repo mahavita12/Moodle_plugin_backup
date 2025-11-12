@@ -192,11 +192,22 @@ class homework_injector {
         if (!is_array($j)) { throw new \moodle_exception('Invalid JSON for injection'); }
         $items = isset($j['items']) && is_array($j['items']) ? $j['items'] : [];
 
-        // Split SI and MCQ
+        // Split SI and MCQ (infer when type is missing)
         $si = [];
         $mcq = [];
         foreach ($items as $it) {
-            $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
+            $type = isset($it['type']) ? strtolower(trim((string)$it['type'])) : '';
+            // Heuristics for type inference
+            $orig = trim((string)($it['original'] ?? ''));
+            $imprAny = (string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? ''))));
+            $impr = trim($imprAny);
+            $stem = trim((string)($it['stem'] ?? ''));
+            $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
+
+            if ($type === '') {
+                if ($orig !== '' && $impr !== '') { $type = 'si'; }
+                elseif ($stem !== '' && !empty($options)) { $type = 'mcq'; }
+            }
             if ($type !== '') {
                 if ($type !== 'si' && (strpos($type, 'sentence') !== false || $type === 'sa' || $type === 'shortanswer')) { $type = 'si'; }
                 if ($type !== 'mcq' && (strpos($type, 'mcq') !== false || strpos($type, 'multi') !== false || strpos($type, 'choice') !== false)) { $type = 'mcq'; }

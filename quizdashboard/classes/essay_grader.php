@@ -3242,22 +3242,36 @@ PROMPT;
 
         if (isset($json['items']) && is_array($json['items'])) {
             foreach ($json['items'] as $idx => $it) {
-                $type = isset($it['type']) ? strtolower((string)$it['type']) : '';
-                if ($type === 'mcq') {
-                    $stem = trim((string)($it['stem'] ?? ''));
-                    $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
-                    $nonempty = 0; foreach ($options as $o) { if (trim((string)($o['text'] ?? '')) !== '') { $nonempty++; } }
-                    if ($stem !== '' && $nonempty > 0) { $mcqcount++; }
-                } elseif ($type === 'si') {
-                    $orig = trim((string)($it['original'] ?? ''));
-                    $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? '')))));
-                    $origLen = mb_strlen($orig);
-                    $imprLen = mb_strlen($impr);
-
-                    if ($orig === '' || $impr === '') {
+                $typeRaw = isset($it['type']) ? strtolower(trim((string)$it['type'])) : '';
+                $stem = trim((string)($it['stem'] ?? ''));
+                $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
+                $nonemptyOpts = 0; foreach ($options as $o) { if (trim((string)($o->text ?? $o['text'] ?? '')) !== '') { $nonemptyOpts++; } }
+                $orig = trim((string)($it['original'] ?? ''));
+                $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? '')))));
+                $origLen = mb_strlen($orig);
+                $imprLen = mb_strlen($impr);
+                $hasSIFields = ($orig !== '' && $impr !== '');
+                $isMCQ = (
+                    $typeRaw === 'mcq' ||
+                    strpos($typeRaw, 'mcq') !== false ||
+                    strpos($typeRaw, 'multi') !== false ||
+                    strpos($typeRaw, 'choice') !== false ||
+                    ($stem !== '' && !empty($options))
+                );
+                $isSI = (
+                    $typeRaw === 'si' ||
+                    $typeRaw === 'sa' ||
+                    $typeRaw === 'shortanswer' ||
+                    (strpos($typeRaw, 'short') !== false && strpos($typeRaw, 'answer') !== false) ||
+                    strpos($typeRaw, 'sentence') !== false ||
+                    $hasSIFields
+                );
+                if ($isMCQ) {
+                    if ($stem !== '' && $nonemptyOpts > 0) { $mcqcount++; }
+                } elseif ($isSI) {
+                    if (!$hasSIFields) {
                         $si_dropped_details[] = "SI[$idx]: empty (orig=$origLen, impr=$imprLen)";
                     } else {
-                        // Temporarily relax length rule: accept if both are non-empty
                         $sicount++;
                         $si_details[] = "SI[$idx]: OK (orig=$origLen, impr=$imprLen)";
                     }
