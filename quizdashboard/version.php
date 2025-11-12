@@ -2,7 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_quizdashboard';
-$plugin->version = 2025111001; // Add homework_json column and JSON injection path
+$plugin->version = 2025111002; // Version bump to rebuild component map
 
 $plugin->requires = 2022112800; // Moodle 4.0+
 $plugin->maturity = MATURITY_BETA;
