@@ -3021,9 +3021,15 @@ PROMPT;
                     if ($j < $L) {
                         $frag = substr($s, $i, $j - $i + 1);
                         $obj = json_decode($frag, true);
-                        if (is_array($obj) && isset($obj['type'])) {
-                            $t = strtolower((string)$obj['type']);
-                            if ($t === 'mcq' || $t === 'si') { $items[] = $obj; }
+                        if (is_array($obj)) {
+                            $t = isset($obj['type']) ? strtolower((string)$obj['type']) : '';
+                            $stem = trim((string)($obj['stem'] ?? ''));
+                            $options = isset($obj['options']) && is_array($obj['options']) ? $obj['options'] : [];
+                            $orig = trim((string)($obj['original'] ?? ($obj['original_sentence'] ?? ($obj['before'] ?? ''))));
+                            $impr = trim((string)($obj['improved'] ?? ($obj['suggested'] ?? ($obj['rewrite'] ?? ($obj['improved_sentence'] ?? ($obj['improvement'] ?? ($obj['corrected'] ?? ($obj['corrected_sentence'] ?? ($obj['revised'] ?? ($obj['revised_sentence'] ?? ($obj['better'] ?? ($obj['better_sentence'] ?? ($obj['fix'] ?? ($obj['fixed'] ?? ''))))))))))))));
+                            $isMCQ = ($t === 'mcq') || ($stem !== '' && !empty($options));
+                            $isSI  = ($t === 'si')  || ($orig !== '' && $impr !== '');
+                            if ($isMCQ || $isSI) { $items[] = $obj; }
                         }
                         $i = $j;
                     } else { break; }
@@ -3151,7 +3157,16 @@ PROMPT;
                         if ($j < $L) {
                             $frag = substr($s, $i, $j - $i + 1);
                             $obj = json_decode($frag, true);
-                            if (is_array($obj) && isset($obj['type'])) { $t = strtolower((string)$obj['type']); if ($t === 'mcq' || $t === 'si') { $items[] = $obj; } }
+                            if (is_array($obj)) {
+                                $t = isset($obj['type']) ? strtolower((string)$obj['type']) : '';
+                                $stem = trim((string)($obj['stem'] ?? ''));
+                                $options = isset($obj['options']) && is_array($obj['options']) ? $obj['options'] : [];
+                                $orig = trim((string)($obj['original'] ?? ($obj['original_sentence'] ?? ($obj['before'] ?? ''))));
+                                $impr = trim((string)($obj['improved'] ?? ($obj['suggested'] ?? ($obj['rewrite'] ?? ($obj['improved_sentence'] ?? ($obj['improvement'] ?? ($obj['corrected'] ?? ($obj['corrected_sentence'] ?? ($obj['revised'] ?? ($obj['revised_sentence'] ?? ($obj['better'] ?? ($obj['better_sentence'] ?? ($obj['fix'] ?? ($obj['fixed'] ?? ''))))))))))))));
+                                $isMCQ = ($t === 'mcq') || ($stem !== '' && !empty($options));
+                                $isSI  = ($t === 'si')  || ($orig !== '' && $impr !== '');
+                                if ($isMCQ || $isSI) { $items[] = $obj; }
+                            }
                             $i = $j;
                         } else { break; }
                     }
@@ -3235,6 +3250,66 @@ PROMPT;
             }
         }
 
+        // Normalise items: expand SI pairs arrays and zip array fields into flat SI items
+        if (isset($json['items']) && is_array($json['items'])) {
+            $origCount = count($json['items']);
+            $normalised = [];
+            $sicandidates = 0;
+            foreach ($json['items'] as $it) {
+                $typeRaw = isset($it['type']) ? strtolower(trim((string)$it['type'])) : '';
+                $stem = trim((string)($it['stem'] ?? ''));
+                $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
+
+                // Detect MCQ quickly and keep as-is
+                $likelyMCQ = ($typeRaw === 'mcq') || ($stem !== '' && !empty($options));
+                if ($likelyMCQ) { $normalised[] = $it; continue; }
+
+                // Expand SI when nested arrays are present
+                $pairs = [];
+                foreach (['pairs','examples','si_pairs','sentences'] as $k) {
+                    if (isset($it[$k]) && is_array($it[$k])) { $pairs = $it[$k]; break; }
+                }
+                if (!empty($pairs) && is_array($pairs)) {
+                    foreach ($pairs as $p) {
+                        if (!is_array($p)) { continue; }
+                        $orig = '';
+                        foreach (['original','original_sentence','before','incorrect','sentence','text'] as $k0) {
+                            if (isset($p[$k0]) && trim((string)$p[$k0]) !== '') { $orig = trim((string)$p[$k0]); break; }
+                        }
+                        $impr = '';
+                        foreach (['improved','suggested','rewrite','after','corrected','corrected_sentence','revised','revised_sentence','better','better_sentence','fix','fixed'] as $k1) {
+                            if (isset($p[$k1]) && trim((string)$p[$k1]) !== '') { $impr = trim((string)$p[$k1]); break; }
+                        }
+                        if ($orig !== '' && $impr !== '') { $normalised[] = ['type'=>'si','original'=>$orig,'improved'=>$impr]; $sicandidates++; }
+                    }
+                    continue;
+                }
+
+                // Zip arrays of originals/improveds
+                $origField = $it['original'] ?? ($it['original_sentence'] ?? ($it['before'] ?? null));
+                $imprField = null;
+                foreach (['improved','suggested','rewrite','improved_sentence','after','corrected','corrected_sentence','revised','revised_sentence','better','better_sentence','fix','fixed'] as $k2) {
+                    if (array_key_exists($k2, $it)) { $imprField = $it[$k2]; break; }
+                }
+                if (is_array($origField) && is_array($imprField)) {
+                    $n = min(count($origField), count($imprField));
+                    for ($i=0; $i<$n; $i++) {
+                        $o = trim((string)$origField[$i]);
+                        $v = trim((string)$imprField[$i]);
+                        if ($o !== '' && $v !== '') { $normalised[] = ['type'=>'si','original'=>$o,'improved'=>$v]; $sicandidates++; }
+                    }
+                    continue;
+                }
+
+                // Default: keep item as-is
+                $normalised[] = $it;
+            }
+            if (!empty($normalised)) {
+                $json['items'] = $normalised;
+                $this->write_plugin_log("normalize_items; attemptid=".$attempt_id."; before=".$origCount."; after=".count($normalised)."; si_candidates=".$sicandidates);
+            }
+        }
+
         // Ensure we have at least 15 MCQ and 7 SI before persisting (temporarily relaxed)
         $mcqcount = 0; $sicount = 0;
         $si_details = [];
@@ -3246,8 +3321,8 @@ PROMPT;
                 $stem = trim((string)($it['stem'] ?? ''));
                 $options = isset($it['options']) && is_array($it['options']) ? $it['options'] : [];
                 $nonemptyOpts = 0; foreach ($options as $o) { if (trim((string)($o->text ?? $o['text'] ?? '')) !== '') { $nonemptyOpts++; } }
-                $orig = trim((string)($it['original'] ?? ''));
-                $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? '')))));
+                $orig = trim((string)($it['original'] ?? ($it['original_sentence'] ?? ($it['before'] ?? ''))));
+                $impr = trim((string)($it['improved'] ?? ($it['suggested'] ?? ($it['rewrite'] ?? ($it['improved_sentence'] ?? ($it['improvement'] ?? ($it['corrected'] ?? ($it['corrected_sentence'] ?? ($it['revised'] ?? ($it['revised_sentence'] ?? ($it['better'] ?? ($it['better_sentence'] ?? ($it['fix'] ?? ($it['fixed'] ?? ''))))))))))))));
                 $origLen = mb_strlen($orig);
                 $imprLen = mb_strlen($impr);
                 $hasSIFields = ($orig !== '' && $impr !== '');
