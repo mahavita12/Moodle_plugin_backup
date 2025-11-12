@@ -47,7 +47,7 @@ class before_footer_html_generation {
         $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
         if ($quiz) {
             $qname = (string)$quiz->name;
-            $ishomework = (stripos($qname, 'homework') !== false) || preg_match('/^[A-Z]{1,3}\s*-\s*/', $qname);
+            $ishomework = (stripos($qname, 'homework') !== false) || preg_match('/^[A-Z]{1,3}\s*[-–—]\s*/u', $qname);
             if ($ishomework) {
                 self::render_homework_examples_card_for_attempt($hook, $attempt);
                 return;
