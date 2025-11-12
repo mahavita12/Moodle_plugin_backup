@@ -2889,21 +2889,68 @@ PROMPT;
             ]
         ];
 
-        $rules = "Requirements:\n".
+        // Contextualization guidance varies slightly by level
+        $mcq_guidance = ($level === 'advanced')
+            ? "Create MCQs that use actual phrases and scenarios from the student's essay. Reference specific sentences, character names, situations, and details from their writing."
+            : "Create MCQs that directly reference the student's essay content. Use character names, situations, and specific phrases from their story.";
+
+        $rules = "CRITICAL Requirements:\n".
                  "- Return ONLY a single valid JSON object. No markdown, no backticks, no commentary.\n".
                  "- Must include keys: version, meta, items.\n".
                  "- meta.level must equal '$level'.\n".
-                 "- items MUST be an array with EXACTLY 30 elements: first 20 are MCQ, last 10 are SI.\n".
-                 "- MCQ items: include 'exercise' (same across the 5 items of its section), 'tips' (same across that section), 'stem', exactly 4 'options' with exactly 1 correct (set 'single': true), and a brief 'explanation'.\n".
-                 "- SI items: MUST include 'type'='si', 'original' (the problematic sentence), 'improved' (the corrected sentence). Use EXACTLY these field names: 'original' and 'improved' (not 'suggested', 'corrected', or any other variation).\n".
-                 "- For SI items: improved sentence should be a complete, well-formed sentence (not just fragments or explanations).\n".
-                 "- Output is flat array (no nested sections). Order strictly: all 20 MCQ first, then 10 SI.\n";
+                 "- items MUST be an array with EXACTLY 30 elements total (20 MCQ + 10 SI).\n\n".
 
-        $user_content = "Create structured homework JSON based on this student's essay and feedback.\n\n".
-                        "ESSAY (truncated):\n$essay_text\n\n".
-                        "FEEDBACK (truncated):\n$feedback_text\n\n".
-                        "LEVEL: $level\n\n".
-                        "JSON schema (example keys):\n".json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n\n".
+                 "MCQ REQUIREMENTS (Items 1-20):\n".
+                 "- Each MCQ must have: 'type':'mcq', 'exercise', 'tips', 'stem', exactly 4 'options', 'single':true, 'explanation'\n".
+                 "- Group MCQs into 4 exercise types (5 questions each): Subject-Verb Agreement, Verb Tense Consistency, Articles/Punctuation/Mechanics, Character/Context-specific\n".
+                 "- 'exercise' field: Name of grammar concept (e.g., 'Subject-Verb Agreement')\n".
+                 "- 'tips' field: Brief teaching tip for that concept\n".
+                 "- CONTEXTUALIZE EVERY MCQ: $mcq_guidance\n".
+                 "- 'stem' should reference essay content, like:\n".
+                 "  * 'Yesterday afternoon, [character] ___ to explain why [event from essay]...'\n".
+                 "  * 'When [situation from essay], [character] ___ and couldn't believe...'\n".
+                 "  * Use actual phrases, character names, settings from the essay\n".
+                 "- Options should include time markers and context clues\n".
+                 "- 'explanation' should reference why the answer is correct with grammar rules\n\n".
+
+                 "SI REQUIREMENTS (Items 21-30):\n".
+                 "- Each SI item: {\"type\":\"si\", \"original\":\"<sentence from essay>\", \"improved\":\"<corrected version>\"}\n".
+                 "- Extract 10 ACTUAL problematic sentences from the student's essay\n".
+                 "- Select sentences with: grammar errors, spelling mistakes, punctuation issues, unclear phrasing, run-ons\n".
+                 "- 'original': Copy the sentence EXACTLY as written in the essay (with all errors intact)\n".
+                 "- 'improved': Provide a clean, corrected version of the same sentence\n".
+                 "- DO NOT use field names other than 'original' and 'improved'\n\n".
+
+                 "CRITICAL:\n".
+                 "- You MUST generate all 30 items. Do not stop early.\n".
+                 "- Output is flat array. Order: 20 MCQ first, then 10 SI.\n".
+                 "- Every MCQ stem should feel personalized to this specific essay.\n";
+
+        $user_content = "Create personalized, contextualized homework for this student's essay.\n\n".
+                        "STUDENT'S ESSAY:\n$essay_text\n\n".
+                        "TEACHER FEEDBACK:\n$feedback_text\n\n".
+                        "HOMEWORK LEVEL: $level\n\n".
+                        "INSTRUCTIONS:\n".
+                        "1. Read the essay carefully and identify the student's specific errors\n".
+                        "2. Note character names, settings, plot events to reference in MCQs\n".
+                        "3. Create MCQs that feel like they were written specifically for THIS essay\n".
+                        "4. Extract 10 actual problematic sentences for the SI section\n\n".
+                        "EXAMPLE MCQ (contextualized):\n".
+                        "{\n".
+                        "  \"type\": \"mcq\",\n".
+                        "  \"exercise\": \"Subject-Verb Agreement\",\n".
+                        "  \"tips\": \"Make sure your verb matches the subject in number (singular/plural). Look for time markers.\",\n".
+                        "  \"stem\": \"Yesterday afternoon, the ice cream shop owner ___ to explain why certain flavours had disappeared from the menu.\",\n".
+                        "  \"single\": true,\n".
+                        "  \"options\": [\n".
+                        "    {\"text\": \"try\", \"correct\": false},\n".
+                        "    {\"text\": \"tries\", \"correct\": false},\n".
+                        "    {\"text\": \"tried\", \"correct\": true},\n".
+                        "    {\"text\": \"trying\", \"correct\": false}\n".
+                        "  ],\n".
+                        "  \"explanation\": \"Past tense singular verb 'tried' matches 'owner' and time marker 'yesterday afternoon'\"\n".
+                        "}\n\n".
+                        "JSON schema:\n".json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n\n".
                         $rules;
 
         $provider = $this->get_provider();

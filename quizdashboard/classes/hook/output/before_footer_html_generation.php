@@ -44,7 +44,18 @@ class before_footer_html_generation {
         if (!$attempt) { return; }
         if ((int)$attempt->userid !== (int)$USER->id) { return; }
 
-        // Determine submission number for this user+quiz
+        // Detect homework quizzes first (render dedicated homework card and return)
+        $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
+        if ($quiz) {
+            $qname = (string)$quiz->name;
+            $ishomework = (stripos($qname, 'homework') !== false) || preg_match('/^[A-Z]{1,3}\s*-\s*/', $qname);
+            if ($ishomework) {
+                self::render_homework_examples_card_for_attempt($hook, $attempt);
+                return;
+            }
+        }
+
+        // Determine submission number for this user+quiz (essay resubmission card)
         $count = $DB->count_records_select('quiz_attempts',
             'userid = ? AND quiz = ? AND timestart <= ? AND state IN (?, ?)',
             [$attempt->userid, $attempt->quiz, $attempt->timestart, 'finished', 'inprogress']
@@ -471,6 +482,125 @@ class before_footer_html_generation {
             . '</div>'
             . '<script>(function(){var h=document.querySelector("#qd-prev-summary .qd-prev-summary__header");if(!h)return;var b=document.getElementById("qd-prev-summary-body"),t=h.querySelector(".qd-prev-summary__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
             . '</div>';
+        return $html;
+    }
+
+    /**
+     * HOMEWORK: Render examples card (Language Use / Mechanics) using the most recent essay feedback for this user.
+     */
+    private static function render_homework_examples_card_for_attempt($hook, $attempt): void {
+        global $DB;
+        try {
+            // Find most recent graded essay attempt for this user
+            $src = $DB->get_record_sql("
+                SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
+                FROM {quiz_attempts} qa
+                JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
+                JOIN {quiz} q ON q.id = qa.quiz
+                WHERE qa.userid = ? AND (g.feedback_html IS NOT NULL AND g.feedback_html <> '')
+                ORDER BY qa.timestart DESC
+                ", [$attempt->userid], \IGNORE_MISSING);
+            if (!$src || empty($src->feedback_html)) { return; }
+
+            $feedback = (string)$src->feedback_html;
+            $essayname = (string)$src->quizname;
+            $submitted = userdate((int)$src->timestart);
+
+            // Extract Language Use Examples
+            $lang = self::extract_section_lists($feedback, 'Language\s+Use');
+            $langPairs = self::extract_original_improved_pairs($lang['examples'], 5);
+
+            // Extract Mechanics Examples
+            $mech = self::extract_section_lists($feedback, 'Mechanics');
+            $mechPairs = self::extract_original_improved_pairs($mech['examples'], 5);
+
+            // If nothing to show, do not render
+            if (empty($langPairs) && empty($mechPairs)) { return; }
+
+            $card = self::render_homework_examples_card((int)$src->attemptid, $essayname, $submitted, $langPairs, $mechPairs);
+            if ($card !== '') {
+                $hook->add_html($card);
+            }
+        } catch (\Throwable $e) {
+            // Silent failure – card is optional
+        }
+    }
+
+    private static function extract_original_improved_pairs(string $examplesHtml, int $limit = 5): array {
+        $pairs = [];
+        if (trim($examplesHtml) === '') { return $pairs; }
+        // Look for <li>..Original: ... <br> Improved: ...</li>
+        if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $examplesHtml, $lis)) {
+            foreach ($lis[1] as $liHtml) {
+                $orig = '';
+                $impr = '';
+                if (preg_match('/Original:\s*<\/?span[^>]*>\s*([^<]+)/i', $liHtml, $m1)) {
+                    $orig = trim($m1[1]);
+                } elseif (preg_match('/Original:\s*([^<]+)/i', $liHtml, $m1b)) {
+                    $orig = trim($m1b[1]);
+                }
+                if (preg_match('/Improved:\s*<\/?span[^>]*>\s*([^<]+)/i', $liHtml, $m2)) {
+                    $impr = trim($m2[1]);
+                } elseif (preg_match('/Improved:\s*([^<]+)/i', $liHtml, $m2b)) {
+                    $impr = trim($m2b[1]);
+                }
+                $orig = trim(strip_tags($orig));
+                $impr = trim(strip_tags($impr));
+                if ($orig !== '' && $impr !== '') {
+                    $pairs[] = ['original' => $orig, 'improved' => $impr];
+                    if (count($pairs) >= $limit) break;
+                }
+            }
+        }
+        return $pairs;
+    }
+
+    private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $langPairs, array $mechPairs): string {
+        $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
+        $mkPairs = function($title, $pairs, $color) use ($esc) {
+            if (empty($pairs)) return '';
+            $html = '<div class="qd-hwex__section"><h4 class="qd-hwex__title" style="color:'.$color.';">'.$esc($title).'</h4>';
+            foreach ($pairs as $i => $p) {
+                $html .= '<div class="qd-hwex__row">'
+                       . '<div class="qd-hwex__label">Example '.($i+1).'</div>'
+                       . '<div class="qd-hwex__orig"><strong>Original:</strong> '.$esc($p['original']).'</div>'
+                       . '<div class="qd-hwex__impr"><strong>Improved:</strong> '.$esc($p['improved']).'</div>'
+                       . '</div>';
+            }
+            $html .= '</div>';
+            return $html;
+        };
+
+        $body = $mkPairs('Language Use – Examples from Your Essay', $langPairs, '#0b69c7')
+              . $mkPairs('Mechanics – Examples from Your Essay', $mechPairs, '#dc2626');
+        if ($body === '') return '';
+
+        $html = '<div id="qd-hw-examples" class="qd-hwex">'
+              . '<style>'
+              . '.qd-hwex{margin:16px 0 20px;border:1px solid #d0d7de;border-left:4px solid #6f42c1;border-radius:6px;background:#fbfbfe;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}'
+              . '.qd-hwex__header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;cursor:pointer}'
+              . '.qd-hwex__titlebar{font-weight:600;color:#6f42c1;margin:0;font-size:16px}'
+              . '.qd-hwex__toggle{background:transparent;border:1px solid #c8c8d0;border-radius:6px;color:#6f42c1;font-weight:700;font-size:14px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-align:center}'
+              . '.qd-hwex__body{display:none;padding:8px 12px 12px;border-top:1px dashed #e5e5e5}'
+              . '.qd-hwex__meta{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;font-size:12px;color:#444;margin-bottom:10px}'
+              . '.qd-hwex__section{margin-bottom:14px}'
+              . '.qd-hwex__title{margin:0 0 8px 0;font-weight:700;font-size:15px;border-bottom:2px solid #e5e7eb;padding-bottom:6px}'
+              . '.qd-hwex__row{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #0b69c7;border-radius:6px;padding:8px 10px;margin-bottom:8px}'
+              . '.qd-hwex__label{font-weight:700;color:#555;font-size:12px;margin-bottom:4px}'
+              . '.qd-hwex__orig{font-size:13px;color:#6b7280;margin-bottom:2px;line-height:1.5}'
+              . '.qd-hwex__impr{font-size:13px;color:#059669;line-height:1.5}'
+              . '@media print{.qd-hwex{page-break-inside:avoid}.qd-hwex__body{display:block!important}.qd-hwex__toggle{display:none}}'
+              . '</style>'
+              . '<div class="qd-hwex__header" role="button" aria-expanded="false" aria-controls="qd-hwex-body">'
+              . '<h3 class="qd-hwex__titlebar">Previous Submission Feedback - '.$esc($essayname).'</h3>'
+              . '<button class="qd-hwex__toggle" type="button" aria-label="Toggle">▾</button>'
+              . '</div>'
+              . '<div id="qd-hwex-body" class="qd-hwex__body" aria-hidden="true">'
+              .   '<div class="qd-hwex__meta"><strong>Essay Submitted:</strong> '.$esc($submitted).' <span style="color:#6f42c1;font-weight:600;margin-left:8px;">Use these examples to answer the homework questions</span></div>'
+              .    $body
+              . '</div>'
+              . '<script>(function(){var h=document.querySelector("#qd-hw-examples .qd-hwex__header");if(!h)return;var b=document.getElementById("qd-hwex-body"),t=h.querySelector(".qd-hwex__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
+              . '</div>';
         return $html;
     }
 }
