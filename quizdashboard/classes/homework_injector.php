@@ -221,13 +221,27 @@ class homework_injector {
         $siDropped = 0;
         $siDropReasons = [];
         foreach ($si as $idx => $it) {
-            $orig = trim((string)($it['original'] ?? ''));
-            $imprRaw = isset($it['improved']) ? $it['improved'] : (isset($it['suggested']) ? $it['suggested'] : (isset($it['rewrite']) ? $it['rewrite'] : (isset($it['improved_sentence']) ? $it['improved_sentence'] : '')));
+            $orig = trim((string)($it['original'] ?? ($it['original_sentence'] ?? ($it['before'] ?? ''))));
+            // Expand field name recognition to include more AI variations
+            $imprRaw = isset($it['improved']) ? $it['improved'] : 
+                      (isset($it['suggested']) ? $it['suggested'] : 
+                      (isset($it['rewrite']) ? $it['rewrite'] : 
+                      (isset($it['improved_sentence']) ? $it['improved_sentence'] : 
+                      (isset($it['improvement']) ? $it['improvement'] : 
+                      (isset($it['corrected']) ? $it['corrected'] : 
+                      (isset($it['corrected_sentence']) ? $it['corrected_sentence'] : 
+                      (isset($it['revised']) ? $it['revised'] : 
+                      (isset($it['revised_sentence']) ? $it['revised_sentence'] : 
+                      (isset($it['better']) ? $it['better'] : 
+                      (isset($it['better_sentence']) ? $it['better_sentence'] : 
+                      (isset($it['fix']) ? $it['fix'] : 
+                      (isset($it['fixed']) ? $it['fixed'] : 
+                      (isset($it['after']) ? $it['after'] : ''))))))))))))));
             $impr = trim((string)$imprRaw);
             
             if ($orig === '' || $impr === '') {
                 $siDropped++;
-                $siDropReasons[] = "SI[$idx]: empty (orig=".mb_strlen($orig).", impr=".mb_strlen($impr).")";
+                $siDropReasons[] = "SI[$idx]: empty (orig=".mb_strlen($orig).", impr=".mb_strlen($impr).") - keys present: ".implode(',', array_keys($it));
                 continue;
             }
             
@@ -265,7 +279,7 @@ class homework_injector {
             if ($acceptedMcq >= 15) { break; }
         }
 
-        if ($acceptedMcq < 15 || count($siFiltered) < 7) {
+        if ($acceptedMcq < 15 || count($siFiltered) < 3) {
             // Clean up the quiz we just created to avoid leaving partial/empty quizzes
             try {
                 require_once($CFG->dirroot . '/course/lib.php');
@@ -273,7 +287,7 @@ class homework_injector {
                 if ($cm && !empty($cm->id)) { course_delete_module((int)$cm->id); }
                 else { $DB->delete_records('quiz', ['id' => (int)$quizid]); }
             } catch (\Throwable $e) { /* non-fatal */ }
-            throw new \moodle_exception('Homework generation incomplete: accepted '.$acceptedMcq.' MCQ and '.count($siFiltered).' SI. Please retry.');
+            throw new \moodle_exception('Homework generation incomplete: accepted '.$acceptedMcq.' MCQ and '.count($siFiltered).' SI (min: 15 MCQ, 3 SI). Please retry.');
         }
 
         // Build Moodle XML - MCQs first, then SI last

@@ -2895,7 +2895,8 @@ PROMPT;
                  "- meta.level must equal '$level'.\n".
                  "- items MUST be an array with EXACTLY 30 elements: first 20 are MCQ, last 10 are SI.\n".
                  "- MCQ items: include 'exercise' (same across the 5 items of its section), 'tips' (same across that section), 'stem', exactly 4 'options' with exactly 1 correct (set 'single': true), and a brief 'explanation'.\n".
-                 "- SI items: 'type'='si', 'original', 'improved'; improved length must be >= original.\n".
+                 "- SI items: MUST include 'type'='si', 'original' (the problematic sentence), 'improved' (the corrected sentence). Use EXACTLY these field names: 'original' and 'improved' (not 'suggested', 'corrected', or any other variation).\n".
+                 "- For SI items: improved sentence should be a complete, well-formed sentence (not just fragments or explanations).\n".
                  "- Output is flat array (no nested sections). Order strictly: all 20 MCQ first, then 10 SI.\n";
 
         $user_content = "Create structured homework JSON based on this student's essay and feedback.\n\n".
