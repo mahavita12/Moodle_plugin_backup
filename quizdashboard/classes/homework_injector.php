@@ -330,7 +330,7 @@ class homework_injector {
             if ($exercise !== '' || $tips !== '') {
                 $hp = [];
                 if ($exercise !== '') { $hp[] = '<strong>Exercise Type:</strong> '.htmlspecialchars($exercise, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
-                if ($tips !== '') { $hp[] = '<strong>Tips for Improvement:</strong> '.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); }
+                if ($tips !== '') { $hp[] = '<strong style="color:#0066cc;">Tips for Improvement:</strong> <span style="color:#0066cc;">'.htmlspecialchars($tips, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</span>'; }
                 $header = '<div class="hw-context">'.implode('<br>', $hp).'</div>';
             }
             $qtext = ($header !== '' ? $header.'<hr>' : '').'<p>'.htmlspecialchars($stem, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</p>';
@@ -378,7 +378,7 @@ class homework_injector {
             $minlen = 10; // cap pattern length
             $pattern = str_repeat('?', $minlen) . '*';
             $qname = htmlspecialchars('SI '.$index, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-            $qtext = '<p>Rewrite the following sentence clearly and correctly:</p><p><em>Original: '.htmlspecialchars($orig, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</em></p>';
+            $qtext = '<p style="color:#0066cc;">Rewrite the following sentence clearly and correctly:</p><p><em>Original: '.htmlspecialchars($orig, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</em></p>';
             $gfb = 'Suggested improvement: '.htmlspecialchars($impr, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
             $xml .= '<question type="shortanswer">'
                  . '<name><text>'.$qname.'</text></name>'

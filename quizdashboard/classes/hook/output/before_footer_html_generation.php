@@ -42,9 +42,8 @@ class before_footer_html_generation {
 
         $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
         if (!$attempt) { return; }
-        if ((int)$attempt->userid !== (int)$USER->id) { return; }
 
-        // Detect homework quizzes first (render dedicated homework card and return)
+        // HOMEWORK CARD: allow for teachers/admins too (no owner check required)
         $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
         if ($quiz) {
             $qname = (string)$quiz->name;
@@ -54,6 +53,9 @@ class before_footer_html_generation {
                 return;
             }
         }
+
+        // ESSAY RESUBMISSION CARD: only for the attempt owner
+        if ((int)$attempt->userid !== (int)$USER->id) { return; }
 
         // Determine submission number for this user+quiz (essay resubmission card)
         $count = $DB->count_records_select('quiz_attempts',
