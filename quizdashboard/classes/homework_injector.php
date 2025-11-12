@@ -212,7 +212,7 @@ class homework_injector {
         foreach ($si as $idx => $it) {
             $orig = trim((string)($it['original'] ?? ''));
             $imprRaw = isset($it['improved']) ? $it['improved'] : (isset($it['suggested']) ? $it['suggested'] : (isset($it['rewrite']) ? $it['rewrite'] : (isset($it['improved_sentence']) ? $it['improved_sentence'] : '')));
-            $impr = trim((string)($imprRaw);
+            $impr = trim((string)$imprRaw);
             
             if ($orig === '' || $impr === '') {
                 $siDropped++;

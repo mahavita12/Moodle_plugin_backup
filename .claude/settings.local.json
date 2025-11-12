@@ -69,7 +69,8 @@
       "Bash(git config:*)",
       "Bash(timeout 15 ssh -i \"C:/Users/mahav/.ssh/id_mcp_prod_nopw2\" -o BatchMode=yes -o StrictHostKeyChecking=accept-new master_jcnbsmnxtb@134.199.148.31 \"cd /home/master/applications/srfshmcmyg/public_html/moodle_staging_mcp && echo ''{\"\"jsonrpc\"\":\"\"2.0\"\",\"\"id\"\":100,\"\"method\"\":\"\"tools/call\"\",\"\"params\"\":{\"\"name\"\":\"\"execute_sql\"\",\"\"arguments\"\":{\"\"query\"\":\"\"SELECT name, value FROM mdl_config WHERE name = \\\"\"mcp_environment_marker\\\"\"\"\",\"\"limit\"\":10}}}'' | python3 moodle_staging_mcp.py 2>/dev/null\")",
       "Bash(cat:*)",
-      "Bash(cmdkey:*)"
+      "Bash(cmdkey:*)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []
