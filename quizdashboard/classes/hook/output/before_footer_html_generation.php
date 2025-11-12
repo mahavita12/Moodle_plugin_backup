@@ -516,10 +516,19 @@ class before_footer_html_generation {
             $mech = self::extract_section_lists($feedback, 'Mechanics');
             $mechPairs = self::extract_original_improved_pairs($mech['examples'], 5);
 
-            // If nothing to show, do not render
-            if (empty($langPairs) && empty($mechPairs)) { return; }
+            // Extract bullet summaries for all five criteria (like resubmission card)
+            $items = [
+                'Content and Ideas (25%)' => self::extract_improvement_items($feedback, 'Content\s+and\s+Ideas', 3),
+                'Structure and Organization (25%)' => self::extract_improvement_items($feedback, 'Structure\s+and\s+Organi[sz]ation', 3),
+                'Language Use (20%)' => self::extract_improvement_items($feedback, 'Language\s+Use', 3),
+                'Creativity and Originality (20%)' => self::extract_improvement_items($feedback, 'Creativity\s+and\s+Originality', 3),
+                'Mechanics (10%)' => self::extract_mechanics_items($feedback, 3)
+            ];
 
-            $card = self::render_homework_examples_card((int)$src->attemptid, $essayname, $submitted, $langPairs, $mechPairs);
+            // If nothing to show, do not render
+            if (empty($langPairs) && empty($mechPairs) && empty($items['Content and Ideas (25%)'])) { return; }
+
+            $card = self::render_homework_examples_card((int)$src->attemptid, $essayname, $submitted, $items, $langPairs, $mechPairs);
             if ($card !== '') {
                 $hook->add_html($card);
             }
@@ -582,7 +591,7 @@ class before_footer_html_generation {
         return $pairs;
     }
 
-    private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $langPairs, array $mechPairs): string {
+    private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $items, array $langPairs, array $mechPairs): string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
         $mkPairs = function($title, $pairs, $color) use ($esc) {
             if (empty($pairs)) return '';
@@ -598,8 +607,31 @@ class before_footer_html_generation {
             return $html;
         };
 
-        $body = $mkPairs('Language Use – Examples from Your Essay', $langPairs, '#0b69c7')
-              . $mkPairs('Mechanics – Examples from Your Essay', $mechPairs, '#dc2626');
+        // Build criteria sections (bullets) like resubmission card
+        $mkBullets = function($title, $arr, $color) use ($esc) {
+            if (empty($arr)) { return ''; }
+            $content = '<ul class="qd-criteria__bullets">';
+            foreach ($arr as $b) { $content .= '<li>' . $esc($b) . '</li>'; }
+            $content .= '</ul>';
+            return '<div class="qd-criteria__item" style="border-left-color:' . $color . ';"><h4 class="qd-criteria__title">' . $esc($title) . '</h4>' . $content . '</div>';
+        };
+        $colors = ['#0b69c7', '#059669', '#f59e0b', '#8b5cf6', '#dc2626'];
+        $criteria = '<div class="qd-criteria">';
+        $i = 0;
+        foreach ($items as $title => $arr) {
+            $criteria .= $mkBullets($title, $arr, $colors[min($i, 4)]);
+            // Inject examples under Language Use and Mechanics after their bullet lists
+            if (stripos($title, 'Language Use') !== false && !empty($langPairs)) {
+                $criteria .= $mkPairs('Language Use – Examples from Your Essay', $langPairs, '#0b69c7');
+            }
+            if (stripos($title, 'Mechanics') !== false && !empty($mechPairs)) {
+                $criteria .= $mkPairs('Mechanics – Examples from Your Essay', $mechPairs, '#dc2626');
+            }
+            $i++;
+        }
+        $criteria .= '</div>';
+
+        $body = $criteria;
         if ($body === '') return '';
 
         $html = '<div id="qd-hw-examples" class="qd-hwex">'
@@ -616,15 +648,26 @@ class before_footer_html_generation {
               . '.qd-hwex__label{font-weight:700;color:#555;font-size:12px;margin-bottom:4px}'
               . '.qd-hwex__orig{font-size:13px;color:#6b7280;margin-bottom:2px;line-height:1.5}'
               . '.qd-hwex__impr{font-size:13px;color:#059669;line-height:1.5}'
+              . '.qd-criteria{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:8px}'
+              . '.qd-criteria__item{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #0b69c7;border-radius:6px;padding:10px 12px}'
+              . '.qd-criteria__title{margin:0 0 6px 0;font-weight:700;color:#0b69c7;font-size:14px}'
+              . '.qd-criteria__bullets{margin:6px 0 0 18px;padding:0}'
+              . '.qd-criteria__bullets li{margin:6px 0;line-height:1.35;color:#2f2f2f;font-size:14px}'
+              . '.qd-hwex__footer{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px}'
+              . '.qd-hwex__link{font-size:13px;font-weight:700;text-decoration:none;display:inline-block;background:#6f42c1;color:#ffffff;padding:8px 16px;border-radius:6px;border:1px solid #5a2da8}'
+              . '.qd-hwex__link:hover{filter:brightness(0.95)}'
               . '@media print{.qd-hwex{page-break-inside:avoid}.qd-hwex__body{display:block!important}.qd-hwex__toggle{display:none}}'
               . '</style>'
               . '<div class="qd-hwex__header" role="button" aria-expanded="false" aria-controls="qd-hwex-body">'
-              . '<h3 class="qd-hwex__titlebar">Previous Submission Feedback - '.$esc($essayname).'</h3>'
+              . '<h3 class="qd-hwex__titlebar">Essay Feedback - '.$esc($essayname).'</h3>'
               . '<button class="qd-hwex__toggle" type="button" aria-label="Toggle">▾</button>'
               . '</div>'
               . '<div id="qd-hwex-body" class="qd-hwex__body" aria-hidden="true">'
               .   '<div class="qd-hwex__meta"><strong>Essay Submitted:</strong> '.$esc($submitted).' <span style="color:#6f42c1;font-weight:600;margin-left:8px;">Use these examples to answer the homework questions</span></div>'
               .    $body
+              .   '<div class="qd-hwex__footer">'
+              .     '<a class="qd-hwex__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$essayattemptid]) . '" target="_blank" rel="noopener">View Full Essay Feedback</a>'
+              .   '</div>'
               . '</div>'
               . '<script>(function(){var h=document.querySelector("#qd-hw-examples .qd-hwex__header");if(!h)return;var b=document.getElementById("qd-hwex-body"),t=h.querySelector(".qd-hwex__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
               . '</div>';
