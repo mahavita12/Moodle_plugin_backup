@@ -223,20 +223,20 @@ class homework_injector {
         foreach ($si as $idx => $it) {
             $orig = trim((string)($it['original'] ?? ($it['original_sentence'] ?? ($it['before'] ?? ''))));
             // Expand field name recognition to include more AI variations
-            $imprRaw = isset($it['improved']) ? $it['improved'] : 
-                      (isset($it['suggested']) ? $it['suggested'] : 
-                      (isset($it['rewrite']) ? $it['rewrite'] : 
-                      (isset($it['improved_sentence']) ? $it['improved_sentence'] : 
-                      (isset($it['improvement']) ? $it['improvement'] : 
-                      (isset($it['corrected']) ? $it['corrected'] : 
-                      (isset($it['corrected_sentence']) ? $it['corrected_sentence'] : 
-                      (isset($it['revised']) ? $it['revised'] : 
-                      (isset($it['revised_sentence']) ? $it['revised_sentence'] : 
-                      (isset($it['better']) ? $it['better'] : 
-                      (isset($it['better_sentence']) ? $it['better_sentence'] : 
-                      (isset($it['fix']) ? $it['fix'] : 
-                      (isset($it['fixed']) ? $it['fixed'] : 
-                      (isset($it['after']) ? $it['after'] : ''))))))))))))));
+            $imprRaw = $it['improved'] ?? 
+                       $it['suggested'] ?? 
+                       $it['rewrite'] ?? 
+                       $it['improved_sentence'] ?? 
+                       $it['improvement'] ?? 
+                       $it['corrected'] ?? 
+                       $it['corrected_sentence'] ?? 
+                       $it['revised'] ?? 
+                       $it['revised_sentence'] ?? 
+                       $it['better'] ?? 
+                       $it['better_sentence'] ?? 
+                       $it['fix'] ?? 
+                       $it['fixed'] ?? 
+                       $it['after'] ?? '';
             $impr = trim((string)$imprRaw);
             
             if ($orig === '' || $impr === '') {
