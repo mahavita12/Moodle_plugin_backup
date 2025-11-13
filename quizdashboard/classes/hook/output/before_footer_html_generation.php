@@ -253,15 +253,18 @@ class before_footer_html_generation {
         $items = [];
         if ($segment) {
             // 1) If labelled, take the UL after "Areas for Improvement"
-            if (preg_match('/Areas\s*for\s*Improvement[^:]*:\s*<ul[^>]*>(.*?)<\/ul>/si', $segment, $ai)) {
-                if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ai[1], $lis)) {
-                    foreach ($lis[1] as $li) {
-                        $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
-                        if ($text !== '') { $items[] = $text; }
-                        if (count($items) >= $limit) break;
-                    }
-                }
-            }
+			if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
+				$start = $ai[0][1] + strlen($ai[0][0]);
+				if (preg_match('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $ul, 0, $start)) {
+					if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul[1], $lis)) {
+						foreach ($lis[1] as $li) {
+							$text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+							if ($text !== '') { $items[] = $text; }
+							if (count($items) >= $limit) break;
+						}
+					}
+				}
+			}
 
             // 2) If not labelled or still short, harvest mechanics-like bullets by keyword from ULs
             if (count($items) < $limit) {
