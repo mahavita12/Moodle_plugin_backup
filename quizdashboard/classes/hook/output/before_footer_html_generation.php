@@ -362,12 +362,18 @@ class before_footer_html_generation {
         $improvements = '';
         $examples = '';
         if ($segment) {
-            // Prefer labeled lists
-            if (preg_match('/Areas\s*for\s*Improvement:?\s*<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ai)) {
-                $improvements = '<ul>' . $ai[1] . '</ul>';
+            // Prefer labeled lists, allowing intervening tags between label and the UL
+            if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
+                $start = $ai[0][1] + strlen($ai[0][0]);
+                if (preg_match('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ul, 0, $start)) {
+                    $improvements = '<ul>' . $ul[1] . '</ul>';
+                }
             }
-            if (preg_match('/Examples:?\s*<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ex)) {
-                $examples = '<ul>' . $ex[1] . '</ul>';
+            if (preg_match('/Examples[^:]*:/i', $segment, $exm, PREG_OFFSET_CAPTURE)) {
+                $start = $exm[0][1] + strlen($exm[0][0]);
+                if (preg_match('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ux, 0, $start)) {
+                    $examples = '<ul>' . $ux[1] . '</ul>';
+                }
             }
             // Fallback: take first and second ULs in the section if labels missing
             if ($improvements === '' || $examples === '') {
