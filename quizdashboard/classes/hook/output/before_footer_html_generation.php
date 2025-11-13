@@ -115,8 +115,14 @@ class before_footer_html_generation {
         $relevance = self::extract_relevance_from_content($html);
         $overall = self::extract_overall_html($html);
 
+        // Extract example pairs for Language Use and Mechanics to include in the revision card
+        $langLists = self::extract_section_lists($html, 'Language\s+Use');
+        $mechLists = self::extract_section_lists($html, 'Mechanics');
+        $langPairs = self::extract_original_improved_pairs($langLists['examples'], 5);
+        $mechPairs = self::extract_original_improved_pairs($mechLists['examples'], 5);
+
         $ordinal = $fallbackfirst ? 'First' : self::ordinal_label($submissionnum - 1); // previous or first
-        $card = self::render_card($prev->id, $ordinal, $meta, $items, $relevance, $overall);
+        $card = self::render_card($prev->id, $ordinal, $meta, $items, $relevance, $overall, $langPairs, $mechPairs);
         $hook->add_html($card);
     }
 
@@ -413,7 +419,7 @@ class before_footer_html_generation {
         return $map[$n] ?? ($n . 'th');
     }
 
-    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall) : string {
+    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall, array $langPairs = [], array $mechPairs = []) : string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
         $sec = '';
         $mkBullets = function($title, $arr, $color, $relevanceText = '') use ($esc) {
@@ -431,11 +437,31 @@ class before_footer_html_generation {
             $html .= '</div>';
             return $html;
         };
+        $mkPairs = function($title, $pairs, $color) use ($esc) {
+            if (empty($pairs)) return '';
+            $html = '<div class="qd-criteria__item" style="border-left-color:' . $color . ';">'
+                  . '<h4 class="qd-criteria__title">' . $esc($title) . '</h4>';
+            foreach ($pairs as $i => $p) {
+                $html .= '<div class="qd-hwex__row" style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ' . $color . ';border-radius:6px;padding:8px 10px;margin:6px 0;">'
+                       . '<div class="qd-hwex__label" style="font-weight:700;color:#555;font-size:12px;margin-bottom:4px">Example ' . ($i + 1) . '</div>'
+                       . '<div class="qd-hwex__orig" style="font-size:13px;color:#6b7280;margin-bottom:2px;line-height:1.5"><strong>Original:</strong> ' . $esc($p['original']) . '</div>'
+                       . '<div class="qd-hwex__impr" style="font-size:13px;color:#059669;line-height:1.5"><strong>Improved:</strong> ' . $esc($p['improved']) . '</div>'
+                       . '</div>';
+            }
+            $html .= '</div>';
+            return $html;
+        };
         $colors = ['#0b69c7','#0b69c7','#0b69c7','#0b69c7','#0b69c7'];
         $i = 0;
         foreach ($items as $title => $arr) {
             $rel = ($i === 0) ? ($relevance ?? '') : '';
             $sec .= $mkBullets($title, $arr, $colors[min($i,4)], $rel);
+            if (stripos($title, 'Language Use') !== false && !empty($langPairs)) {
+                $sec .= $mkPairs('Language Use – Examples from Your Essay', $langPairs, '#0b69c7');
+            }
+            if (stripos($title, 'Mechanics') !== false && !empty($mechPairs)) {
+                $sec .= $mkPairs('Mechanics – Examples from Your Essay', $mechPairs, '#dc2626');
+            }
             $i++;
         }
         $overallhtml = '';
@@ -493,14 +519,14 @@ class before_footer_html_generation {
     private static function render_homework_examples_card_for_attempt($hook, $attempt): void {
         global $DB;
         try {
-            // Find most recent graded essay attempt for this user
+            // Find FIRST graded essay attempt for this user (earliest feedback)
             $src = $DB->get_record_sql("
                 SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
                 FROM {quiz_attempts} qa
                 JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
                 JOIN {quiz} q ON q.id = qa.quiz
                 WHERE qa.userid = ? AND (g.feedback_html IS NOT NULL AND g.feedback_html <> '')
-                ORDER BY qa.timestart DESC
+                ORDER BY qa.timestart ASC
                 ", [$attempt->userid], \IGNORE_MISSING);
             if (!$src || empty($src->feedback_html)) { return; }
 
