@@ -11,6 +11,9 @@
         <FIELD NAME="feedback_html" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Complete feedback HTML"/>
         <FIELD NAME="overall_comments" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Overall comments for email"/>
         <FIELD NAME="ai_likelihood" TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="AI assistance likelihood percentage"/>
+        <FIELD NAME="homework_json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Structured homework JSON for injection"/>
+        <FIELD NAME="feedback_json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Structured feedback JSON (sections, bullets, examples)"/>
+        <FIELD NAME="revision_json" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Structured revision JSON (diff/html)"/>
         <FIELD NAME="grading_level" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" DEFAULT="general" COMMENT="Grading level: general or advanced"/>
         <FIELD NAME="score_content_ideas" TYPE="int" LENGTH="3" NOTNULL="false" SEQUENCE="false" COMMENT="Stored score for Content and Ideas"/>
         <FIELD NAME="score_structure_organization" TYPE="int" LENGTH="3" NOTNULL="false" SEQUENCE="false" COMMENT="Stored score for Structure and Organization"/>

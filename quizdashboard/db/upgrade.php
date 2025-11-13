@@ -124,6 +124,35 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025111001, 'local', 'quizdashboard');
     }
 
+    // Ensure JSON columns exist for structured data (homework_json + feedback_json).
+    if ($oldversion < 2025111401) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+
+        // homework_json (BIG TEXT)
+        $homeworkjson = new xmldb_field('homework_json', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'homework_html');
+        if (!$dbman->field_exists($table, $homeworkjson)) {
+            $dbman->add_field($table, $homeworkjson);
+        }
+
+        // feedback_json (BIG TEXT) – for future structured feedback storage
+        $feedbackjson = new xmldb_field('feedback_json', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'feedback_html');
+        if (!$dbman->field_exists($table, $feedbackjson)) {
+            $dbman->add_field($table, $feedbackjson);
+        }
+
+        upgrade_plugin_savepoint(true, 2025111401, 'local', 'quizdashboard');
+    }
+
+    // Add revision_json column for structured revision saving.
+    if ($oldversion < 2025111402) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+        $revisionjson = new xmldb_field('revision_json', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'feedback_json');
+        if (!$dbman->field_exists($table, $revisionjson)) {
+            $dbman->add_field($table, $revisionjson);
+        }
+        upgrade_plugin_savepoint(true, 2025111402, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 

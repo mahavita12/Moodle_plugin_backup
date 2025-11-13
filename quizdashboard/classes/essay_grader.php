@@ -1655,6 +1655,26 @@ Provide an encouraging but factual commentary about the student's writing journe
                 $record->similarity_checkedat = time();
             }
             $record->timemodified = time();
+
+            // Build structured JSON blocks for feedback and revision (non-fatal if parsing fails)
+            try {
+                $feedback_segment = $this->slice_between_markers($complete_html, 'EXTRACT_FEEDBACK_START', 'EXTRACT_FEEDBACK_END');
+                if ($feedback_segment !== '') {
+                    $record->feedback_json = $this->encode_feedback_json($feedback_segment, [
+                        'content_and_ideas' => $score_content_ideas,
+                        'structure_and_organization' => $score_structure_organization,
+                        'language_use' => $score_language_use,
+                        'creativity_and_originality' => $score_creativity_originality,
+                        'mechanics' => $score_mechanics,
+                    ]);
+                }
+                $revision_segment = $this->slice_between_markers($complete_html, 'EXTRACT_REVISION_START', 'EXTRACT_REVISION_END');
+                if ($revision_segment !== '') {
+                    $record->revision_json = $this->encode_revision_json($revision_segment);
+                }
+            } catch (\Throwable $e) {
+                error_log('DEBUG: JSON build error (ignored): '.$e->getMessage());
+            }
             
             error_log("DEBUG: Checking for existing record...");
             $existing = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt_id]);
@@ -1687,6 +1707,111 @@ Provide an encouraging but factual commentary about the student's writing journe
             error_log("DEBUG: Error file: " . $e->getFile() . " line " . $e->getLine());
             throw new \moodle_exception('Error writing to database: ' . $e->getMessage());
         }
+    }
+
+    // ---- JSON helpers ----
+    protected function slice_between_markers(string $html, string $startMarker, string $endMarker) : string {
+        $pattern = '/<!--\s*' . preg_quote($startMarker, '/') . '\s*-->(.*?)<!--\s*' . preg_quote($endMarker, '/') . '\s*-->/si';
+        if (preg_match($pattern, $html, $m)) { return $m[1] ?? ''; }
+        return '';
+    }
+
+    protected function encode_feedback_json(string $feedbackHtml, array $scores) : string {
+        $section = function(string $titlePattern) use ($feedbackHtml) : string {
+            if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\/h2>(.*?)(?=<h2|$)/si', $feedbackHtml, $m)) {
+                return $m[1];
+            }
+            return '';
+        };
+        $listAfterLabel = function(string $segment, string $label) : array {
+            if ($segment === '') return [];
+            if (preg_match('/' . $label . '[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
+                $start = $ai[0][1] + strlen($ai[0][0]);
+                if (preg_match('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $ul, 0, $start)) {
+                    if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul[1], $lis)) {
+                        $out = [];
+                        foreach ($lis[1] as $li) {
+                            $out[] = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                        }
+                        return $out;
+                    }
+                }
+            }
+            if (preg_match('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $ul0)) {
+                if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul0[1], $lis0)) {
+                    $out = [];
+                    foreach ($lis0[1] as $li) { $out[] = trim(preg_replace('/\s+/', ' ', strip_tags($li))); }
+                    return $out;
+                }
+            }
+            return [];
+        };
+        $pairsFromSegment = function(string $segment) : array {
+            if ($segment === '') return [];
+            $pairs = [];
+            if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $segment, $lis)) {
+                foreach ($lis[1] as $liHtml) {
+                    $plain = html_entity_decode(trim(preg_replace('/\s+/u', ' ', strip_tags($liHtml))), ENT_QUOTES, 'UTF-8');
+                    $o = ''; $v = '';
+                    if (preg_match('/Original:\s*(.+?)(?:\s*(Improved:|$))/i', $plain, $m1)) { $o = trim($m1[1]); }
+                    if (preg_match('/Improved:\s*(.+)$/i', $plain, $m2)) { $v = trim($m2[1]); }
+                    $o = trim($o, " \t\n\r\0\x0B\"'“”‘’"); $v = trim($v, " \t\n\r\0\x0B\"'“”‘’");
+                    if ($o !== '' && $v !== '') { $pairs[] = ['original'=>$o,'improved'=>$v]; }
+                }
+            }
+            if (empty($pairs)) {
+                if (preg_match_all('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $uls)) {
+                    foreach ($uls[1] as $ulhtml) {
+                        if (preg_match_all('/Original:\s*(.+?)\s*Improved:\s*(.+?)(?=<li|$)/is', strip_tags($ulhtml), $mm, PREG_SET_ORDER)) {
+                            foreach ($mm as $m) {
+                                $o = trim($m[1]); $v = trim($m[2]);
+                                if ($o !== '' && $v !== '') { $pairs[] = ['original'=>$o,'improved'=>$v]; }
+                            }
+                            if (!empty($pairs)) break;
+                        }
+                    }
+                }
+            }
+            return $pairs;
+        };
+
+        $content = $section('Content\s+and\s+Ideas');
+        $structure = $section('Structure\s+and\s+Organi[sz]ation');
+        $language = $section('Language\s+Use');
+        $creativity = $section('Creativity\s+and\s+Originality');
+        $mechanics = $section('Mechanics');
+
+        $json = [
+            'scores' => $scores,
+            'sections' => [
+                'content_and_ideas' => [
+                    'improvements' => $listAfterLabel($content, 'Areas\s*for\s*Improvement'),
+                ],
+                'structure_and_organization' => [
+                    'improvements' => $listAfterLabel($structure, 'Areas\s*for\s*Improvement'),
+                ],
+                'language_use' => [
+                    'improvements' => $listAfterLabel($language, 'Areas\s*for\s*Improvement'),
+                    'examples' => $pairsFromSegment($language),
+                ],
+                'creativity_and_originality' => [
+                    'improvements' => $listAfterLabel($creativity, 'Areas\s*for\s*Improvement'),
+                ],
+                'mechanics' => [
+                    'improvements' => $listAfterLabel($mechanics, 'Areas\s*for\s*Improvement'),
+                    'examples' => $pairsFromSegment($mechanics),
+                ],
+            ],
+        ];
+        return json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    protected function encode_revision_json(string $revisionHtml) : string {
+        $json = [
+            'html' => $revisionHtml,
+            'text' => trim(preg_replace('/\s+/', ' ', strip_tags($revisionHtml))),
+        ];
+        return json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     protected function upload_file_to_drive($file_path, $mime_type) {

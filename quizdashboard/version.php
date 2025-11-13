@@ -2,7 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_quizdashboard';
-$plugin->version = 2025111002; // Version bump to rebuild component map
+$plugin->version = 2025111402; // DB: add revision_json column
 
 $plugin->requires = 2022112800; // Moodle 4.0+
 $plugin->maturity = MATURITY_BETA;
