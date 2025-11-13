@@ -377,6 +377,17 @@ class before_footer_html_generation {
                     }
                 }
             }
+            // Robust fallback for Examples: pick the UL that contains Original/Improved pairs
+            if ($examples === '' || !preg_match('/Original:\\s*|Improved:/i', strip_tags($examples))) {
+                if (preg_match_all('/<ul[^>]*>(.*?)<\\/ul>/si', $segment, $ulcands)) {
+                    foreach ($ulcands[1] as $ulhtml) {
+                        if (preg_match('/Original:\\s*.*?Improved:/is', $ulhtml)) {
+                            $examples = '<ul>' . $ulhtml . '</ul>';
+                            break;
+                        }
+                    }
+                }
+            }
         }
         return ['improvements' => $improvements, 'examples' => $examples];
     }
