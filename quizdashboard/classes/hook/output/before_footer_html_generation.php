@@ -236,60 +236,44 @@ class before_footer_html_generation {
     private static function extract_mechanics_items($html, $limit = 3) : array {
         $segment = '';
 
-        // Prefer mechanics section by heading.
+        // Prefer Mechanics section by heading.
         if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
             $segment = $m[1];
         }
-
-        // Fallback to markers – these may wrap a larger chunk that still contains
-        // the Mechanics heading, so trim down to the portion following that heading.
+        // Fallback to markers – trim to content after heading if present.
         if ($segment === '' && preg_match('/<!--\s*EXTRACT_MECHANICS_START\s*-->(.*?)<!--\s*EXTRACT_MECHANICS_END\s*-->/si', $html, $mm)) {
             $rawsegment = $mm[1];
             if (preg_match('/<h2[^>]*>.*?Mechanics.*?<\/h2>(.*)/si', $rawsegment, $inner)) {
                 $segment = $inner[1];
-            }
-        }
-
-        // Attempt parse via generic section list extractor first (more resilient)
-        $lists = self::extract_section_lists($html, 'Mechanics');
-        if (!empty($lists['improvements'])) {
-            $parsed = self::extract_improvement_bullets($lists['improvements'], $limit);
-            if (!empty($parsed)) {
-                return array_slice($parsed, 0, $limit);
+            } else {
+                $segment = $rawsegment;
             }
         }
 
         $items = [];
         if ($segment) {
-            // Primary: list immediately after "Areas for Improvement" label in Mechanics.
-            if (preg_match('/Areas\s*for\s*Improvement[^:]*:/i', $segment, $ai, PREG_OFFSET_CAPTURE)) {
-                $start = $ai[0][1] + strlen($ai[0][0]);
-                if (preg_match('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $ul, 0, $start)) {
-                    if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul[1], $lis)) {
-                        foreach ($lis[1] as $li) {
-                            $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
-                            if ($text !== '') {
-                                $items[] = $text;
-                                if (count($items) >= $limit) {
-                                    break;
-                                }
-                            }
-                        }
+            // 1) If labelled, take the UL after "Areas for Improvement"
+            if (preg_match('/Areas\s*for\s*Improvement[^:]*:\s*<ul[^>]*>(.*?)<\/ul>/si', $segment, $ai)) {
+                if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ai[1], $lis)) {
+                    foreach ($lis[1] as $li) {
+                        $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                        if ($text !== '') { $items[] = $text; }
+                        if (count($items) >= $limit) break;
                     }
                 }
             }
 
-            // Secondary: harvest mechanics-like bullets by keyword from any UL inside section.
+            // 2) If not labelled or still short, harvest mechanics-like bullets by keyword from ULs
             if (count($items) < $limit) {
-                if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $segment, $lis2)) {
-                    foreach ($lis2[1] as $li) {
-                        $plain = strtolower(trim(strip_tags($li)));
-                        if (preg_match('/spelling|capital|punctuation|comma|proofread|tense|grammar/i', $plain)) {
-                            $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
-                            if ($text !== '') {
-                                $items[] = $text;
-                                if (count($items) >= $limit) {
-                                    break;
+                if (preg_match_all('/<ul[^>]*>(.*?)<\/ul>/si', $segment, $uls)) {
+                    foreach ($uls[1] as $ul) {
+                        if (preg_match_all('/<li[^>]*>(.*?)<\/li>/si', $ul, $lis2)) {
+                            foreach ($lis2[1] as $li) {
+                                $plain = strtolower(trim(strip_tags($li)));
+                                if (preg_match('/spelling|capital|punctuation|comma|proofread|tense|grammar|article\\s*\\(|subject-verb|run-?on/i', $plain)) {
+                                    $text = trim(preg_replace('/\s+/', ' ', strip_tags($li)));
+                                    if ($text !== '') { $items[] = $text; }
+                                    if (count($items) >= $limit) break 2;
                                 }
                             }
                         }
@@ -299,22 +283,19 @@ class before_footer_html_generation {
         }
 
         if (!empty($items)) {
-            // Remove duplicates while preserving order.
             $items = array_values(array_unique($items));
-
+            // Remove any lines that look like other section labels
+            $items = array_values(array_filter($items, function($t){
+                return !preg_match('/^Relevance\\s*to\\s*Question|^Strengths:/i', $t);
+            }));
             // Avoid repeating the same bullets as the Content section when markers misalign.
             $contentitems = self::extract_improvement_items($html, 'Content\\s+and\\s+Ideas', $limit);
             if (!empty($contentitems)) {
                 $items = array_values(array_diff($items, $contentitems));
             }
-
-            // Enforce limit after filtering.
-            if (count($items) > $limit) {
-                $items = array_slice($items, 0, $limit);
-            }
+            if (count($items) > $limit) { $items = array_slice($items, 0, $limit); }
         }
 
-        // Final fallback: standard mechanics reminders.
         if (empty($items)) {
             $items = [
                 'Check spelling carefully, especially common words',
@@ -322,7 +303,6 @@ class before_footer_html_generation {
                 'Review punctuation, particularly commas in compound sentences'
             ];
         }
-
         return $items;
     }
 
@@ -630,6 +610,11 @@ class before_footer_html_generation {
 
     private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $items, array $langPairs, array $mechPairs): string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
+        // Clean display title: drop class codes and Writing prefix
+        $display = $essayname;
+        $display = preg_replace('/^\\s*\\d+[A-Za-z]?\\s*[-–—]\\s*/u', '', $display);
+        $display = preg_replace('/^\\s*[A-Za-z]{1,3}\\s*[-–—]\\s*/u', '', $display);
+        $display = preg_replace('/^\\s*Writing\\s*[-–—:]\\s*/iu', '', $display);
         $mkPairs = function($title, $pairs, $color) use ($esc) {
             if (empty($pairs)) return '';
             $html = '<div class="qd-hwex__section"><h4 class="qd-hwex__title" style="color:'.$color.';">'.$esc($title).'</h4>';
@@ -696,7 +681,7 @@ class before_footer_html_generation {
               . '@media print{.qd-hwex{page-break-inside:avoid}.qd-hwex__body{display:block!important}.qd-hwex__toggle{display:none}}'
               . '</style>'
               . '<div class="qd-hwex__header" role="button" aria-expanded="false" aria-controls="qd-hwex-body">'
-              . '<h3 class="qd-hwex__titlebar">Essay Feedback - '.$esc($essayname).'</h3>'
+              . '<h3 class="qd-hwex__titlebar">Essay Feedback - '.$esc($display).'</h3>'
               . '<button class="qd-hwex__toggle" type="button" aria-label="Toggle">▾</button>'
               . '</div>'
               . '<div id="qd-hwex-body" class="qd-hwex__body" aria-hidden="true">'
