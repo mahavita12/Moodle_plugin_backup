@@ -539,7 +539,7 @@ class before_footer_html_generation {
 
             // Find FIRST graded essay attempt for this user matching this topic (earliest feedback for this topic)
             $src = $DB->get_record_sql("
-                SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
+                SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html, g.feedback_json
                 FROM {quiz_attempts} qa
                 JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
                 JOIN {quiz} q ON q.id = qa.quiz
@@ -552,7 +552,7 @@ class before_footer_html_generation {
             // Fallback: earliest feedback overall if topic-based search fails
             if (!$src) {
                 $src = $DB->get_record_sql("
-                    SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
+                    SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html, g.feedback_json
                     FROM {quiz_attempts} qa
                     JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
                     JOIN {quiz} q ON q.id = qa.quiz
@@ -563,6 +563,7 @@ class before_footer_html_generation {
             if (!$src || empty($src->feedback_html)) { return; }
 
             $feedback = (string)$src->feedback_html;
+            $feedbackjson = isset($src->feedback_json) ? (string)$src->feedback_json : '';
             $essayname = (string)$src->quizname;
             $submitted = userdate((int)$src->timestart);
 
@@ -582,6 +583,41 @@ class before_footer_html_generation {
                 'Creativity and Originality (20%)' => self::extract_improvement_items($feedback, 'Creativity\s+and\s+Originality', 3),
                 'Mechanics (10%)' => self::extract_mechanics_items($feedback, 3)
             ];
+
+            // Prefer JSON for Mechanics only (both bullets and examples) if available.
+            if (!empty($feedbackjson)) {
+                $obj = json_decode($feedbackjson, true);
+                if (is_array($obj) && isset($obj['sections']['mechanics'])) {
+                    $mechsec = $obj['sections']['mechanics'];
+                    // Override bullets
+                    if (isset($mechsec['improvements']) && is_array($mechsec['improvements'])) {
+                        $over = [];
+                        foreach ($mechsec['improvements'] as $b) {
+                            $t = trim((string)$b);
+                            if ($t !== '') { $over[] = $t; }
+                            if (count($over) >= 3) break;
+                        }
+                        if (!empty($over)) {
+                            $items['Mechanics (10%)'] = $over;
+                        }
+                    }
+                    // Override examples pairs
+                    if (isset($mechsec['examples']) && is_array($mechsec['examples'])) {
+                        $pairs = [];
+                        foreach ($mechsec['examples'] as $p) {
+                            if (is_array($p)) {
+                                $o = trim((string)($p['original'] ?? ''));
+                                $v = trim((string)($p['improved'] ?? ''));
+                                if ($o !== '' && $v !== '') { $pairs[] = ['original'=>$o, 'improved'=>$v]; }
+                                if (count($pairs) >= 5) break;
+                            }
+                        }
+                        if (!empty($pairs)) {
+                            $mechPairs = $pairs;
+                        }
+                    }
+                }
+            }
 
             // If nothing to show, do not render
             if (empty($langPairs) && empty($mechPairs) && empty($items['Content and Ideas (25%)'])) { return; }
