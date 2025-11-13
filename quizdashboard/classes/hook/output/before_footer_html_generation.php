@@ -323,25 +323,13 @@ class before_footer_html_generation {
      */
     private static function extract_section_lists($html, $titlePattern) : array {
         $segment = '';
-        // Mechanics: prefer markers first (recent feedbacks have proper markers)
-        if (preg_match('/Mechanics/i', $titlePattern)) {
-            if (preg_match('/<!--\\s*EXTRACT_MECHANICS_START\\s*-->(.*?)<!--\\s*EXTRACT_MECHANICS_END\\s*-->/si', $html, $mm0)) {
-                $segment = $mm0[1];
-            }
-        }
-        // Mechanics: prefer strategic markers first (recent feedbacks include proper markers)
-        if ($segment === '' && preg_match('/Mechanics/i', $titlePattern)) {
-            if (preg_match('/<!--\\s*EXTRACT_MECHANICS_START\\s*-->(.*?)<!--\\s*EXTRACT_MECHANICS_END\\s*-->/si', $html, $mm0)) {
-                $segment = $mm0[1];
-            }
-        }
-        // Prefer capture by heading – markers from legacy exports can be misordered.
+        // Prefer capture by heading (H2) for all sections first.
         if ($segment === '') {
             if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
                 $segment = $m[1];
             }
         }
-        // Fallback: use strategic markers if heading extraction fails
+        // Fallback: use strategic markers if heading extraction fails.
         if ($segment === '') {
             $map = [
                 'Content\\s+and\\s+Ideas' => 'CONTENT_IDEAS',
