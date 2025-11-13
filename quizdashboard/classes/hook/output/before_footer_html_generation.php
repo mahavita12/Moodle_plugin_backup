@@ -250,6 +250,15 @@ class before_footer_html_generation {
             }
         }
 
+        // Attempt parse via generic section list extractor first (more resilient)
+        $lists = self::extract_section_lists($html, 'Mechanics');
+        if (!empty($lists['improvements'])) {
+            $parsed = self::extract_improvement_bullets($lists['improvements'], $limit);
+            if (!empty($parsed)) {
+                return array_slice($parsed, 0, $limit);
+            }
+        }
+
         $items = [];
         if ($segment) {
             // Primary: list immediately after "Areas for Improvement" label in Mechanics.
@@ -334,25 +343,27 @@ class before_footer_html_generation {
      */
     private static function extract_section_lists($html, $titlePattern) : array {
         $segment = '';
-        // Try strategic markers first based on title mapping
-        $map = [
-            'Content\\s+and\\s+Ideas' => 'CONTENT_IDEAS',
-            'Structure\\s+and\\s+Organi[sz]ation' => 'STRUCTURE_ORG',
-            'Language\\s+Use' => 'LANGUAGE_USE',
-            'Creativity\\s+and\\s+Originality' => 'CREATIVITY_ORIG',
-            'Mechanics' => 'MECHANICS'
-        ];
-        foreach ($map as $title => $marker) {
-            if (preg_match('/' . $title . '/i', $titlePattern)) {
-                if (preg_match('/<!--\s*EXTRACT_' . $marker . '_START\s*-->(.*?)<!--\s*EXTRACT_' . $marker . '_END\s*-->/si', $html, $mm)) {
-                    $segment = $mm[1];
-                }
-            }
-        }
-        // Fallback: capture section content by heading
+        // Prefer capture by heading – markers from legacy exports can be misordered.
         if ($segment === '') {
             if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
                 $segment = $m[1];
+            }
+        }
+        // Fallback: use strategic markers if heading extraction fails
+        if ($segment === '') {
+            $map = [
+                'Content\\s+and\\s+Ideas' => 'CONTENT_IDEAS',
+                'Structure\\s+and\\s+Organi[sz]ation' => 'STRUCTURE_ORG',
+                'Language\\s+Use' => 'LANGUAGE_USE',
+                'Creativity\\s+and\\s+Originality' => 'CREATIVITY_ORIG',
+                'Mechanics' => 'MECHANICS'
+            ];
+            foreach ($map as $title => $marker) {
+                if (preg_match('/' . $title . '/i', $titlePattern)) {
+                    if (preg_match('/<!--\s*EXTRACT_' . $marker . '_START\s*-->(.*?)<!--\s*EXTRACT_' . $marker . '_END\s*-->/si', $html, $mm)) {
+                        $segment = $mm[1];
+                    }
+                }
             }
         }
 
