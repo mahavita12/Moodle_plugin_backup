@@ -153,6 +153,11 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025111402, 'local', 'quizdashboard');
     }
 
+    // No-op savepoint to finalize version bump.
+    if ($oldversion < 2025111403) {
+        upgrade_plugin_savepoint(true, 2025111403, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 
