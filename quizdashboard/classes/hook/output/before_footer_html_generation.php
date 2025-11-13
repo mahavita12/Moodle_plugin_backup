@@ -112,14 +112,25 @@ class before_footer_html_generation {
             'Creativity and Originality (20%)' => self::extract_improvement_items($html, 'Creativity\s+and\s+Originality', 3),
             'Mechanics (10%)' => self::extract_mechanics_items($html, 3)
         ];
+        // Prefer JSON for Mechanics bullets when available
+        if (!empty($grading->feedback_json)) {
+            $obj = json_decode((string)$grading->feedback_json, true);
+            if (is_array($obj) && isset($obj['sections']['mechanics']['improvements']) && is_array($obj['sections']['mechanics']['improvements'])) {
+                $over = [];
+                foreach ($obj['sections']['mechanics']['improvements'] as $b) {
+                    $t = trim((string)$b);
+                    if ($t !== '') { $over[] = $t; }
+                    if (count($over) >= 3) break;
+                }
+                if (!empty($over)) { $items['Mechanics (10%)'] = $over; }
+            }
+        }
         $relevance = self::extract_relevance_from_content($html);
         $overall = self::extract_overall_html($html);
 
-        // Extract example pairs for Language Use and Mechanics to include in the revision card
-        $langLists = self::extract_section_lists($html, 'Language\s+Use');
-        $mechLists = self::extract_section_lists($html, 'Mechanics');
-        $langPairs = self::extract_original_improved_pairs($langLists['examples'], 5);
-        $mechPairs = self::extract_original_improved_pairs($mechLists['examples'], 5);
+        // For resubmission card, do not show Original ⇒ Improved pairs for Language Use or Mechanics
+        $langPairs = [];
+        $mechPairs = [];
 
         $ordinal = $fallbackfirst ? 'First' : self::ordinal_label($submissionnum - 1); // previous or first
         $card = self::render_card($prev->id, $ordinal, $meta, $items, $relevance, $overall, $langPairs, $mechPairs);
