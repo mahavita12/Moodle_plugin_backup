@@ -49,7 +49,7 @@ class before_footer_html_generation {
             $qname = (string)$quiz->name;
             $ishomework = (stripos($qname, 'homework') !== false) || preg_match('/^[A-Z]{1,3}\s*[-–—]\s*/u', $qname);
             if ($ishomework) {
-                self::render_homework_examples_card_for_attempt($hook, $attempt);
+                self::render_homework_examples_card_for_attempt($hook, $attempt, $quiz);
                 return;
             }
         }
@@ -323,6 +323,12 @@ class before_footer_html_generation {
      */
     private static function extract_section_lists($html, $titlePattern) : array {
         $segment = '';
+        // Mechanics: prefer markers first (recent feedbacks have proper markers)
+        if (preg_match('/Mechanics/i', $titlePattern)) {
+            if (preg_match('/<!--\\s*EXTRACT_MECHANICS_START\\s*-->(.*?)<!--\\s*EXTRACT_MECHANICS_END\\s*-->/si', $html, $mm0)) {
+                $segment = $mm0[1];
+            }
+        }
         // Prefer capture by heading – markers from legacy exports can be misordered.
         if ($segment === '') {
             if (preg_match('/<h2[^>]*>.*?' . $titlePattern . '.*?<\\/h2>(.*?)(?=<h2|$)/si', $html, $m)) {
@@ -507,18 +513,39 @@ class before_footer_html_generation {
     /**
      * HOMEWORK: Render examples card (Language Use / Mechanics) using the most recent essay feedback for this user.
      */
-    private static function render_homework_examples_card_for_attempt($hook, $attempt): void {
+    private static function render_homework_examples_card_for_attempt($hook, $attempt, $quiz): void {
         global $DB;
         try {
-            // Find FIRST graded essay attempt for this user (earliest feedback)
+            // Derive topic from homework quiz name (e.g., \"JM-The Day Gravity Reversed\" -> \"The Day Gravity Reversed\")
+            $qname = (string)$quiz->name;
+            $topic = $qname;
+            if (preg_match('/^[A-Z]{1,3}\s*[-–—]\s*(.+)$/u', $qname, $m)) { $topic = trim($m[1]); }
+            $topic = preg_replace('/^\s*Writing\s*[-–—:]\s*/iu', '', $topic);
+            $topic = trim($topic);
+
+            // Find FIRST graded essay attempt for this user matching this topic (earliest feedback for this topic)
             $src = $DB->get_record_sql("
                 SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
                 FROM {quiz_attempts} qa
                 JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
                 JOIN {quiz} q ON q.id = qa.quiz
-                WHERE qa.userid = ? AND (g.feedback_html IS NOT NULL AND g.feedback_html <> '')
+                WHERE qa.userid = ? 
+                  AND (g.feedback_html IS NOT NULL AND g.feedback_html <> '')
+                  AND q.name LIKE ?
                 ORDER BY qa.timestart ASC
+                ", [$attempt->userid, '%'.$topic.'%'], \IGNORE_MISSING);
+
+            // Fallback: earliest feedback overall if topic-based search fails
+            if (!$src) {
+                $src = $DB->get_record_sql("
+                    SELECT qa.id AS attemptid, qa.timestart, q.name AS quizname, g.feedback_html
+                    FROM {quiz_attempts} qa
+                    JOIN {local_quizdashboard_gradings} g ON g.attempt_id = qa.id
+                    JOIN {quiz} q ON q.id = qa.quiz
+                    WHERE qa.userid = ? AND (g.feedback_html IS NOT NULL AND g.feedback_html <> '')
+                    ORDER BY qa.timestart ASC
                 ", [$attempt->userid], \IGNORE_MISSING);
+            }
             if (!$src || empty($src->feedback_html)) { return; }
 
             $feedback = (string)$src->feedback_html;
