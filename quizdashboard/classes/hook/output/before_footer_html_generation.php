@@ -47,7 +47,28 @@ class before_footer_html_generation {
         $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
         if ($quiz) {
             $qname = (string)$quiz->name;
-            $ishomework = (stripos($qname, 'homework') !== false) || preg_match('/^[A-Z]{1,3}\s*[-–—]\s*/u', $qname);
+            // Restrict homework card strictly to Homework quizzes injected into the
+            // "Essay Feedback Homework" section of the Personal Course, or quiz names
+            // that explicitly contain the word "homework".
+            $ishomework = false;
+            try {
+                $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+                $cm = $DB->get_record('course_modules', [
+                    'module' => $moduleidquiz,
+                    'instance' => (int)$quiz->id,
+                    'course' => (int)$quiz->course
+                ], 'id,section', \IGNORE_MISSING);
+                if ($cm && !empty($cm->section)) {
+                    $sectionname = (string)$DB->get_field('course_sections', 'name', ['id' => (int)$cm->section], \IGNORE_MISSING);
+                    if ($sectionname !== '' && stripos($sectionname, 'Essay Feedback Homework') !== false) {
+                        $ishomework = true;
+                    }
+                }
+            } catch (\Throwable $e) { /* best-effort */ }
+            // Fallback to explicit "homework" in quiz name only (do NOT use initials prefix).
+            if (!$ishomework && stripos($qname, 'homework') !== false) {
+                $ishomework = true;
+            }
             if ($ishomework) {
                 self::render_homework_examples_card_for_attempt($hook, $attempt, $quiz);
                 return;
