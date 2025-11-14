@@ -578,6 +578,9 @@ class before_footer_html_generation {
             $essayname = (string)$src->quizname;
             $submitted = userdate((int)$src->timestart);
 
+			// Extract AI-generated revision HTML to display at top of homework card
+			$revisionhtml = trim(self::extract_between($feedback, '/<!--\s*EXTRACT_REVISION_START\s*-->/', '/<!--\s*EXTRACT_REVISION_END\s*-->/'));
+
             // Extract Language Use Examples
             $lang = self::extract_section_lists($feedback, 'Language\s+Use');
             $langPairs = self::extract_original_improved_pairs($lang['examples'], 5);
@@ -586,14 +589,11 @@ class before_footer_html_generation {
             $mech = self::extract_section_lists($feedback, 'Mechanics');
             $mechPairs = self::extract_original_improved_pairs($mech['examples'], 5);
 
-            // Extract bullet summaries for all five criteria (like resubmission card)
-            $items = [
-                'Content and Ideas (25%)' => self::extract_improvement_items($feedback, 'Content\s+and\s+Ideas', 3),
-                'Structure and Organization (25%)' => self::extract_improvement_items($feedback, 'Structure\s+and\s+Organi[sz]ation', 3),
-                'Language Use (20%)' => self::extract_improvement_items($feedback, 'Language\s+Use', 3),
-                'Creativity and Originality (20%)' => self::extract_improvement_items($feedback, 'Creativity\s+and\s+Originality', 3),
-                'Mechanics (10%)' => self::extract_mechanics_items($feedback, 3)
-            ];
+			// Only include Language Use and Mechanics sections for homework card
+			$items = [
+				'Language Use (20%)' => self::extract_improvement_items($feedback, 'Language\s+Use', 3),
+				'Mechanics (10%)' => self::extract_mechanics_items($feedback, 3)
+			];
 
             // Prefer JSON for Mechanics only (both bullets and examples) if available.
             if (!empty($feedbackjson)) {
@@ -631,9 +631,9 @@ class before_footer_html_generation {
             }
 
             // If nothing to show, do not render
-            if (empty($langPairs) && empty($mechPairs) && empty($items['Content and Ideas (25%)'])) { return; }
+			if (empty($langPairs) && empty($mechPairs)) { return; }
 
-            $card = self::render_homework_examples_card((int)$src->attemptid, $essayname, $submitted, $items, $langPairs, $mechPairs);
+			$card = self::render_homework_examples_card((int)$src->attemptid, $essayname, $submitted, $items, $langPairs, $mechPairs, $revisionhtml);
             if ($card !== '') {
                 $hook->add_html($card);
             }
@@ -696,7 +696,7 @@ class before_footer_html_generation {
         return $pairs;
     }
 
-    private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $items, array $langPairs, array $mechPairs): string {
+	private static function render_homework_examples_card(int $essayattemptid, string $essayname, string $submitted, array $items, array $langPairs, array $mechPairs, string $revisionHtml = ''): string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
         // Clean display title: drop class codes and Writing prefix
         $display = $essayname;
@@ -741,7 +741,16 @@ class before_footer_html_generation {
         }
         $criteria .= '</div>';
 
-        $body = $criteria;
+		// Optional AI revision block (shown at the top of the card body)
+		$revblock = '';
+		if (trim($revisionHtml) !== '') {
+			$revblock = '<div class="qd-hwex__rev">'
+			          .   '<h4 class="qd-hwex__rev-title">Essay Revision</h4>'
+			          .   '<div class="qd-hwex__rev-body">'.$revisionHtml.'</div>'
+			          . '</div>';
+		}
+
+		$body = $revblock . $criteria;
         if ($body === '') return '';
 
         $html = '<div id="qd-hw-examples" class="qd-hwex">'
@@ -752,6 +761,11 @@ class before_footer_html_generation {
               . '.qd-hwex__toggle{background:transparent;border:1px solid #c8c8d0;border-radius:6px;color:#6f42c1;font-weight:700;font-size:14px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-align:center}'
               . '.qd-hwex__body{display:none;padding:8px 12px 12px;border-top:1px dashed #e5e5e5}'
               . '.qd-hwex__meta{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;font-size:12px;color:#444;margin-bottom:10px}'
+		      . '.qd-hwex__rev{background:#ffffff;border:1px solid #e5e7eb;border-left:3px solid #003366;border-radius:6px;padding:10px 12px;margin-bottom:12px}'
+		      . '.qd-hwex__rev-title{margin:0 0 6px 0;font-weight:700;font-size:15px;color:#003366}'
+		      . '.qd-hwex__rev-body{font-size:13px;line-height:1.5;color:#1f2937}'
+		      . '.qd-hwex__rev-body del{color:#2563eb}'
+		      . '.qd-hwex__rev-body ins{background:#ecfdf5;color:#047857;text-decoration:none;border-bottom:1px solid #10b981;padding:0 1px}'
               . '.qd-hwex__section{margin-bottom:14px}'
               . '.qd-hwex__title{margin:0 0 8px 0;font-weight:700;font-size:15px;border-bottom:2px solid #e5e7eb;padding-bottom:6px}'
               . '.qd-hwex__row{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #0b69c7;border-radius:6px;padding:8px 10px;margin-bottom:8px}'
