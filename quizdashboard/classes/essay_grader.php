@@ -3014,23 +3014,45 @@ PROMPT;
             ]
         ];
 
-        // Contextualization guidance varies slightly by level
-        $mcq_guidance = ($level === 'advanced')
-            ? "Create MCQs that use actual phrases and scenarios from the student's essay. Reference specific sentences, character names, situations, and details from their writing."
-            : "Create MCQs that directly reference the student's essay content. Use character names, situations, and specific phrases from their story.";
+		// Contextualization guidance and exercise plan differ by level (to mirror HTML homework)
+		if ($level === 'advanced') {
+			$exercise_plan = [
+				'Academic Register and Tone',
+				'Parallelism in Complex Structures',
+				'Subordination and Sentence Combining',
+				'Vocabulary Builder - Precision in Academic Context'
+			];
+			$mcq_guidance = "Create MCQs that use actual phrases and scenarios from the student's essay. Reference specific sentences, claims, and evidence. Maintain formal academic tone and higher-order reasoning.";
+			$level_specific = "- Aim for sophisticated academic choices (register, hedging, precision).\n"
+				. "- Grammar/rhetoric focus should include parallelism, subordination, complex clause structures, and cohesive devices.\n"
+				. "- Vocabulary should prioritise discipline-appropriate precision over colloquial terms.\n";
+		} else {
+			$exercise_plan = [
+				'Subject-Verb Agreement',
+				'Articles (A, An, The)',
+				'Verb Tense Consistency',
+				'Vocabulary Builder'
+			];
+			$mcq_guidance = "Create MCQs that directly reference the student's essay content. Use character names, situations, and specific phrases from their story. Keep rules concrete and foundational.";
+			$level_specific = "- Emphasise core grammar accuracy (subject-verb agreement, articles, tense consistency).\n"
+				. "- Provide clear, student-friendly contexts and time markers.\n"
+				. "- Vocabulary should reinforce common academic words used in the essay theme.\n";
+		}
+		$exercise_list = implode(', ', $exercise_plan);
 
-        $rules = "CRITICAL Requirements:\n".
+		$rules = "CRITICAL Requirements:\n".
                  "- Return ONLY a single valid JSON object. No markdown, no backticks, no commentary.\n".
                  "- Must include keys: version, meta, items.\n".
                  "- meta.level must equal '$level'.\n".
                  "- items MUST be an array with EXACTLY 30 elements total (20 MCQ + 10 SI).\n\n".
 
-                 "MCQ REQUIREMENTS (Items 1-20):\n".
+				 "MCQ REQUIREMENTS (Items 1-20):\n".
                  "- Each MCQ must have: 'type':'mcq', 'exercise', 'tips', 'stem', exactly 4 'options', 'single':true, 'explanation'\n".
-                 "- Group MCQs into 4 exercise types (5 questions each): Subject-Verb Agreement, Verb Tense Consistency, Articles/Punctuation/Mechanics, Character/Context-specific\n".
+				 "- Group MCQs into 4 exercise types (5 questions each) using THIS plan (in order): $exercise_list\n".
                  "- 'exercise' field: Name of grammar concept (e.g., 'Subject-Verb Agreement')\n".
                  "- 'tips' field: Brief teaching tip for that concept\n".
-                 "- CONTEXTUALIZE EVERY MCQ: $mcq_guidance\n".
+				 "- CONTEXTUALIZE EVERY MCQ: $mcq_guidance\n".
+				 $level_specific .
                  "- 'stem' should reference essay content, like:\n".
                  "  * 'Yesterday afternoon, [character] ___ to explain why [event from essay]...'\n".
                  "  * 'When [situation from essay], [character] ___ and couldn't believe...'\n".
@@ -3038,7 +3060,7 @@ PROMPT;
                  "- Options should include time markers and context clues\n".
                  "- 'explanation' should reference why the answer is correct with grammar rules\n\n".
 
-                 "SI REQUIREMENTS (Items 21-30):\n".
+				 "SI REQUIREMENTS (Items 21-30):\n".
                  "- Each SI item: {\"type\":\"si\", \"original\":\"<sentence from essay>\", \"improved\":\"<corrected version>\"}\n".
                  "- Extract 10 ACTUAL problematic sentences from the student's essay\n".
                  "- Select sentences with: grammar errors, spelling mistakes, punctuation issues, unclear phrasing, run-ons\n".
@@ -3046,7 +3068,7 @@ PROMPT;
                  "- 'improved': Provide a clean, corrected version of the same sentence\n".
                  "- DO NOT use field names other than 'original' and 'improved'\n\n".
 
-                 "CRITICAL:\n".
+				 "CRITICAL:\n".
                  "- You MUST generate all 30 items. Do not stop early.\n".
                  "- Output is flat array. Order: 20 MCQ first, then 10 SI.\n".
                  "- Every MCQ stem should feel personalized to this specific essay.\n";

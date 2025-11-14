@@ -76,7 +76,7 @@ class homework_injector {
         $count = count($orig);
         $list = '';
         for ($i=0;$i<$count;$i++) { $n=$i+1; $safeo = htmlspecialchars($orig[$i], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8'); $list .= '<p><strong>'.$n.'. Original:</strong> '. $safeo .'</p>'; }
-        $questiontext = '<div><h4>Sentence Improvement</h4><p>Rewrite each sentence clearly and correctly.</p>'.$list.'<p>Write your improved sentences below, numbered 1 to '.$count.'.</p></div>';
+        $questiontext = '<div><h4>Sentence Improvement</h4><p style="color:#0066cc;">Rewrite each sentence clearly and correctly.</p>'.$list.'<p>Write your improved sentences below, numbered 1 to '.$count.'.</p></div>';
         $responsetemplate = '';
         for ($i=0;$i<$count;$i++) { $n=$i+1; $responsetemplate .= $n.")\n\n"; }
         $now = time();
