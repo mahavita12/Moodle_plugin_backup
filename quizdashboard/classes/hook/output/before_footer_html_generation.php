@@ -591,8 +591,8 @@ class before_footer_html_generation {
 
 			// Only include Language Use and Mechanics sections for homework card
 			$items = [
-				'Language Use (20%)' => self::extract_improvement_items($feedback, 'Language\s+Use', 3),
-				'Mechanics (10%)' => self::extract_mechanics_items($feedback, 3)
+				'Language Use' => self::extract_improvement_items($feedback, 'Language\s+Use', 3),
+				'Mechanics' => self::extract_mechanics_items($feedback, 3)
 			];
 
             // Prefer JSON for Mechanics only (both bullets and examples) if available.
@@ -608,9 +608,9 @@ class before_footer_html_generation {
                             if ($t !== '') { $over[] = $t; }
                             if (count($over) >= 3) break;
                         }
-                        if (!empty($over)) {
-                            $items['Mechanics (10%)'] = $over;
-                        }
+						if (!empty($over)) {
+							$items['Mechanics'] = $over;
+						}
                     }
                     // Override examples pairs
                     if (isset($mechsec['examples']) && is_array($mechsec['examples'])) {
@@ -703,9 +703,10 @@ class before_footer_html_generation {
         $display = preg_replace('/^\\s*\\d+[A-Za-z]?\\s*[-–—]\\s*/u', '', $display);
         $display = preg_replace('/^\\s*[A-Za-z]{1,3}\\s*[-–—]\\s*/u', '', $display);
         $display = preg_replace('/^\\s*Writing\\s*[-–—:]\\s*/iu', '', $display);
-        $mkPairs = function($title, $pairs, $color) use ($esc) {
+		$mkPairs = function($title, $pairs, $color) use ($esc) {
             if (empty($pairs)) return '';
-            $html = '<div class="qd-hwex__section"><h4 class="qd-hwex__title" style="color:'.$color.';">'.$esc($title).'</h4>';
+			// Render example rows without a section title heading
+			$html = '<div class="qd-hwex__section">';
             foreach ($pairs as $i => $p) {
                 $html .= '<div class="qd-hwex__row">'
                        . '<div class="qd-hwex__label">Example '.($i+1).'</div>'
@@ -730,12 +731,12 @@ class before_footer_html_generation {
         $i = 0;
         foreach ($items as $title => $arr) {
             $criteria .= $mkBullets($title, $arr, $colors[min($i, 4)]);
-            // Inject examples under Language Use and Mechanics after their bullet lists
-            if (stripos($title, 'Language Use') !== false && !empty($langPairs)) {
-                $criteria .= $mkPairs('Language Use – Examples from Your Essay', $langPairs, '#0b69c7');
+			// Inject examples under Language Use and Mechanics after their bullet lists (no section headings)
+			if (stripos($title, 'Language Use') !== false && !empty($langPairs)) {
+				$criteria .= $mkPairs('', $langPairs, '#0b69c7');
             }
             if (stripos($title, 'Mechanics') !== false && !empty($mechPairs)) {
-                $criteria .= $mkPairs('Mechanics – Examples from Your Essay', $mechPairs, '#dc2626');
+				$criteria .= $mkPairs('', $mechPairs, '#dc2626');
             }
             $i++;
         }
