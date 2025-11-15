@@ -10,14 +10,24 @@ class sequence_cleanup_scheduled_task extends \core\task\scheduled_task {
 
     public function execute() {
         global $DB;
-        // Find courses that likely need cleanup: any course with sections whose sequence includes an id
-        // that is not a valid course_modules id or points to a deleting CM.
-        $candidates = $DB->get_records_sql(
-            "SELECT DISTINCT cs.course
-               FROM {course_sections} cs
-               JOIN {course_modules} cm ON cm.course = cs.course
-              WHERE cs.sequence IS NOT NULL AND cs.sequence <> ''"
-        );
+        $limitpcourses = (int)get_config('local_personalcourse', 'limit_cleanup_to_personalcourses');
+        if ($limitpcourses) {
+            // Scan only personal-course courses to reduce load.
+            $candidates = $DB->get_records_sql(
+                "SELECT DISTINCT cs.course
+                   FROM {course_sections} cs
+                   JOIN {local_personalcourse_courses} pc ON pc.courseid = cs.course
+                  WHERE cs.sequence IS NOT NULL AND cs.sequence <> ''"
+            );
+        } else {
+            // Legacy broad scan (kept for safety if admin disables the scope limit).
+            $candidates = $DB->get_records_sql(
+                "SELECT DISTINCT cs.course
+                   FROM {course_sections} cs
+                   JOIN {course_modules} cm ON cm.course = cs.course
+                  WHERE cs.sequence IS NOT NULL AND cs.sequence <> ''"
+            );
+        }
         foreach ($candidates as $row) {
             $courseid = (int)$row->course;
             $this->cleanup_course($courseid);

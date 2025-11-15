@@ -417,25 +417,30 @@ class observers {
         try {
             $ownerid = (int)$pc->userid;
             if (!empty($pq) && !empty($pq->sourcequizid)) {
-                // Enforce course visibility: keep only the latest archived as 'Previous Attempt'.
-                try {
-                    \local_personalcourse\generator_service::enforce_archive_visibility((int)$courseid, (int)$pq->sourcequizid, (int)$cm->instance);
-                } catch (\Throwable $evis) { }
-                // Detect inconsistent section sequences for this course (sequence referencing deleting/missing CMs).
+                $deferview = (int)get_config('local_personalcourse', 'defer_view_enforcement');
+                if (!$deferview) {
+                    // Enforce course visibility inline only when not deferring.
+                    try {
+                        \local_personalcourse\generator_service::enforce_archive_visibility((int)$courseid, (int)$pq->sourcequizid, (int)$cm->instance);
+                    } catch (\Throwable $evis) { }
+                }
+                // Detect inconsistent section sequences only when not deferring.
                 $inconsistent = false;
                 $badexists = false;
-                $sections = $DB->get_records('course_sections', ['course' => (int)$courseid], 'section', 'id,sequence');
-                if (!empty($sections)) {
-                    // Build valid CM id set: existing and not deletioninprogress.
-                    $validcmids = [];
-                    $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [(int)$courseid], '', 'id');
-                    foreach ($rs as $r) { $validcmids[(int)$r->id] = true; }
-                    $rs->close();
-                    foreach ($sections as $sec) {
-                        $seq = trim((string)$sec->sequence);
-                        if ($seq === '') { continue; }
-                        $ids = array_filter(array_map('intval', explode(',', $seq)));
-                        foreach ($ids as $id) { if (!isset($validcmids[(int)$id])) { $inconsistent = true; $badexists = true; break 2; } }
+                if (!$deferview) {
+                    $sections = $DB->get_records('course_sections', ['course' => (int)$courseid], 'section', 'id,sequence');
+                    if (!empty($sections)) {
+                        // Build valid CM id set: existing and not deletioninprogress.
+                        $validcmids = [];
+                        $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [(int)$courseid], '', 'id');
+                        foreach ($rs as $r) { $validcmids[(int)$r->id] = true; }
+                        $rs->close();
+                        foreach ($sections as $sec) {
+                            $seq = trim((string)$sec->sequence);
+                            if ($seq === '') { continue; }
+                            $ids = array_filter(array_map('intval', explode(',', $seq)));
+                            foreach ($ids as $id) { if (!isset($validcmids[(int)$id])) { $inconsistent = true; $badexists = true; break 2; } }
+                        }
                     }
                 }
 
@@ -455,8 +460,8 @@ class observers {
                     \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
                 }
 
-                // If inconsistent, also queue a sequence cleanup task for the course (dedup by courseid in customdata).
-                if ($inconsistent) {
+                // If inconsistent or we are deferring, queue a sequence cleanup task for the course (dedup by courseid).
+                if ($inconsistent || $deferview) {
                     $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
                     $cd = '"courseid":' . (int)$courseid;
                     $exists2 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ?', [$classname2, "%$cd%"]);
