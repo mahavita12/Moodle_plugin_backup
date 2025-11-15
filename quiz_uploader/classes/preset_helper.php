@@ -18,7 +18,8 @@ class preset_helper {
             'open' => 0x00100,
             'closed' => 0x00010,
         ];
-        $reviewfields = ['attempt','correctness','marks','maxmarks','specificfeedback','generalfeedback','rightanswer','overallfeedback'];
+        // Only include review fields that exist as bitfields on the quiz table.
+        $reviewfields = ['attempt','correctness','marks','specificfeedback','generalfeedback','rightanswer','overallfeedback'];
 
         $rv = [];
         if ($preset === 'test') {
@@ -85,9 +86,13 @@ class preset_helper {
 
         $cm = \get_coursemodule_from_instance('quiz', $quiz->id, $quiz->course, false, \MUST_EXIST);
         if (!empty($cfg['completion']['enable'])) {
+            // Enable automatic completion on the CM and set min attempts on the quiz instance.
             $DB->set_field('course_modules', 'completion', 2, ['id' => $cm->id]);
-            if ($DB->get_manager()->field_exists('course_modules', 'completionminattempts')) {
-                $DB->set_field('course_modules', 'completionminattempts', (int)$cfg['completion']['minattempts'], ['id' => $cm->id]);
+            if ($DB->get_manager()->field_exists('quiz', 'completionminattempts')) {
+                $DB->set_field('quiz', 'completionminattempts', (int)$cfg['completion']['minattempts'], ['id' => $quiz->id]);
+            }
+            if ($DB->get_manager()->field_exists('quiz', 'completionminattemptsenabled')) {
+                $DB->set_field('quiz', 'completionminattemptsenabled', 1, ['id' => $quiz->id]);
             }
         }
 
