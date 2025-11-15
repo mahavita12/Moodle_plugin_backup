@@ -152,6 +152,12 @@ class generator_service {
                 $pq = $pqrec;
                 // Proactively clean section sequences in the personal course to drop deleting/missing CMIDs.
                 self::cleanup_course_sequences((int)$pccourseid);
+                // Sort quizzes in the same section by name for consistent ordering.
+                try {
+                    $cmcur = get_coursemodule_from_instance('quiz', (int)$res->quizid, (int)$pccourseid, false, MUST_EXIST);
+                    $sm = new \local_personalcourse\section_manager();
+                    $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
+                } catch (\Throwable $se) { }
             }
         } else {
             // Recreate if mapped quiz is missing or CM is being deleted.
@@ -169,6 +175,12 @@ class generator_service {
                 $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
                 // Heal sequences immediately after recreation to avoid stale CMIDs lingering next to the new CM.
                 self::cleanup_course_sequences((int)$pccourseid);
+                // Sort quizzes in the same section by name.
+                try {
+                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                    $sm = new \local_personalcourse\section_manager();
+                    $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
+                } catch (\Throwable $se) { }
             } else {
                 // Ensure the active personal quiz name mirrors the latest naming policy.
                 try {
@@ -413,6 +425,12 @@ class generator_service {
             self::cleanup_course_sequences((int)$pccourseid);
             // Enforce course page visibility: only latest archived shown as 'Previous Attempt'.
             self::enforce_archive_visibility((int)$pccourseid, (int)$sourcequizid, (int)$pq->quizid);
+            // Sort quizzes in the same section by name.
+            try {
+                $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
+                $sm = new \local_personalcourse\section_manager();
+                $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
+            } catch (\Throwable $se) { }
         }
 
         // Always remove placeholder when we have real desired questions.

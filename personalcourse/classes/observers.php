@@ -160,11 +160,16 @@ class observers {
                                 'timecreated' => time(),
                                 'timemodified' => time(),
                             ]);
-                            // Enforce visibility immediately and queue a modinfo rebuild.
+                            // Enforce visibility immediately, sort quizzes in section by name, and queue a modinfo rebuild.
                             try {
                                 if (!empty($pq->sourcequizid)) {
                                     \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
                                 }
+                                try {
+                                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
+                                    $sm = new \local_personalcourse\section_manager();
+                                    $sm->sort_quizzes_in_section_by_name((int)$pc->courseid, (int)$cmcur->section);
+                                } catch (\Throwable $se) {}
                                 \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_add');
                             } catch (\Throwable $e) { }
                         }
@@ -206,11 +211,18 @@ class observers {
                             ]);
                         }
                     }
-                    // Enforce visibility after removals and queue rebuild.
+                    // Enforce visibility after removals, sort, and queue rebuild.
                     try {
                         if (!empty($pq) && !empty($pq->sourcequizid)) {
                             \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
                         }
+                        try {
+                            if (!empty($pq)) {
+                                $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
+                                $sm = new \local_personalcourse\section_manager();
+                                $sm->sort_quizzes_in_section_by_name((int)$pc->courseid, (int)$cmcur->section);
+                            }
+                        } catch (\Throwable $se) {}
                         \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_remove');
                     } catch (\Throwable $e) { }
                 }
@@ -411,7 +423,15 @@ class observers {
                                         ]);
                                     }
                                 }
-                                try { \local_personalcourse\modinfo_rebuilder::queue((int)$pcinfo->courseid, 'immediate_inject'); } catch (\Throwable $e) {}
+                                try {
+                                    \local_personalcourse\modinfo_rebuilder::queue((int)$pcinfo->courseid, 'immediate_inject');
+                                    // Sort quizzes within the same section by name for consistent ordering.
+                                    try {
+                                        $cmcur = get_coursemodule_from_instance('quiz', (int)$pqmap->quizid, (int)$pcinfo->courseid, false, MUST_EXIST);
+                                        $sm = new \local_personalcourse\section_manager();
+                                        $sm->sort_quizzes_in_section_by_name((int)$pcinfo->courseid, (int)$cmcur->section);
+                                    } catch (\Throwable $se) { }
+                                } catch (\Throwable $e) { }
                             }
                         }
                     }
