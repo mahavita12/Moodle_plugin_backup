@@ -134,12 +134,12 @@ class observers {
                         ]);
                         if (!$present) {
                             $qb->add_questions((int)$pq->quizid, [(int)$questionid]);
-                            $slotid = $DB->get_field('quiz_slots', 'id', ['quizid' => (int)$pq->quizid, 'questionid' => (int)$questionid]);
+                            // Record mapping (slot resolution is optional on 4.4+).
                             $DB->insert_record('local_personalcourse_questions', (object)[
                                 'personalcourseid' => (int)$pc->id,
                                 'personalquizid' => (int)$pq->id,
                                 'questionid' => (int)$questionid,
-                                'slotid' => $slotid ? (int)$slotid : null,
+                                'slotid' => null,
                                 'flagcolor' => $flagcolor ?: 'blue',
                                 'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
                                 'originalposition' => null,

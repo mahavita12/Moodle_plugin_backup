@@ -72,11 +72,14 @@ class flag_sync_task extends \core\task\adhoc_task {
             }
 
             // Determine current flagged questions that belong to this source quiz.
+            // Resolve flagged questions that belong to the source quiz (support Moodle 4.4 references schema).
             $flagged = $DB->get_records_sql(
-                'SELECT DISTINCT qf.questionid, qf.flagcolor
+                "SELECT DISTINCT qf.questionid, qf.flagcolor
                    FROM {local_questionflags} qf
-                   JOIN {quiz_slots} qs ON qs.questionid = qf.questionid AND qs.quizid = ?
-                  WHERE qf.userid = ?',
+                   JOIN {question_versions} qv ON qv.questionid = qf.questionid
+                   JOIN {question_references} qr ON qr.questionbankentryid = qv.questionbankentryid
+                   JOIN {quiz_slots} qs ON qs.id = qr.itemid AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                  WHERE qs.quizid = ? AND qf.userid = ?",
                 [$quizid, $userid]
             );
 
@@ -148,8 +151,16 @@ class flag_sync_task extends \core\task\adhoc_task {
                     $qb->add_questions((int)$pq->quizid, $ids);
                     // Record each mapping with current flagcolor.
                     foreach ($flagged as $f) {
-                        // Get slot id for record.
-                        $slotid = $DB->get_field('quiz_slots', 'id', ['quizid' => (int)$pq->quizid, 'questionid' => (int)$f->questionid]);
+                        // Resolve slot id via references schema (optional).
+                        $slotid = $DB->get_field_sql(
+                            "SELECT qs.id
+                               FROM {quiz_slots} qs
+                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                              WHERE qs.quizid = ? AND qv.questionid = ?
+                           ORDER BY qs.slot ASC",
+                            [(int)$pq->quizid, (int)$f->questionid]
+                        );
                         $pcq = new \stdClass();
                         $pcq->personalcourseid = $personalcourseid;
                         $pcq->personalquizid = $pq->id;
@@ -196,8 +207,16 @@ class flag_sync_task extends \core\task\adhoc_task {
             if (!$present) {
                 $qb = new \local_personalcourse\quiz_builder();
                 $qb->add_questions((int)$pq->quizid, [$questionid]);
-                // Get slot id for record.
-                $slotid = $DB->get_field('quiz_slots', 'id', ['quizid' => (int)$pq->quizid, 'questionid' => $questionid]);
+                // Resolve slot id via references schema (optional).
+                $slotid = $DB->get_field_sql(
+                    "SELECT qs.id
+                       FROM {quiz_slots} qs
+                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                      WHERE qs.quizid = ? AND qv.questionid = ?
+                   ORDER BY qs.slot ASC",
+                    [(int)$pq->quizid, (int)$questionid]
+                );
                 $pcq = new \stdClass();
                 $pcq->personalcourseid = $personalcourseid;
                 $pcq->personalquizid = $pq->id;
