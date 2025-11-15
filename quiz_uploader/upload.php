@@ -40,6 +40,16 @@ if ($mform->is_cancelled()) {
     error_log('Quiz Uploader - Result: ' . print_r($result, true));
 
     echo $OUTPUT->header();
+    // Render tabs so navigation is visible when landing directly on upload.php.
+    $tabs = [];
+    $tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
+    // Only show advanced tabs to managers/admins.
+    $showadvanced = has_capability('moodle/category:manage', context_system::instance());
+    if ($showadvanced) {
+        $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+        $tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+    }
+    print_tabs([$tabs], 'upload');
 
     if ($result['success']) {
         echo $OUTPUT->notification('Quiz uploaded successfully!', 'success');
@@ -60,6 +70,17 @@ if ($mform->is_cancelled()) {
 
 // Display form
 echo $OUTPUT->header();
+
+// Render tabs so navigation is visible when landing directly on upload.php.
+$tabs = [];
+$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
+// Only show advanced tabs to managers/admins.
+$showadvanced = has_capability('moodle/category:manage', context_system::instance());
+if ($showadvanced) {
+    $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+    $tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+}
+print_tabs([$tabs], 'upload');
 
 // Add JavaScript for section loading
 ?>
