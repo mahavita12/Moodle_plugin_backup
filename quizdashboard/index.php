@@ -583,12 +583,12 @@ require_once(__DIR__ . '/navigation_fallback.php');
 							</a>
 						</td>
                             <td>
-                                <a href="<?php echo $row->course_url; ?>" class="course-link" target="_blank">
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo $row->reviewurl; ?>" class="quiz-link">
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
                                     <?php echo htmlspecialchars($row->quizname); ?>
                                 </a>
                             </td>
@@ -598,9 +598,12 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 </a>
                             </td>
                             <td>
-                                <span class="quiz-type-badge quiz-type-<?php echo strtolower(str_replace('-', '', $row->quiz_type)); ?>">
-                                    <?php echo htmlspecialchars($row->quiz_type); ?>
-                                </span>
+                                <?php $qt = trim($row->quiz_type) !== '' ? $row->quiz_type : 'Non-Essay'; ?>
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['quiztype' => $qt]))->out(false); ?>">
+                                    <span class="quiz-type-badge quiz-type-<?php echo strtolower(str_replace('-', '', $qt)); ?>">
+                                        <?php echo htmlspecialchars($qt); ?>
+                                    </span>
+                                </a>
                             </td>
                             <td>
                                 <span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>">

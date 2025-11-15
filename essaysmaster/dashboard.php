@@ -19,6 +19,7 @@ $PAGE->requires->css('/local/essaysmaster/styles.css');
 
 // Parameters
 $courseid = optional_param('course', 0, PARAM_INT);
+$quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
 $search = optional_param('search', '', PARAM_TEXT);
@@ -72,7 +73,7 @@ if ($action) {
 // Get dashboard data
 $courses = $dashboard->get_accessible_courses();
 $students = $dashboard->get_unique_students($courseid);
-$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid);
+$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid, 25, 1, $quizid);
 $quiz_configs = $dashboard->get_quiz_configurations($courseid);
 $statistics = $dashboard->get_dashboard_statistics($courseid);
 

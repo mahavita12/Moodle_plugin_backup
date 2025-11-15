@@ -454,12 +454,18 @@ require_once(__DIR__ . '/navigation_fallback.php');
                         <!-- FIXED: Add trashed-row class for abandoned items -->
                         <tr<?php echo $row->status === 'Abandoned' ? ' class="trashed-row"' : ''; ?>>
                             <td class="bulk-select-cell"><input type="checkbox" class="row-checkbox" value="<?php echo $row->attemptid; ?>" data-userid="<?php echo $row->userid; ?>" data-label="<?php echo htmlspecialchars($row->quizname . ' – Attempt ' . $row->attemptno, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" onchange="updateSelectedCount()"></td>
-                            <td><a href="<?php echo $row->reviewurl; ?>" class="quiz-link"><?php echo htmlspecialchars($row->quizname); ?></a></td>
                             <td>
-                                <?php if (!empty($row->question_edit_url)): ?>
-                                    <a href="<?php echo $row->question_edit_url; ?>" class="question-link" target="_blank"><?php echo htmlspecialchars($row->questionname); ?></a>
-                                <?php else: ?>
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
+                                    <?php echo htmlspecialchars($row->quizname); ?>
+                                </a>
+                                <a href="<?php echo $row->reviewurl; ?>" class="quiz-link" title="Open review" target="_blank" style="margin-left:6px;">↗</a>
+                            </td>
+                            <td>
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['questionname' => $row->questionname]))->out(false); ?>" class="question-link">
                                     <?php echo htmlspecialchars($row->questionname); ?>
+                                </a>
+                                <?php if (!empty($row->question_edit_url)): ?>
+                                    <a href="<?php echo $row->question_edit_url; ?>" class="question-link" target="_blank" title="Edit question" style="margin-left:6px;">✎</a>
                                 <?php endif; ?>
                             </td>
                             <td><a href="<?php echo $row->reviewurl; ?>" class="attempt-link" target="_blank"><?php echo $row->attemptno; ?></a></td>
@@ -467,7 +473,12 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
                             <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
 					<td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
-                            <td><a href="<?php echo $row->course_url; ?>" class="course-link" target="_blank"><?php echo htmlspecialchars($row->coursename); ?></a></td>
+                            <td>
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
+                                    <?php echo htmlspecialchars($row->coursename); ?>
+                                </a>
+                                <a href="<?php echo $row->course_url; ?>" class="course-link" title="Open course" target="_blank" style="margin-left:6px;">↗</a>
+                            </td>
                             <td><?php echo !empty($row->timefinish) ? date('Y-m-d H:i', $row->timefinish) : '-'; ?></td>
                             <td><?php echo $row->time_taken ?: '-'; ?></td>
                             <td><?php echo $row->score_content_ideas !== null ? ((int)$row->score_content_ideas) . ' / 25' : '-'; ?></td>

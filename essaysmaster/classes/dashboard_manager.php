@@ -42,7 +42,7 @@ class dashboard_manager {
         }
     }
 
-    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1) {
+    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1, $quizid = 0) {
         global $DB;
         
         try {
@@ -98,6 +98,12 @@ class dashboard_manager {
                 $sql .= " AND u.id = :userid";
                 $params['userid'] = $userid;
             }
+
+            // Quiz filter
+            if ($quizid > 0) {
+                $sql .= " AND q.id = :quizid";
+                $params['quizid'] = $quizid;
+            }
             
             // Search filter - handles exact student name match from dropdown
             if (!empty($search)) {
@@ -137,6 +143,7 @@ class dashboard_manager {
                 $progress_item->course_name = $record->course_name;
                 $progress_item->student_attempt_number = isset($record->student_attempt_number) ? (int)$record->student_attempt_number : null;
                 $progress_item->quiz_name = $record->quiz_name;
+                $progress_item->quiz_id = $record->quiz_id;
                 $progress_item->current_round = $record->current_level;
                 $progress_item->total_rounds = 6;
                 $progress_item->rounds_completed = $record->feedback_rounds_completed;
@@ -221,6 +228,7 @@ class dashboard_manager {
                     $config_item->quiz_id = $record->quiz_id;
                     $config_item->quiz_name = $record->quiz_name;
                     $config_item->course_name = $record->course_name;
+                    $config_item->course_id = $record->course_id;
                     
                     // Default enabled if no explicit config
                     $config_item->is_enabled = $record->is_enabled !== null ? (bool)$record->is_enabled : true;
@@ -608,26 +616,27 @@ class dashboard_manager {
                     ])
                 );
                 
-                // Course - link to course page
-                $course_url = new \moodle_url('/course/view.php', ['id' => $progress->course_id ?? 0]);
+                // Course - filter link within dashboard
+                $course_filter_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
+                    'tab' => 'students',
+                    'course' => $progress->course_id ?? 0
+                ]);
                 $output .= \html_writer::tag('td',
-                    \html_writer::link($course_url, $progress->course_name ?? 'Unknown Course', [
-                        'class' => 'course-link',
-                        'target' => '_blank'
+                    \html_writer::link($course_filter_url, $progress->course_name ?? 'Unknown Course', [
+                        'class' => 'course-link'
                     ])
                 );
                 
-                // Quiz Name - link to quiz review (need attempt ID)
-                if (isset($progress->attempt_id)) {
-                    $quiz_review_url = new \moodle_url('/mod/quiz/review.php', ['attempt' => $progress->attempt_id]);
-                    $output .= \html_writer::tag('td',
-                        \html_writer::link($quiz_review_url, $progress->quiz_name ?? 'Unknown Quiz', [
-                            'class' => 'quiz-link'
-                        ])
-                    );
-                } else {
-                    $output .= \html_writer::tag('td', $progress->quiz_name ?? 'Unknown Quiz');
-                }
+                // Quiz Name - filter link by quiz id
+                $quiz_filter_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
+                    'tab' => 'students',
+                    'quizid' => $progress->quiz_id ?? 0
+                ]);
+                $output .= \html_writer::tag('td',
+                    \html_writer::link($quiz_filter_url, $progress->quiz_name ?? 'Unknown Quiz', [
+                        'class' => 'quiz-link'
+                    ])
+                );
                 $output .= \html_writer::tag('td', $progress->student_attempt_number ?? '-');
                 $output .= \html_writer::tag('td', ($progress->current_round ?? 1) . '/6');
                 
@@ -732,8 +741,16 @@ class dashboard_manager {
                 $row[] = \html_writer::checkbox('quiz_ids[]', $config->quiz_id ?? 0, false, '', 
                     ['class' => 'quiz-checkbox']);
                 
-                $row[] = $config->quiz_name ?? 'Unknown Quiz';
-                $row[] = $config->course_name ?? 'Unknown Course';
+                // Quiz name → clicking filters Students tab by this quiz
+                $row[] = \html_writer::link(
+                    new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'quizid' => $config->quiz_id ?? 0]),
+                    $config->quiz_name ?? 'Unknown Quiz'
+                );
+                // Course → clicking filters Students tab by this course
+                $row[] = \html_writer::link(
+                    new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'course' => $config->course_id ?? 0]),
+                    $config->course_name ?? 'Unknown Course'
+                );
                 
                 // Status
                 $status_html = \html_writer::tag('span', $config->status_text ?? 'Unknown', 
