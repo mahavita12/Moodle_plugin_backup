@@ -246,6 +246,8 @@ class dashboard_manager {
                     $config_item->quiz_id = $record->quiz_id;
                     $config_item->quiz_name = $record->quiz_name;
                     $config_item->course_name = $record->course_name;
+                    $config_item->category_name = $record->category_name ?? null;
+                    $config_item->course_category_id = $record->course_category_id ?? null;
                     $config_item->course_id = $record->course_id;
                     
                     // Default enabled if no explicit config
@@ -635,8 +637,18 @@ class dashboard_manager {
                     ])
                 );
                 
-                // Category name
-                $output .= \html_writer::tag('td', $progress->category_name ?? '-');
+                // Category name (click to filter)
+                $catlink = new \moodle_url('/local/essaysmaster/dashboard.php', [
+                    'tab' => 'students',
+                    'categoryid' => $progress->category_id ?? 0
+                ]);
+                if (!empty($progress->category_id)) {
+                    $output .= \html_writer::tag('td',
+                        \html_writer::link($catlink, $progress->category_name ?? '-', ['class' => 'category-link'])
+                    );
+                } else {
+                    $output .= \html_writer::tag('td', $progress->category_name ?? '-');
+                }
 
                 // Course - filter link within dashboard
                 $course_filter_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
@@ -769,8 +781,15 @@ class dashboard_manager {
                     new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'quizid' => $config->quiz_id ?? 0]),
                     $config->quiz_name ?? 'Unknown Quiz'
                 );
-                // Category
-                $row[] = $config->category_name ?? 'Unknown Category';
+                // Category → clicking filters Students tab by this category
+                if (!empty($config->course_category_id)) {
+                    $row[] = \html_writer::link(
+                        new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'categoryid' => $config->course_category_id]),
+                        $config->category_name ?? 'Unknown Category'
+                    );
+                } else {
+                    $row[] = $config->category_name ?? 'Unknown Category';
+                }
 
                 // Course → clicking filters Students tab by this course
                 $row[] = \html_writer::link(

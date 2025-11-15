@@ -330,6 +330,7 @@ foreach ($records as $r) {
         'studentname'   => $r->studentname,
         'coursename'    => $r->coursename,
         'categoryname'  => $r->categoryname ?? '',
+        'categoryid'    => isset($r->categoryid) ? (int)$r->categoryid : 0,
         'quizname'      => $r->quizname,
         'user_profile_url' => $user_profile_url->out(false),
         'user_activity_url' => $user_activity_url->out(false),
@@ -608,7 +609,13 @@ require_once(__DIR__ . '/navigation_fallback.php');
 							</a>
 						</td>
                             <td>
-                                <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                                <?php if (!empty($row->categoryid)): ?>
+                                    <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['categoryid' => (int)$row->categoryid]))->out(false); ?>">
+                                        <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                                    </a>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">

@@ -761,7 +761,19 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td>
                                 <?php echo !empty($attempt->attemptno) ? $attempt->attemptno : '-'; ?>
                             </td>
-                            <td><?php echo htmlspecialchars($attempt->categoryname ?? ''); ?></td>
+                            <td>
+                                <?php if (!empty($attempt->categoryid)): ?>
+                                    <a href="<?php echo (new moodle_url('/local/quizdashboard/questions.php', [
+                                        'categoryid' => (int)$attempt->categoryid,
+                                        'courseid' => $courseid,
+                                        'quizid' => $quizid
+                                    ]))->out(false); ?>">
+                                        <?php echo htmlspecialchars($attempt->categoryname ?? ''); ?>
+                                    </a>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($attempt->categoryname ?? ''); ?>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo htmlspecialchars($attempt->coursename ?? ''); ?></td>
                             <td>
                                 <?php 

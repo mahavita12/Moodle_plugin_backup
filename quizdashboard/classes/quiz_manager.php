@@ -27,6 +27,7 @@ class quiz_manager {
             c.fullname AS coursename,
             q.name AS quizname,
             cat.name AS categoryname,
+            cat.id AS categoryid,
             cs.id AS sectionid,
             cs.name AS sectionname,
             cs.section AS sectionnumber,

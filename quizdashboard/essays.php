@@ -245,6 +245,7 @@ foreach ($records as $r) {
         'studentname'   => $r->studentname,
         'coursename'    => $r->coursename,
         'categoryname'  => $r->categoryname ?? '',
+        'categoryid'    => isset($r->categoryid) ? (int)$r->categoryid : 0,
         'quizname'      => $r->quizname,
         'questionname'  => $r->questionname ?? 'N/A',
         'questionid'    => $r->questionid ?? null,
@@ -518,7 +519,15 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
                             <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
                             <td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
-                            <td><?php echo htmlspecialchars($row->categoryname ?? ''); ?></td>
+                            <td>
+                                <?php if (!empty($row->categoryid)): ?>
+                                    <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['categoryid' => (int)$row->categoryid]))->out(false); ?>">
+                                        <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                                    </a>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>

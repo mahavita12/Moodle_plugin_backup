@@ -71,6 +71,14 @@ if ($action) {
     }
 }
 
+// Default category to "Category 1" if not explicitly provided
+if (empty($categoryid)) {
+    try {
+        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+        if ($catrow) { $categoryid = (int)$catrow->id; }
+    } catch (\Throwable $e) { /* ignore */ }
+}
+
 // Get dashboard data
 $courses = $dashboard->get_accessible_courses();
 $students = $dashboard->get_unique_students($courseid);
