@@ -323,6 +323,75 @@ class observers {
         ]);
         $task->set_component('local_personalcourse');
         \core\task\manager::queue_adhoc_task($task, true);
+
+        // Fast path: immediately append incorrect questions to the student's existing Personal Quiz (append-only).
+        // Heavy work (creation/fork/visibility) remains in async task.
+        try {
+            if ($pcinfo) {
+                $pqmap = $DB->get_record('local_personalcourse_quizzes', [
+                    'personalcourseid' => (int)$pcinfo->id,
+                    'sourcequizid' => (int)$cm->instance,
+                ], 'id, quizid');
+                if ($pqmap && !empty($pqmap->quizid)) {
+                    // Skip if a personal-quiz attempt is in progress/overdue.
+                    $hasinprogress = $DB->record_exists_select('quiz_attempts',
+                        "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                        [(int)$pqmap->quizid, (int)$userid]
+                    );
+                    if (!$hasinprogress) {
+                        $an = new \local_personalcourse\attempt_analyzer();
+                        $incorrectqids = $an->get_incorrect_questionids_from_attempt((int)$event->objectid);
+                        if (!empty($incorrectqids)) {
+                            // Current qids already present in the personal quiz (Moodle 4.4 schema via references).
+                            $currqids = [];
+                            try {
+                                $currqids = $DB->get_fieldset_sql(
+                                    "SELECT qv.questionid
+                                       FROM {quiz_slots} qs
+                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                                      WHERE qs.quizid = ?
+                                   ORDER BY qs.slot",
+                                    [(int)$pqmap->quizid]
+                                );
+                            } catch (\Throwable $e) { $currqids = []; }
+                            $currqids = array_map('intval', $currqids ?: []);
+                            // Also avoid duplicates present in any PQ for this personal course.
+                            $presentany = $DB->get_fieldset_select('local_personalcourse_questions', 'questionid',
+                                'personalcourseid = ?', [(int)$pcinfo->id]) ?: [];
+                            $presentany = array_map('intval', $presentany);
+                            $toadd = array_values(array_diff(array_map('intval', $incorrectqids), $currqids, $presentany));
+                            if (!empty($toadd)) {
+                                $qb = new \local_personalcourse\quiz_builder();
+                                $qb->add_questions((int)$pqmap->quizid, $toadd);
+                                $now = time();
+                                foreach ($toadd as $qid) {
+                                    if (!$DB->record_exists('local_personalcourse_questions', [
+                                        'personalcourseid' => (int)$pcinfo->id,
+                                        'questionid' => (int)$qid,
+                                    ])) {
+                                        $DB->insert_record('local_personalcourse_questions', (object)[
+                                            'personalcourseid' => (int)$pcinfo->id,
+                                            'personalquizid' => (int)$pqmap->id,
+                                            'questionid' => (int)$qid,
+                                            'slotid' => null,
+                                            'flagcolor' => 'blue',
+                                            'source' => 'auto_incorrect',
+                                            'originalposition' => null,
+                                            'currentposition' => null,
+                                            'timecreated' => $now,
+                                            'timemodified' => $now,
+                                        ]);
+                                    }
+                                }
+                                try { \local_personalcourse\modinfo_rebuilder::queue((int)$pcinfo->courseid, 'immediate_inject'); } catch (\Throwable $e) {}
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) { /* best-effort immediate append; fall back to adhoc */ }
+
         // Execute synchronously as well so that first-time creation or existing mapping reconciliation happens immediately.
         $task2 = new \local_personalcourse\task\attempt_generation_task();
         $task2->set_custom_data([
