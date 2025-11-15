@@ -114,6 +114,14 @@ class observers {
                     if ($shoulddefer) {
                         // Defer structural changes; do not mutate quiz during active attempt.
                     } else if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                        // Ensure no in-progress/overdue attempts block immediate edits (apply for both public and personal origins).
+                        $hasip = $DB->record_exists_select('quiz_attempts',
+                            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                            [(int)$pq->quizid, (int)$targetuserid]
+                        );
+                        if ($hasip) {
+                            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                        }
                         // Dedupe: if this question is in another PQ inside this personal course, move it here.
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
