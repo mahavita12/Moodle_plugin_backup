@@ -113,52 +113,36 @@ class generator_service {
         $sm = new \local_personalcourse\section_manager();
 
         if (!$pq) {
-            $existingname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-            $existingquiz = $DB->get_record_sql(
-                "SELECT q.id FROM {quiz} q JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ? WHERE q.course = ? AND q.name = ? ORDER BY q.id DESC",
-                [$moduleidquiz, $pccourseid, $existingname]
-            );
-            $reuseok = false;
-            if ($existingquiz) {
-                $cmrow_chk = $DB->get_record('course_modules', ['module' => $moduleidquiz, 'instance' => (int)$existingquiz->id, 'course' => $pccourseid], 'id,deletioninprogress');
-                if ($cmrow_chk && empty($cmrow_chk->deletioninprogress)) { $reuseok = true; }
-            }
-            if ($reuseok) {
-                $pqrec = (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'quizid' => (int)$existingquiz->id,
-                    'sourcequizid' => $sourcequizid,
-                    'sectionname' => $prefix,
-                    'quiztype' => $allessay ? 'essay' : 'non_essay',
-                    'timecreated' => time(),
-                    'timemodified' => time(),
-                ];
-                $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
-                $pq = $pqrec;
-            } else {
-                $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
-                $pqrec = (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'quizid' => (int)$res->quizid,
-                    'sourcequizid' => $sourcequizid,
-                    'sectionname' => $prefix,
-                    'quiztype' => $allessay ? 'essay' : 'non_essay',
-                    'timecreated' => time(),
-                    'timemodified' => time(),
-                ];
-                $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
-                $pq = $pqrec;
-                // Proactively clean section sequences in the personal course to drop deleting/missing CMIDs.
-                self::cleanup_course_sequences((int)$pccourseid);
-                // Sort quizzes in the same section by name for consistent ordering.
-                try {
-                    $cmcur = get_coursemodule_from_instance('quiz', (int)$res->quizid, (int)$pccourseid, false, MUST_EXIST);
-                    $sm = new \local_personalcourse\section_manager();
-                    $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
-                } catch (\Throwable $se) { }
-            }
+            // Always create a fresh personal quiz; do not reuse by name.
+            $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
+            $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
+            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
+            $pqrec = (object)[
+                'personalcourseid' => $personalcourseid,
+                'quizid' => (int)$res->quizid,
+                'sourcequizid' => $sourcequizid,
+                'sectionname' => $prefix,
+                'quiztype' => $allessay ? 'essay' : 'non_essay',
+                'timecreated' => time(),
+                'timemodified' => time(),
+            ];
+            $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
+            $pq = $pqrec;
+            // Stamp provenance marker on CM idnumber.
+            try {
+                if (!empty($res->cmid)) {
+                    $marker = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
+                    $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
+                }
+            } catch (\Throwable $e) { }
+            // Proactively clean section sequences in the personal course to drop deleting/missing CMIDs.
+            self::cleanup_course_sequences((int)$pccourseid);
+            // Sort quizzes in the same section by name for consistent ordering.
+            try {
+                $cmcur = get_coursemodule_from_instance('quiz', (int)$res->quizid, (int)$pccourseid, false, MUST_EXIST);
+                $sm = new \local_personalcourse\section_manager();
+                $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
+            } catch (\Throwable $se) { }
         } else {
             // Recreate if mapped quiz is missing or CM is being deleted.
             $needrecreate = false;
@@ -173,6 +157,13 @@ class generator_service {
                 $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
                 $pq->quizid = (int)$res->quizid;
                 $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
+                // Stamp provenance marker on new CM idnumber.
+                try {
+                    if (!empty($res->cmid)) {
+                        $marker = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
+                        $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
+                    }
+                } catch (\Throwable $e) { }
                 // Heal sequences immediately after recreation to avoid stale CMIDs lingering next to the new CM.
                 self::cleanup_course_sequences((int)$pccourseid);
                 // Sort quizzes in the same section by name.

@@ -71,8 +71,7 @@ class flag_sync_task extends \core\task\adhoc_task {
                 return;
             }
 
-            // Determine current flagged questions that belong to this source quiz.
-            // Resolve flagged questions that belong to the source quiz (support Moodle 4.4 references schema).
+            // Determine current flagged questions that belong to this source quiz (Moodle 4.4 references schema).
             $flagged = $DB->get_records_sql(
                 "SELECT DISTINCT qf.questionid, qf.flagcolor
                    FROM {local_questionflags} qf
@@ -95,53 +94,33 @@ class flag_sync_task extends \core\task\adhoc_task {
                 $settingsmode = 'default';
             }
 
-            // Try to reuse existing personal quiz by name before creating.
-            $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-            $existingquiz = $DB->get_record_sql(
-                "SELECT q.id
-                   FROM {quiz} q
-                   JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
-                  WHERE q.course = ? AND q.name = ?
-               ORDER BY q.id DESC",
-                [$moduleidquiz, $personalcoursecourseid, $quizrow->name]
-            );
+            // Always create a new personal quiz in the personal course (no reuse-by-name).
+            $sourcecourse = $DB->get_record('course', ['id' => $quizrow->course], 'id,shortname,fullname', MUST_EXIST);
+            $prefix = (string)$sourcecourse->shortname;
+            $sm = new \local_personalcourse\section_manager();
+            $sectionnumber = $sm->ensure_section_by_prefix($personalcoursecourseid, $prefix);
+            $name = $quizrow->name;
+            $intro = '';
+            $qb = new \local_personalcourse\quiz_builder();
+            $res = $qb->create_quiz($personalcoursecourseid, $sectionnumber, $name, $intro, $settingsmode);
 
-            if ($existingquiz) {
-                // Create mapping row to existing quiz and proceed.
-                $pqrec = new \stdClass();
-                $pqrec->personalcourseid = $personalcourseid;
-                $pqrec->quizid = (int)$existingquiz->id;
-                $pqrec->sourcequizid = $quizid;
-                // Use shortname as section label if available.
-                $sourcecourse = $DB->get_record('course', ['id' => $quizrow->course], 'id,shortname,fullname', MUST_EXIST);
-                $pqrec->sectionname = (string)$sourcecourse->shortname;
-                $pqrec->quiztype = 'non_essay';
-                $pqrec->timecreated = time();
-                $pqrec->timemodified = $pqrec->timecreated;
-                $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
-                $pq = $pqrec;
-            } else {
-                // Create personal quiz under section named after source course shortname.
-                $sourcecourse = $DB->get_record('course', ['id' => $quizrow->course], 'id,shortname,fullname', MUST_EXIST);
-                $prefix = (string)$sourcecourse->shortname;
-                $sm = new \local_personalcourse\section_manager();
-                $sectionnumber = $sm->ensure_section_by_prefix($personalcoursecourseid, $prefix);
-                $name = $quizrow->name;
-                $intro = '';
-                $qb = new \local_personalcourse\quiz_builder();
-                $res = $qb->create_quiz($personalcoursecourseid, $sectionnumber, $name, $intro, $settingsmode);
-
-                $pqrec = new \stdClass();
-                $pqrec->personalcourseid = $personalcourseid;
-                $pqrec->quizid = (int)$res->quizid;
-                $pqrec->sourcequizid = $quizid;
-                $pqrec->sectionname = $prefix;
-                $pqrec->quiztype = ($settingsmode === null) ? 'essay' : 'non_essay';
-                $pqrec->timecreated = time();
-                $pqrec->timemodified = $pqrec->timecreated;
-                $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
-                $pq = $pqrec;
-            }
+            $pqrec = new \stdClass();
+            $pqrec->personalcourseid = $personalcourseid;
+            $pqrec->quizid = (int)$res->quizid;
+            $pqrec->sourcequizid = $quizid;
+            $pqrec->sectionname = $prefix;
+            $pqrec->quiztype = ($settingsmode === null) ? 'essay' : 'non_essay';
+            $pqrec->timecreated = time();
+            $pqrec->timemodified = $pqrec->timecreated;
+            $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
+            $pq = $pqrec;
+            // Stamp provenance marker on CM idnumber.
+            try {
+                if (!empty($res->cmid)) {
+                    $marker = 'pcq:' . (int)$userid . ':' . (int)$quizid;
+                    $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
+                }
+            } catch (\Throwable $e) {}
 
             // Bulk inject all currently flagged questions for this quiz so state is up-to-date immediately.
             if ($flagged) {
@@ -205,6 +184,13 @@ class flag_sync_task extends \core\task\adhoc_task {
                 'questionid' => $questionid
             ]);
             if (!$present) {
+                // Guard marker: only mutate legitimate personal quiz.
+                try {
+                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$personalcoursecourseid, false, MUST_EXIST);
+                    $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmcur->id]);
+                    $expected = 'pcq:' . (int)$userid . ':' . (int)$quizid;
+                    if (stripos($marker ?: '', $expected) !== 0) { return; }
+                } catch (\Throwable $g) { return; }
                 $qb = new \local_personalcourse\quiz_builder();
                 $qb->add_questions((int)$pq->quizid, [$questionid]);
                 // Resolve slot id via references schema (optional).

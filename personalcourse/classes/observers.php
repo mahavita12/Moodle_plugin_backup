@@ -74,6 +74,20 @@ class observers {
 
                 $qb = new \local_personalcourse\quiz_builder();
 
+                // Guard: ensure we only mutate legitimate PQs. If mapping exists, verify cm idnumber marker.
+                if ($pq && !empty($pq->quizid)) {
+                    try {
+                        $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
+                        $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmcur->id]);
+                        $srcid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : (int)$quizid;
+                        $ownerid = (int)$pc->userid;
+                        $expected = 'pcq:' . $ownerid . ':' . $srcid;
+                        if (stripos($marker ?: '', $expected) !== 0) {
+                            return; // Do not touch non-PQ or mismatched activity.
+                        }
+                    } catch (\Throwable $g) { return; }
+                }
+
                 // Defer ONLY when the flag change originates from the attempt page of the personal quiz
                 // and there is an in-progress/overdue attempt. For all other origins (including review and
                 // public course), apply immediately and delete the in-progress attempt to regenerate.
