@@ -373,6 +373,7 @@ echo '<style>
 
 // ---------------- Filters ----------------
 $courseid       = optional_param('courseid', 0, PARAM_INT);
+$categoryid     = optional_param('categoryid', 0, PARAM_INT);
 $quizid         = optional_param('quizid', 0, PARAM_INT);
 $quiztype       = optional_param('quiztype', '', PARAM_TEXT);
 $userid         = optional_param('userid', 0, PARAM_INT);
@@ -398,8 +399,17 @@ require_once('classes/questions_manager.php');
 $questionsmanager = new \local_quizdashboard\questions_manager();
 
 // Get filter options
-$courses = $questionsmanager->get_unique_courses();
-$sections = $questionsmanager->get_unique_sections(); // NEW: Get sections
+$categories = [];
+try {
+    $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+    if (empty($categoryid)) {
+        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+        if ($catrow) { $categoryid = (int)$catrow->id; }
+    }
+} catch (\Throwable $e) { /* ignore */ }
+
+$courses = $questionsmanager->get_unique_courses((int)$categoryid);
+$sections = $questionsmanager->get_unique_sections((int)$categoryid); // NEW: Get sections
 
 // Debug: Log sections data
 error_log('Questions Dashboard: Sections data count: ' . count($sections));
@@ -437,7 +447,7 @@ if ($quizid) {
     // Get question-level data in matrix format
     try {
         $data = $questionsmanager->get_question_results_matrix(
-            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir
+            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir, (int)$categoryid
         );
         
         $user_attempts = $data['user_attempts'] ?? [];
@@ -521,6 +531,18 @@ require_once(__DIR__ . '/navigation_fallback.php');
     <div class="dashboard-filters">
         <form method="GET" class="filter-form">
             <div class="filter-row">
+                <div class="filter-group">
+                    <label for="categoryid">Category:</label>
+                    <select name="categoryid" id="categoryid">
+                        <option value="">All Categories</option>
+                        <?php foreach ($categories as $cat): ?>
+                            <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($cat->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="filter-group">
                     <label for="courseid">Course:</label>
                     <select name="courseid" id="courseid">
@@ -662,6 +684,8 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="col-userid">User ID</th>
                     <th class="col-username">User Name</th>
                     <th class="col-attempt">Attempt</th>
+                    <th>Category</th>
+                    <th>Course</th>
                     <th class="col-score">Score</th>
                     <th class="col-date">Date</th>
                     <th class="col-duration">Duration</th>
@@ -684,7 +708,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                 </tr>
                 <?php if (!empty($quiz_questions)): ?>
                 <tr style="background: #6c757d; color: #fff; font-style: italic;">
-                    <th colspan="7"></th>
+                    <th colspan="9"></th>
                     <?php foreach ($quiz_questions as $question): ?>
                         <th class="col-question" style="font-size: 10px;" title="<?php echo htmlspecialchars(strip_tags($question->questiontext)); ?>">
                             <?php 
@@ -737,6 +761,8 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td>
                                 <?php echo !empty($attempt->attemptno) ? $attempt->attemptno : '-'; ?>
                             </td>
+                            <td><?php echo htmlspecialchars($attempt->categoryname ?? ''); ?></td>
+                            <td><?php echo htmlspecialchars($attempt->coursename ?? ''); ?></td>
                             <td>
                                 <?php 
                                 if (isset($attempt->total_score) && isset($attempt->max_score)) {

@@ -130,35 +130,47 @@ class questions_manager {
     /**
      * Get unique courses that have quiz attempts
      */
-    public function get_unique_courses() {
+    public function get_unique_courses($categoryid = 0) {
         global $DB;
         
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
         $sql = "SELECT DISTINCT c.id, c.fullname, c.shortname
                 FROM {course} c
                 JOIN {quiz} q ON q.course = c.id
                 JOIN {quiz_attempts} qa ON qa.quiz = q.id
-                WHERE c.visible = 1 AND qa.state IN ('finished', 'inprogress')
+                {$where}
                 ORDER BY c.fullname";
         
-        return $DB->get_records_sql($sql);
+        return $DB->get_records_sql($sql, $params);
     }
     
     /**
      * Get unique sections that have quizzes with attempts
      */
-    public function get_unique_sections() {
+    public function get_unique_sections($categoryid = 0) {
         global $DB;
         
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
         $sql = "SELECT DISTINCT cs.id, cs.name, cs.section, c.fullname AS coursename
                 FROM {course_sections} cs
                 JOIN {course} c ON c.id = cs.course
                 JOIN {course_modules} cm ON cm.section = cs.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'quiz')
                 JOIN {quiz} q ON q.id = cm.instance
                 JOIN {quiz_attempts} qa ON qa.quiz = q.id
-                WHERE c.visible = 1 AND qa.state IN ('finished', 'inprogress')
+                {$where}
                 ORDER BY c.fullname, cs.section";
         
-        return $DB->get_records_sql($sql);
+        return $DB->get_records_sql($sql, $params);
     }
     
     /**
@@ -215,7 +227,7 @@ class questions_manager {
      */
     public function get_question_results_matrix($courseid = 0, $quizid = 0, $quiztype = '', 
                                               $userid = 0, $status = '', $month = '', 
-                                              $sort = 'timecreated', $dir = 'DESC') {
+                                              $sort = 'timecreated', $dir = 'DESC', $categoryid = 0) {
         global $DB;
         
         if (!$quizid) {
@@ -326,6 +338,8 @@ class questions_manager {
             $sql_attempts = "SELECT qa.id as attemptid, qa.userid, qa.timefinish, qa.timestart,
                                    qa.attempt as attemptno,
                                    CONCAT(u.firstname, ' ', u.lastname) as username,
+                                   c.fullname AS coursename,
+                                   cat.name AS categoryname,
                                    qa.sumgrades as total_score,
                                    q.sumgrades as max_score,
                                    CASE 
@@ -336,6 +350,8 @@ class questions_manager {
                             FROM {quiz_attempts} qa
                             JOIN {user} u ON u.id = qa.userid
                             JOIN {quiz} q ON q.id = qa.quiz
+                            JOIN {course} c ON c.id = q.course
+                            JOIN {course_categories} cat ON cat.id = c.category
                             WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause . "
                             ORDER BY u.lastname, u.firstname";
             
@@ -474,6 +490,8 @@ class questions_manager {
                 SELECT qa.id as attemptid, qa.userid, qa.timefinish, qa.timestart,
                        qa.attempt as attemptno,
                        CONCAT(u.firstname, ' ', u.lastname) as username,
+                       c.fullname AS coursename,
+                       cat.name AS categoryname,
                        qa.sumgrades as total_score,
                        q.sumgrades as max_score,
                        CASE 
@@ -484,6 +502,8 @@ class questions_manager {
                 FROM {quiz_attempts} qa
                 JOIN {user} u ON u.id = qa.userid
                 JOIN {quiz} q ON q.id = qa.quiz
+                JOIN {course} c ON c.id = q.course
+                JOIN {course_categories} cat ON cat.id = c.category
                 WHERE qa.quiz = ? AND qa.state = 'finished' AND u.deleted = 0
                 ORDER BY u.lastname, u.firstname
             ", [$quizid]);

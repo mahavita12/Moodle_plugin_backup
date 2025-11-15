@@ -139,6 +139,7 @@ if (optional_param('action', '', PARAM_ALPHANUMEXT)) {
 
 // ---------------- Filters ----------------
 $userid      = optional_param('userid', '', PARAM_INT);
+$categoryid  = optional_param('categoryid', 0, PARAM_INT);
 $studentname = optional_param('studentname', '', PARAM_TEXT);
 $coursename  = optional_param('coursename', '', PARAM_TEXT);
 $sectionid   = optional_param('sectionid', '', PARAM_INT);
@@ -153,16 +154,46 @@ $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
 // ---------------- Data ----------------
 $quizmanager = new \local_quizdashboard\quiz_manager();
 
+// Categories with default 'Category 1'
+$categories = [];
+try {
+    $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+    if (empty($categoryid)) {
+        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+        if ($catrow) { $categoryid = (int)$catrow->id; }
+    }
+} catch (\Throwable $e) { /* ignore */ }
+
 $filterdata = $quizmanager->get_all_filter_data();
 $unique_users = $filterdata['users'];
-$unique_courses = $filterdata['courses'];
+// Filter courses by category
+$unique_courses = [];
+if (!empty($categoryid)) {
+    $unique_courses = $DB->get_records_sql(
+        "SELECT DISTINCT c.id, c.fullname
+           FROM {course} c
+           JOIN {quiz} q ON q.course = c.id
+           JOIN {quiz_attempts} qa ON qa.quiz = q.id
+          WHERE c.visible = 1 AND qa.state IN ('finished','inprogress') AND c.category = ?
+       ORDER BY c.fullname", [(int)$categoryid]
+    );
+} else {
+    $unique_courses = $DB->get_records_sql(
+        "SELECT DISTINCT c.id, c.fullname
+           FROM {course} c
+           JOIN {quiz} q ON q.course = c.id
+           JOIN {quiz_attempts} qa ON qa.quiz = q.id
+          WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')
+       ORDER BY c.fullname"
+    );
+}
 $unique_quizzes = $filterdata['quizzes'];
 $unique_questions = $filterdata['questions'];
 $unique_userids = $filterdata['userids'];
 
 // FIXED: Pass status parameter to the quiz manager
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid
+    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
 );
 
 
@@ -213,6 +244,7 @@ foreach ($records as $r) {
         'courseid'      => $r->courseid,
         'studentname'   => $r->studentname,
         'coursename'    => $r->coursename,
+        'categoryname'  => $r->categoryname ?? '',
         'quizname'      => $r->quizname,
         'questionname'  => $r->questionname ?? 'N/A',
         'questionid'    => $r->questionid ?? null,
@@ -302,7 +334,19 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     </select>
                 </div>
 
-                <div class="filter-group">
+				<div class="filter-group">
+					<label for="categoryid">Category:</label>
+					<select name="categoryid" id="categoryid">
+						<option value="">All Categories</option>
+						<?php foreach ($categories as $cat): ?>
+							<option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+								<?php echo htmlspecialchars($cat->name); ?>
+							</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+
+				<div class="filter-group">
 					<label for="coursename">Course:</label>
 					<select name="coursename" id="coursename">
 						<option value="">All Courses</option>
@@ -423,6 +467,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="sortable-column" data-sort="status">Status</th>
                     <th class="sortable-column" data-sort="userid">ID</th>
                     <th class="sortable-column" data-sort="studentname">Name</th>
+                    <th>Category</th>
                     <th class="sortable-column" data-sort="coursename">Course</th>
                     <th class="sortable-column" data-sort="timefinish">Finished</th>
                     <th class="sortable-column" data-sort="time_taken">Duration</th>
@@ -472,7 +517,8 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <!-- Removed Sub # column to widen key columns -->
                             <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
                             <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
-					<td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
+                            <td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
+                            <td><?php echo htmlspecialchars($row->categoryname ?? ''); ?></td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>

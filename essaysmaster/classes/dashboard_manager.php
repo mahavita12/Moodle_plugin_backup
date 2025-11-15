@@ -42,7 +42,7 @@ class dashboard_manager {
         }
     }
 
-    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1, $quizid = 0) {
+    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1, $quizid = 0, $categoryid = 0) {
         global $DB;
         
         try {
@@ -61,12 +61,15 @@ class dashboard_manager {
                         u.email,
                         c.id as course_id,
                         c.fullname as course_name,
+                        c.category as course_category_id,
+                        cat.name as category_name,
                         q.id as quiz_id,
                         q.name as quiz_name
                     FROM {local_essaysmaster_sessions} s
                     JOIN {quiz_attempts} qa ON qa.id = s.attempt_id
                     JOIN {quiz} q ON q.id = qa.quiz
                     JOIN {course} c ON c.id = q.course
+                    JOIN {course_categories} cat ON cat.id = c.category
                     JOIN {user} u ON u.id = s.user_id
                     WHERE u.deleted = 0 AND c.visible = 1";
             
@@ -97,6 +100,12 @@ class dashboard_manager {
             if ($userid > 0) {
                 $sql .= " AND u.id = :userid";
                 $params['userid'] = $userid;
+            }
+
+            // Category filter
+            if ($categoryid > 0) {
+                $sql .= " AND c.category = :categoryid";
+                $params['categoryid'] = $categoryid;
             }
 
             // Quiz filter
@@ -143,6 +152,7 @@ class dashboard_manager {
                 $progress_item->course_name = $record->course_name;
                 $progress_item->student_attempt_number = isset($record->student_attempt_number) ? (int)$record->student_attempt_number : null;
                 $progress_item->quiz_name = $record->quiz_name;
+                $progress_item->category_name = $record->category_name;
                 $progress_item->quiz_id = $record->quiz_id;
                 $progress_item->current_round = $record->current_level;
                 $progress_item->total_rounds = 6;
@@ -179,7 +189,7 @@ class dashboard_manager {
         }
     }
 
-    public function get_quiz_configurations($courseid = 0) {
+    public function get_quiz_configurations($courseid = 0, $categoryid = 0) {
         global $DB;
         
         try {
@@ -198,12 +208,15 @@ class dashboard_manager {
                         q.name as quiz_name,
                         q.course as course_id,
                         c.fullname as course_name,
+                        c.category as course_category_id,
+                        cat.name as category_name,
                         qc.is_enabled,
                         qc.validation_thresholds,
                         qc.max_attempts_per_round,
                         qc.timemodified as config_modified
                     FROM {quiz} q
                     JOIN {course} c ON c.id = q.course
+                    JOIN {course_categories} cat ON cat.id = c.category
                     LEFT JOIN {local_essaysmaster_quiz_config} qc ON qc.quiz_id = q.id
                     WHERE q.id $insql
                     AND c.visible = 1";
@@ -214,6 +227,11 @@ class dashboard_manager {
             if ($courseid > 0) {
                 $sql .= " AND q.course = :courseid";
                 $params['courseid'] = $courseid;
+            }
+            // Category filter
+            if ($categoryid > 0) {
+                $sql .= " AND c.category = :categoryid";
+                $params['categoryid'] = $categoryid;
             }
             
             $sql .= " ORDER BY c.fullname, q.name LIMIT 100";
@@ -557,6 +575,7 @@ class dashboard_manager {
             // Standard headers
             $output .= \html_writer::tag('th', 'Student ID');
             $output .= \html_writer::tag('th', 'Student Name');
+            $output .= \html_writer::tag('th', 'Category');
             $output .= \html_writer::tag('th', 'Course');
             $output .= \html_writer::tag('th', 'Quiz Name');
             $output .= \html_writer::tag('th', 'Attempt #');
@@ -616,6 +635,9 @@ class dashboard_manager {
                     ])
                 );
                 
+                // Category name
+                $output .= \html_writer::tag('td', $progress->category_name ?? '-');
+
                 // Course - filter link within dashboard
                 $course_filter_url = new \moodle_url('/local/essaysmaster/dashboard.php', [
                     'tab' => 'students',
@@ -728,6 +750,7 @@ class dashboard_manager {
             $table->head = [
                 'Select',
                 'Quiz Name',
+                'Category',
                 'Course',
                 'Status',
                 'Actions'
@@ -746,6 +769,9 @@ class dashboard_manager {
                     new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'quizid' => $config->quiz_id ?? 0]),
                     $config->quiz_name ?? 'Unknown Quiz'
                 );
+                // Category
+                $row[] = $config->category_name ?? 'Unknown Category';
+
                 // Course → clicking filters Students tab by this course
                 $row[] = \html_writer::link(
                     new \moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'students', 'course' => $config->course_id ?? 0]),

@@ -186,6 +186,7 @@ if (optional_param('action', '', PARAM_ALPHANUMEXT)) {
 
 // ---------------- Filters ----------------
 $userid      = optional_param('userid', '', PARAM_INT);
+$categoryid  = optional_param('categoryid', 0, PARAM_INT);
 $filter_userid = optional_param('filter_userid', '', PARAM_INT);
 $studentname = optional_param('studentname', '', PARAM_TEXT);
 $coursename  = optional_param('coursename', '', PARAM_TEXT);
@@ -217,10 +218,20 @@ if (!empty($filter_by_course)) {
 }
 
 // ---------------- Data ----------------
+// Categories (default to 'Category 1' if present)
+$categories = [];
+try {
+    $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+    if (empty($categoryid)) {
+        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+        if ($catrow) { $categoryid = (int)$catrow->id; }
+    }
+} catch (\Throwable $e) { /* ignore */ }
+
 $unique_users    = $quizmanager->get_unique_users();
-$unique_courses  = $quizmanager->get_unique_course_names();
+$unique_courses  = $quizmanager->get_unique_course_names((int)$categoryid);
 $unique_quizzes  = $quizmanager->get_unique_quiz_names();
-$unique_sections = $quizmanager->get_unique_sections(); // NEW: Get sections
+$unique_sections = $quizmanager->get_unique_sections((int)$categoryid); // NEW: Get sections filtered by category
 
 // Get unique user IDs
 $unique_userids = [];
@@ -241,7 +252,7 @@ try {
 }
 
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid
+    $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
 );
 
 // Apply month filter if set
@@ -318,6 +329,7 @@ foreach ($records as $r) {
         'courseid'      => $r->courseid,
         'studentname'   => $r->studentname,
         'coursename'    => $r->coursename,
+        'categoryname'  => $r->categoryname ?? '',
         'quizname'      => $r->quizname,
         'user_profile_url' => $user_profile_url->out(false),
         'user_activity_url' => $user_activity_url->out(false),
@@ -379,6 +391,18 @@ require_once(__DIR__ . '/navigation_fallback.php');
     <div class="dashboard-filters">
         <form method="GET" class="filter-form">
             <div class="filter-row">
+                <div class="filter-group">
+                    <label for="categoryid">Category:</label>
+                    <select name="categoryid" id="categoryid">
+                        <option value="">All Categories</option>
+                        <?php foreach ($categories as $cat): ?>
+                            <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($cat->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="filter-group">
                     <label for="coursename">Course:</label>
                     <select name="coursename" id="coursename">
@@ -524,6 +548,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                         Name 
                         <?php echo getSortArrows('studentname', $sort, $dir); ?>
                     </th>
+                    <th>Category</th>
                     <th class="sortable-column" data-sort="coursename">
                         Course 
                         <?php echo getSortArrows('coursename', $sort, $dir); ?>
@@ -582,6 +607,9 @@ require_once(__DIR__ . '/navigation_fallback.php');
 								<?php echo htmlspecialchars($row->studentname); ?>
 							</a>
 						</td>
+                            <td>
+                                <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
+                            </td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>

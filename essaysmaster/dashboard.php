@@ -24,6 +24,7 @@ $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
 $search = optional_param('search', '', PARAM_TEXT);
 $month = optional_param('month', '', PARAM_TEXT);
+$categoryid = optional_param('categoryid', 0, PARAM_INT);
 $per_page = optional_param('per_page', 25, PARAM_INT);
 $page = optional_param('page', 1, PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
@@ -73,8 +74,8 @@ if ($action) {
 // Get dashboard data
 $courses = $dashboard->get_accessible_courses();
 $students = $dashboard->get_unique_students($courseid);
-$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid, 25, 1, $quizid);
-$quiz_configs = $dashboard->get_quiz_configurations($courseid);
+$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid, 25, 1, $quizid, $categoryid);
+$quiz_configs = $dashboard->get_quiz_configurations($courseid, $categoryid);
 $statistics = $dashboard->get_dashboard_statistics($courseid);
 
 // Generate month options for the past 12 months (matching Quiz Dashboard)
@@ -110,11 +111,27 @@ switch ($currenttab) {
         $filter_form = html_writer::start_tag('form', ['method' => 'GET', 'class' => 'filter-form']);
         $filter_form .= html_writer::start_div('filter-row');
         
+        // Course category filter
+        $filter_form .= html_writer::start_div('filter-group');
+        $filter_form .= html_writer::tag('label', 'Category:', ['for' => 'categoryid']);
+        $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+        if (empty($categoryid)) {
+            $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+            if ($catrow) { $categoryid = (int)$catrow->id; }
+        }
+        $cat_options = [0 => 'All Categories'];
+        foreach ($categories as $cat) { $cat_options[$cat->id] = $cat->name; }
+        $filter_form .= html_writer::select($cat_options, 'categoryid', $categoryid, false, ['id' => 'categoryid']);
+        $filter_form .= html_writer::end_div();
+
         // Course filter
         $filter_form .= html_writer::start_div('filter-group');
         $filter_form .= html_writer::tag('label', 'Course:', ['for' => 'course']);
         $course_options = [0 => 'All Courses'];
         foreach ($courses as $course) {
+            if (!empty($categoryid) && isset($course->category) && (int)$course->category !== (int)$categoryid) {
+                continue;
+            }
             $course_options[$course->id] = $course->fullname;
         }
         $filter_form .= html_writer::select($course_options, 'course', $courseid, false, 

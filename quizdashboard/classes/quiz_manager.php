@@ -14,7 +14,7 @@ class quiz_manager {
 
     public function get_filtered_quiz_attempts($userid = '', $studentname = '', $coursename = '', $quizname = '',
                                               $datefrom = '', $dateto = '', $quiztype = '', $sort = 'coursename', $dir = 'ASC',
-                                              $limit = 0, $offset = 0, $status = '', $sectionid = '') {
+                                              $limit = 0, $offset = 0, $status = '', $sectionid = '', $categoryid = 0) {
         global $DB;
 
         // MODIFICATION: Updated subquery to get question name and ID for linking
@@ -26,6 +26,7 @@ class quiz_manager {
             c.id AS courseid,
             c.fullname AS coursename,
             q.name AS quizname,
+            cat.name AS categoryname,
             cs.id AS sectionid,
             cs.name AS sectionname,
             cs.section AS sectionnumber,
@@ -79,6 +80,7 @@ class quiz_manager {
         LEFT JOIN {local_quizdashboard_gradings} gr ON gr.attempt_id = qa.id
         JOIN {quiz} q ON qa.quiz = q.id
         JOIN {course} c ON q.course = c.id
+        JOIN {course_categories} cat ON cat.id = c.category
         JOIN {user} u ON qa.userid = u.id
         JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'quiz')
         JOIN {course_sections} cs ON cs.id = cm.section";
@@ -122,6 +124,7 @@ class quiz_manager {
         if (!empty($coursename))  { $sql .= " AND c.fullname = :coursename";        $params['coursename']  = $coursename; }
         if (!empty($quizname))    { $sql .= " AND q.name = :quizname";              $params['quizname']    = $quizname; }
         if (!empty($sectionid))   { $sql .= " AND cs.id = :sectionid";             $params['sectionid']   = $sectionid; }
+        if (!empty($categoryid))  { $sql .= " AND c.category = :categoryid";       $params['categoryid']  = $categoryid; }
 
         if (!empty($datefrom)) { $ts = strtotime($datefrom); if ($ts !== false) { $sql .= " AND qa.timefinish >= :datefrom"; $params['datefrom'] = $ts; } }
         if (!empty($dateto))   { $ts = strtotime($dateto.' 23:59:59'); if ($ts !== false) { $sql .= " AND qa.timefinish <= :dateto";   $params['dateto']   = $ts; } }
@@ -966,16 +969,21 @@ class quiz_manager {
         return $DB->get_records_sql($sql);
     }
 
-    public function get_unique_course_names() {
+    public function get_unique_course_names($categoryid = 0) {
         global $DB;
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
         $sql = "SELECT DISTINCT c.id, c.fullname
                   FROM {course} c
                   JOIN {quiz} q ON q.course = c.id
                   JOIN {quiz_attempts} qa ON qa.quiz = q.id
-                 WHERE c.visible = 1
-                   AND qa.state IN ('finished', 'inprogress')
+                {$where}
               ORDER BY c.fullname";
-        return $DB->get_records_sql($sql);
+        return $DB->get_records_sql($sql, $params);
     }
 
     public function get_unique_quiz_names() {
@@ -990,18 +998,23 @@ class quiz_manager {
         return $DB->get_records_sql($sql);
     }
 
-    public function get_unique_sections() {
+    public function get_unique_sections($categoryid = 0) {
         global $DB;
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
         $sql = "SELECT DISTINCT cs.id, cs.name, cs.section, c.fullname AS coursename
                   FROM {course_sections} cs
                   JOIN {course} c ON c.id = cs.course
                   JOIN {course_modules} cm ON cm.section = cs.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'quiz')
                   JOIN {quiz} q ON q.id = cm.instance
                   JOIN {quiz_attempts} qa ON qa.quiz = q.id
-                 WHERE c.visible = 1
-                   AND qa.state IN ('finished', 'inprogress')
+                {$where}
               ORDER BY c.fullname, cs.section";
-        return $DB->get_records_sql($sql);
+        return $DB->get_records_sql($sql, $params);
     }
 }
 ?>
