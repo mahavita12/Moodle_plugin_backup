@@ -106,9 +106,14 @@ class observers {
                             ]);
                         }
                     }
+                    // If added from personal course and there is an in-progress attempt, clear it and proceed.
+                    if ($ispcourse && $shoulddefer && $pq && !empty($pq->quizid)) {
+                        self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                        $shoulddefer = false;
+                    }
                     if ($shoulddefer) {
                         // Defer structural changes; do not mutate quiz during active attempt.
-                    } else if (!$ispcourse && $pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+                    } else if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         // Dedupe: if this question is in another PQ inside this personal course, move it here.
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
@@ -147,6 +152,13 @@ class observers {
                                 'timecreated' => time(),
                                 'timemodified' => time(),
                             ]);
+                            // Enforce visibility immediately and queue a modinfo rebuild.
+                            try {
+                                if (!empty($pq->sourcequizid)) {
+                                    \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
+                                }
+                                \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_add');
+                            } catch (\Throwable $e) { }
                         }
                     }
                 } else {
@@ -186,6 +198,13 @@ class observers {
                             ]);
                         }
                     }
+                    // Enforce visibility after removals and queue rebuild.
+                    try {
+                        if (!empty($pq) && !empty($pq->sourcequizid)) {
+                            \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
+                        }
+                        \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_remove');
+                    } catch (\Throwable $e) { }
                 }
 
                 // Always reconcile: compute desired state immediately. Defer structural edits during active PQ attempts.
