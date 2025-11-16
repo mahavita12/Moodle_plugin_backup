@@ -73,6 +73,29 @@ document.addEventListener("DOMContentLoaded", function() {
         if (isHidden) {
             document.body.classList.add(toggleClass);
         }
+
+        // Apply min score threshold (percentage out of 100), optionally including flagged attempts
+        if (!empty($user_attempts) && (int)$minscore > 0) {
+            $filtered = [];
+            foreach ($user_attempts as $ua) {
+                $percent = 0.0;
+                if (isset($ua->total_score) && isset($ua->max_score) && (float)$ua->max_score > 0) {
+                    $percent = (($ua->total_score / $ua->max_score) * 100.0);
+                }
+                $keep = ($percent > (int)$minscore);
+                if (!$keep && $includeflagged && !empty($ua->quizid)) {
+                    try {
+                        if ($questionsmanager->user_has_flags_for_quiz((int)$ua->userid, (int)$ua->quizid)) {
+                            $keep = true;
+                        }
+                    } catch (Throwable $e) { /* ignore */ }
+                }
+                if ($keep) {
+                    $filtered[] = $ua;
+                }
+            }
+            $user_attempts = $filtered;
+        }
         
         // Add click handler
         button.addEventListener("click", function() {
@@ -380,6 +403,8 @@ $userid         = optional_param('userid', 0, PARAM_INT);
 $user_id        = optional_param('user_id', 0, PARAM_INT); // Alternative param name
 $sectionid      = optional_param('sectionid', 0, PARAM_INT); // NEW: Section filter
 $status         = optional_param('status', '', PARAM_ALPHA);
+$minscore       = optional_param('minscore', 0, PARAM_INT);
+$includeflagged = optional_param('includeflagged', 1, PARAM_BOOL);
 $month          = optional_param('month', '', PARAM_TEXT);
 $sort           = optional_param('sort', 'timecreated', PARAM_ALPHA);
 $dir            = optional_param('dir', 'DESC', PARAM_ALPHA);
@@ -632,6 +657,24 @@ require_once(__DIR__ . '/navigation_fallback.php');
                         <option value="incorrect" <?php echo $status === 'incorrect' ? 'selected' : ''; ?>>Incorrect</option>
                         <option value="partial" <?php echo $status === 'partial' ? 'selected' : ''; ?>>Partial</option>
                     </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="minscore">Min Score:</label>
+                    <select name="minscore" id="minscore">
+                        <?php
+                        $opts = [0=>'All',10=>'> 10%',20=>'> 20%',30=>'> 30%',40=>'> 40%',50=>'> 50%',60=>'> 60%',70=>'> 70%',80=>'> 80%',90=>'> 90%'];
+                        foreach ($opts as $val=>$label) {
+                            $sel = ((int)$minscore === (int)$val) ? 'selected' : '';
+                            echo '<option value="'.$val.'" '.$sel.'>'.$label.'</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div class="filter-group" style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+                    <input type="checkbox" name="includeflagged" id="includeflagged" value="1" <?php echo $includeflagged ? 'checked' : ''; ?> />
+                    <label for="includeflagged" style="margin:0;">Always include flagged</label>
                 </div>
 
                 <div class="filter-group">

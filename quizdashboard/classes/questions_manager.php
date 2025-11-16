@@ -126,6 +126,29 @@ function qdb_get_quiz_questions_crossver(int $quizid): array {
 }
 
 class questions_manager {
+
+    /**
+     * Check if a user has any blue/red flags for questions that belong to a given quiz.
+     * Supports Moodle 4.x references schema.
+     */
+    public function user_has_flags_for_quiz(int $userid, int $quizid): bool {
+        global $DB;
+        if ($userid <= 0 || $quizid <= 0) { return false; }
+        try {
+            $sql = "SELECT 1
+                      FROM {local_questionflags} qf
+                      JOIN {question_versions} qv ON qv.questionid = qf.questionid
+                      JOIN {question_references} qr ON qr.questionbankentryid = qv.questionbankentryid
+                      JOIN {quiz_slots} qs ON qs.id = qr.itemid
+                     WHERE qr.component = 'mod_quiz'
+                       AND qr.questionarea = 'slot'
+                       AND qs.quizid = :quizid
+                       AND qf.userid = :userid";
+            return $DB->record_exists_sql($sql, ['quizid' => $quizid, 'userid' => $userid]);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
     
     /**
      * Get unique courses that have quiz attempts
@@ -335,7 +358,7 @@ class questions_manager {
             // Build IN clause for attempts (single id if not a personal-course context)
             list($in_sql_quiz, $in_params_quiz) = $DB->get_in_or_equal($targetquizids, SQL_PARAMS_QM);
 
-            $sql_attempts = "SELECT qa.id as attemptid, qa.userid, qa.timefinish, qa.timestart,
+            $sql_attempts = "SELECT qa.id as attemptid, qa.userid, qa.quiz AS quizid, qa.timefinish, qa.timestart,
                                    qa.attempt as attemptno,
                                    CONCAT(u.firstname, ' ', u.lastname) as username,
                                    c.fullname AS coursename,
@@ -488,7 +511,7 @@ class questions_manager {
             error_log('[QDB] Simple method found ' . count($quiz_questions) . ' questions');
             
             $user_attempts = $DB->get_records_sql("
-                SELECT qa.id as attemptid, qa.userid, qa.timefinish, qa.timestart,
+                SELECT qa.id as attemptid, qa.userid, qa.quiz AS quizid, qa.timefinish, qa.timestart,
                        qa.attempt as attemptno,
                        CONCAT(u.firstname, ' ', u.lastname) as username,
                        c.fullname AS coursename,
