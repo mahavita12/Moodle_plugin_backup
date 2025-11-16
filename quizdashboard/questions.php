@@ -74,28 +74,7 @@ document.addEventListener("DOMContentLoaded", function() {
             document.body.classList.add(toggleClass);
         }
 
-        // Apply min score threshold (percentage out of 100), optionally including flagged attempts
-        if (!empty($user_attempts) && (int)$minscore > 0) {
-            $filtered = [];
-            foreach ($user_attempts as $ua) {
-                $percent = 0.0;
-                if (isset($ua->total_score) && isset($ua->max_score) && (float)$ua->max_score > 0) {
-                    $percent = (($ua->total_score / $ua->max_score) * 100.0);
-                }
-                $keep = ($percent > (int)$minscore);
-                if (!$keep && $includeflagged && !empty($ua->quizid)) {
-                    try {
-                        if ($questionsmanager->user_has_flags_for_quiz((int)$ua->userid, (int)$ua->quizid)) {
-                            $keep = true;
-                        }
-                    } catch (Throwable $e) { /* ignore */ }
-                }
-                if ($keep) {
-                    $filtered[] = $ua;
-                }
-            }
-            $user_attempts = $filtered;
-        }
+        
         
         // Add click handler
         button.addEventListener("click", function() {
@@ -513,6 +492,29 @@ if ($quizid) {
     }
 } else {
     error_log('[QDB] No quiz ID provided - showing selection notice');
+}
+
+// Apply min score threshold (percentage out of 100), optionally including flagged attempts
+if (!empty($user_attempts) && (int)$minscore > 0) {
+    $filtered = [];
+    foreach ($user_attempts as $ua) {
+        $percent = 0.0;
+        if (isset($ua->total_score) && isset($ua->max_score) && (float)$ua->max_score > 0) {
+            $percent = (($ua->total_score / $ua->max_score) * 100.0);
+        }
+        $keep = ($percent > (int)$minscore);
+        if (!$keep && $includeflagged && !empty($ua->quizid)) {
+            try {
+                if ($questionsmanager->user_has_flags_for_quiz((int)$ua->userid, (int)$ua->quizid)) {
+                    $keep = true;
+                }
+            } catch (Throwable $e) { /* ignore */ }
+        }
+        if ($keep) {
+            $filtered[] = $ua;
+        }
+    }
+    $user_attempts = $filtered;
 }
 
 // Generate month options for the past 12 months
