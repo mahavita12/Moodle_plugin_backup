@@ -473,7 +473,7 @@ if ($quizid) {
     // Get question-level data in matrix format
     try {
         $data = $questionsmanager->get_question_results_matrix(
-            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir, (int)$categoryid
+            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir, (int)$categoryid, (int)$minscore
         );
         
         $user_attempts = $data['user_attempts'] ?? [];

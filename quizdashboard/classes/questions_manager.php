@@ -250,7 +250,7 @@ class questions_manager {
      */
     public function get_question_results_matrix($courseid = 0, $quizid = 0, $quiztype = '', 
                                               $userid = 0, $status = '', $month = '', 
-                                              $sort = 'timecreated', $dir = 'DESC', $categoryid = 0) {
+                                              $sort = 'timecreated', $dir = 'DESC', $categoryid = 0, $minpercent = 0) {
         global $DB;
         
         if (!$quizid) {
@@ -376,7 +376,14 @@ class questions_manager {
                             JOIN {quiz} q ON q.id = qa.quiz
                             JOIN {course} c ON c.id = q.course
                             JOIN {course_categories} cat ON cat.id = c.category
-                            WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause . "
+                            WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause;
+
+            if (!empty($minpercent) && (int)$minpercent > 0) {
+                $sql_attempts .= " AND ((qa.sumgrades / NULLIF(q.sumgrades, 0)) * 100) > :minpercent";
+                $params['minpercent'] = (int)$minpercent;
+            }
+
+            $sql_attempts .= "
                             ORDER BY u.lastname, u.firstname";
             
             $user_attempts = $DB->get_records_sql($sql_attempts, array_merge($in_params_quiz, $params));
