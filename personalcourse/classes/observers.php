@@ -261,7 +261,7 @@ class observers {
                         try { self::quick_reconcile_slots_for_pq((int)$pc->id, (int)$pq->id, (int)$pq->quizid, (int)$targetuserid); } catch (\Throwable $e) {}
                     }
                 } else {
-                    // Removal: remove this question from any personal quiz within the student's personal course immediately.
+                    // Removal: remove this question from any personal quiz within the student's personal course.
                     $existing = $DB->get_record('local_personalcourse_questions', [
                         'personalcourseid' => (int)$pc->id,
                         'questionid' => (int)$questionid,
@@ -275,6 +275,17 @@ class observers {
                     }
                     if ($shoulddefer) {
                         // Defer structural changes; do not remove from quiz during active attempt.
+                        // Queue an immediate unlock + reconcile to apply the removal safely.
+                        try {
+                            $sourcequizid_for_unlock = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
+                            if (!empty($sourcequizid_for_unlock)) {
+                                $unlock = new \local_personalcourse\task\unlock_reconcile_task();
+                                $unlock->set_component('local_personalcourse');
+                                $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock]);
+                                $unlock->set_next_run_time(time());
+                                \core\task\manager::queue_adhoc_task($unlock, true);
+                            }
+                        } catch (\Throwable $e) { /* best-effort */ }
                     } else if ($existing) {
                         $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
                         if ($targetpq) {
