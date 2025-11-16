@@ -153,27 +153,34 @@ class observers {
                                 // If finished attempts exist on the old PQ, skip removal and keep its mapping to preserve reviews.
                             }
                         }
-                        // Add to current PQ if not present.
-                        $present = $DB->record_exists('local_personalcourse_questions', [
-                            'personalcourseid' => (int)$pc->id,
-                            'personalquizid' => (int)$pq->id,
-                            'questionid' => (int)$questionid,
-                        ]);
-                        if (!$present) {
+                        // Add to current PQ if not present in ACTUAL quiz slots (mapping is auxiliary).
+                        $presentinslots = self::question_present_in_quiz_slots((int)$pq->quizid, (int)$questionid);
+                        if (!$presentinslots) {
                             $qb->add_questions((int)$pq->quizid, [(int)$questionid]);
-                            // Record mapping (slot resolution is optional on 4.4+).
-                            $DB->insert_record('local_personalcourse_questions', (object)[
+                            // Upsert mapping (slot resolution is optional on 4.4+).
+                            $existingmap = $DB->get_record('local_personalcourse_questions', [
                                 'personalcourseid' => (int)$pc->id,
                                 'personalquizid' => (int)$pq->id,
                                 'questionid' => (int)$questionid,
-                                'slotid' => null,
-                                'flagcolor' => $flagcolor ?: 'blue',
-                                'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
-                                'originalposition' => null,
-                                'currentposition' => null,
-                                'timecreated' => time(),
-                                'timemodified' => time(),
                             ]);
+                            if ($existingmap) {
+                                $existingmap->timemodified = time();
+                                if (empty($existingmap->flagcolor)) { $existingmap->flagcolor = ($flagcolor ?: 'blue'); }
+                                $DB->update_record('local_personalcourse_questions', $existingmap);
+                            } else {
+                                $DB->insert_record('local_personalcourse_questions', (object)[
+                                    'personalcourseid' => (int)$pc->id,
+                                    'personalquizid' => (int)$pq->id,
+                                    'questionid' => (int)$questionid,
+                                    'slotid' => null,
+                                    'flagcolor' => $flagcolor ?: 'blue',
+                                    'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
+                                    'originalposition' => null,
+                                    'currentposition' => null,
+                                    'timecreated' => time(),
+                                    'timemodified' => time(),
+                                ]);
+                            }
                             // Enforce visibility immediately, sort quizzes in section by name, and queue a modinfo rebuild.
                             try {
                                 if (!empty($pq->sourcequizid)) {
@@ -186,7 +193,29 @@ class observers {
                                 } catch (\Throwable $se) {}
                                 \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_add');
                             } catch (\Throwable $e) { }
+                        } else {
+                            // Already present in slots – ensure a mapping row exists/up-to-date.
+                            if (!$DB->record_exists('local_personalcourse_questions', [
+                                'personalcourseid' => (int)$pc->id,
+                                'personalquizid' => (int)$pq->id,
+                                'questionid' => (int)$questionid,
+                            ])) {
+                                $DB->insert_record('local_personalcourse_questions', (object)[
+                                    'personalcourseid' => (int)$pc->id,
+                                    'personalquizid' => (int)$pq->id,
+                                    'questionid' => (int)$questionid,
+                                    'slotid' => null,
+                                    'flagcolor' => $flagcolor ?: 'blue',
+                                    'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
+                                    'originalposition' => null,
+                                    'currentposition' => null,
+                                    'timecreated' => time(),
+                                    'timemodified' => time(),
+                                ]);
+                            }
                         }
+                        // Quick reconcile to backfill any other mapped questions that are missing in slots.
+                        try { self::quick_reconcile_slots_for_pq((int)$pc->id, (int)$pq->id, (int)$pq->quizid, (int)$targetuserid); } catch (\Throwable $e) {}
                     }
                 } else {
                     // Removal: remove this question from any personal quiz within the student's personal course immediately.
@@ -225,6 +254,8 @@ class observers {
                             ]);
                         }
                     }
+                    // Quick reconcile to remove any stray slots left without mapping (safety).
+                    try { self::quick_reconcile_slots_for_pq((int)$pc->id, (int)$pq->id, (int)$pq->quizid, (int)$targetuserid); } catch (\Throwable $e) {}
                     // Enforce visibility after removals, sort, and queue rebuild.
                     try {
                         if (!empty($pq) && !empty($pq->sourcequizid)) {
@@ -487,6 +518,54 @@ class observers {
             }
         } catch (\Throwable $e) {}
         return;
+    }
+
+    /**
+     * Check if a specific question is actually present in a quiz's slots (4.4+ schema).
+     */
+    private static function question_present_in_quiz_slots(int $quizid, int $questionid): bool {
+        global $DB;
+        if ($quizid <= 0 || $questionid <= 0) { return false; }
+        $sql = "SELECT 1
+                  FROM {quiz_slots} qs
+                  JOIN {question_references} qr
+                    ON qr.itemid = qs.id
+                   AND qr.component = 'mod_quiz'
+                   AND qr.questionarea = 'slot'
+                  JOIN {question_versions} qv
+                    ON qv.questionbankentryid = qr.questionbankentryid
+                 WHERE qs.quizid = ? AND qv.questionid = ?";
+        return $DB->record_exists_sql($sql, [$quizid, $questionid]);
+    }
+
+    /**
+     * Backfill any mapped questions missing from slots for a given personal quiz.
+     * Adds missing questions after unlocking, and queues a rebuild.
+     */
+    private static function quick_reconcile_slots_for_pq(int $personalcourseid, int $pqid, int $quizid, int $ownerid): void {
+        global $DB;
+        if ($personalcourseid <= 0 || $pqid <= 0 || $quizid <= 0 || $ownerid <= 0) { return; }
+        $rows = $DB->get_records('local_personalcourse_questions', [
+            'personalcourseid' => $personalcourseid,
+            'personalquizid' => $pqid,
+        ], '', 'id,questionid');
+        if (empty($rows)) { return; }
+        $missing = [];
+        foreach ($rows as $r) {
+            if (!self::question_present_in_quiz_slots($quizid, (int)$r->questionid)) {
+                $missing[] = (int)$r->questionid;
+            }
+        }
+        if (empty($missing)) { return; }
+        // Unlock and add all missing in one pass.
+        self::delete_inprogress_attempts_for_user_at_quiz((int)$quizid, (int)$ownerid);
+        try {
+            $qb = new \local_personalcourse\quiz_builder();
+            $qb->add_questions((int)$quizid, $missing);
+        } catch (\Throwable $e) { /* best-effort */ }
+        try {
+            \local_personalcourse\modinfo_rebuilder::queue((int)$DB->get_field('quiz', 'course', ['id' => (int)$quizid], IGNORE_MISSING), 'quick_reconcile');
+        } catch (\Throwable $e) { }
     }
 
     public static function on_quiz_viewed(\mod_quiz\event\course_module_viewed $event): void {
