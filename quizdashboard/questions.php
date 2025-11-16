@@ -404,7 +404,8 @@ $user_id        = optional_param('user_id', 0, PARAM_INT); // Alternative param 
 $sectionid      = optional_param('sectionid', 0, PARAM_INT); // NEW: Section filter
 $status         = optional_param('status', '', PARAM_ALPHA);
 $minscore       = optional_param('minscore', 0, PARAM_INT);
-$includeflagged = optional_param('includeflagged', 1, PARAM_BOOL);
+// Checkbox is only present in GET when ticked; honor true "unchecked" by reading raw $_GET.
+$includeflagged = isset($_GET['includeflagged']) ? 1 : 0;
 $month          = optional_param('month', '', PARAM_TEXT);
 $sort           = optional_param('sort', 'timecreated', PARAM_ALPHA);
 $dir            = optional_param('dir', 'DESC', PARAM_ALPHA);
@@ -660,6 +661,16 @@ require_once(__DIR__ . '/navigation_fallback.php');
                 </div>
 
                 <div class="filter-group">
+                    <label for="month">Month:</label>
+                    <select name="month" id="month">
+                        <option value="">All Months</option>
+                        <?php foreach ($month_options as $value => $label): ?>
+                            <option value="<?php echo $value; ?>" <?php echo $month === $value ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
                     <label for="minscore">Min Score:</label>
                     <select name="minscore" id="minscore">
                         <?php
@@ -675,16 +686,6 @@ require_once(__DIR__ . '/navigation_fallback.php');
                 <div class="filter-group" style="display:flex;align-items:center;gap:6px;margin-top:22px;">
                     <input type="checkbox" name="includeflagged" id="includeflagged" value="1" <?php echo $includeflagged ? 'checked' : ''; ?> />
                     <label for="includeflagged" style="margin:0;">Always include flagged</label>
-                </div>
-
-                <div class="filter-group">
-                    <label for="month">Month:</label>
-                    <select name="month" id="month">
-                        <option value="">All Months</option>
-                        <?php foreach ($month_options as $value => $label): ?>
-                            <option value="<?php echo $value; ?>" <?php echo $month === $value ? 'selected' : ''; ?>><?php echo $label; ?></option>
-                        <?php endforeach; ?>
-                    </select>
                 </div>
 
                 <div class="filter-actions">
