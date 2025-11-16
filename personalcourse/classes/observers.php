@@ -161,6 +161,17 @@ class observers {
                     }
                     if ($shoulddefer) {
                         // Defer structural changes; do not mutate quiz during active attempt.
+                        // Queue an immediate unlock + reconcile in the background.
+                        try {
+                            $sourcequizid_for_unlock = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
+                            if (!empty($sourcequizid_for_unlock)) {
+                                $unlock = new \local_personalcourse\task\unlock_reconcile_task();
+                                $unlock->set_component('local_personalcourse');
+                                $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock]);
+                                $unlock->set_next_run_time(time());
+                                \core\task\manager::queue_adhoc_task($unlock, true);
+                            }
+                        } catch (\Throwable $e) { /* best-effort */ }
                     } else if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         // Ensure no in-progress/overdue attempts block immediate edits (apply for both public and personal origins).
                         $hasip = $DB->record_exists_select('quiz_attempts',
@@ -319,17 +330,12 @@ class observers {
                             // When deferring (e.g., in-progress PQ), enqueue an unlock+reconcile task and a sequence cleanup.
                             if ($deferflag) {
                                 try {
-                                    // Queue unlock + reconcile (dedup by userid+sourcequizid).
-                                    $classname0 = '\\local_personalcourse\\task\\unlock_reconcile_task';
-                                    $cd0a = '"userid":' . (int)$targetuserid;
-                                    $cd0b = '"sourcequizid":' . (int)$sourcequizid;
-                                    $exists0 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname0, "%$cd0a%", "%$cd0b%"]);
-                                    if (!$exists0) {
-                                        $unlock = new \local_personalcourse\task\unlock_reconcile_task();
-                                        $unlock->set_component('local_personalcourse');
-                                        $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid]);
-                                        \core\task\manager::queue_adhoc_task($unlock, true);
-                                    }
+                                    // Queue unlock + reconcile immediately (no dedupe; small and idempotent).
+                                    $unlock = new \local_personalcourse\task\unlock_reconcile_task();
+                                    $unlock->set_component('local_personalcourse');
+                                    $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid]);
+                                    $unlock->set_next_run_time(time());
+                                    \core\task\manager::queue_adhoc_task($unlock, true);
                                     $classname = '\\local_personalcourse\\task\\reconcile_view_task';
                                     $cd1 = '"userid":' . (int)$targetuserid;
                                     $cd2 = '"sourcequizid":' . (int)$sourcequizid;
