@@ -181,6 +181,17 @@ class generator_service {
                         $DB->set_field('quiz', 'name', $desired, ['id' => (int)$pq->quizid]);
                     }
                 } catch (\Throwable $e) { }
+                // Ensure provenance marker exists and matches expected for reused quizzes.
+                try {
+                    $cmid_existing = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => (int)$pccourseid], IGNORE_MISSING);
+                    if ($cmid_existing > 0) {
+                        $expected = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
+                        $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmid_existing], IGNORE_MISSING);
+                        if (trim($marker) === '' || stripos($marker, $expected) !== 0) {
+                            $DB->set_field('course_modules', 'idnumber', $expected, ['id' => (int)$cmid_existing]);
+                        }
+                    }
+                } catch (\Throwable $e) { }
             }
         }
 

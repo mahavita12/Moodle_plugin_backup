@@ -65,6 +65,43 @@ class observers {
                         'personalcourseid' => (int)$pc->id,
                         'quizid' => (int)$cm->instance,
                     ], 'id, quizid, sourcequizid');
+                    // Repair: if event came from an archived copy (no mapping), resolve the active PQ by base name or archives.
+                    if (!$pq) {
+                        try {
+                            $currname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$cm->instance], IGNORE_MISSING);
+                            if ($currname !== '') {
+                                $basename = (string)preg_replace('/\\s*\\((Previous Attempt|Archived).*$/i', '', $currname);
+                                // Find another PQ in this personal course whose name matches the base.
+                                $pq2 = $DB->get_record_sql(
+                                    "SELECT pq.id, pq.quizid, pq.sourcequizid
+                                       FROM {local_personalcourse_quizzes} pq
+                                       JOIN {quiz} q2 ON q2.id = pq.quizid
+                                      WHERE pq.personalcourseid = ?
+                                        AND pq.quizid <> ?
+                                        AND (q2.name = ? OR q2.name LIKE ? OR q2.name LIKE ?)
+                                   ORDER BY pq.id DESC",
+                                    [(int)$pc->id, (int)$cm->instance, $basename, $basename . ' (Previous Attempt)%', $basename . ' (Archived)%']
+                                );
+                                if ($pq2) { $pq = $pq2; }
+                            }
+                        } catch (\Throwable $e) { /* best-effort */ }
+                    }
+                    if (!$pq) {
+                        // Last resort: map via archives table from this archived quiz to its source, then to active PQ.
+                        try {
+                            $arch = $DB->get_record('local_personalcourse_archives', [
+                                'personalcourseid' => (int)$pc->id,
+                                'archivedquizid' => (int)$cm->instance,
+                            ], 'sourcequizid', IGNORE_MISSING);
+                            if ($arch && !empty($arch->sourcequizid)) {
+                                $pq3 = $DB->get_record('local_personalcourse_quizzes', [
+                                    'personalcourseid' => (int)$pc->id,
+                                    'sourcequizid' => (int)$arch->sourcequizid,
+                                ], 'id, quizid, sourcequizid');
+                                if ($pq3) { $pq = $pq3; }
+                            }
+                        } catch (\Throwable $e) { /* best-effort */ }
+                    }
                 } else {
                     $pq = $DB->get_record('local_personalcourse_quizzes', [
                         'personalcourseid' => (int)$pc->id,
@@ -487,39 +524,6 @@ class observers {
             }
         } catch (\Throwable $e) { /* best-effort immediate append; fall back to adhoc */ }
 
-        // Execute synchronously as well so that first-time creation or existing mapping reconciliation happens immediately.
-        $task2 = new \local_personalcourse\task\attempt_generation_task();
-        $task2->set_custom_data([
-            'userid' => (int)$userid,
-            'quizid' => (int)$cm->instance,
-            'attemptid' => (int)$event->objectid,
-            'cmid' => (int)$cmid,
-        ]);
-        $task2->set_component('local_personalcourse');
-        try {
-            // Execute synchronously as well; if creation happens now, show success notification.
-            $before = $hasquiz;
-            $task2->execute();
-            // Re-check creation state after execution.
-            $hasquiz_after = false;
-            if ($pcinfo) {
-                $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-                $existingquiz2 = $DB->get_record_sql(
-                    'SELECT q.id, cm.deletioninprogress
-                       FROM {quiz} q
-                       JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
-                      WHERE q.course = ? AND q.name = (
-                            SELECT name FROM {quiz} WHERE id = ?
-                      )
-                   ORDER BY q.id DESC',
-                    [$moduleidquiz_chk, (int)$pcinfo->courseid, (int)$cm->instance]
-                );
-                $hasquiz_after = ($existingquiz2 && empty($existingquiz2->deletioninprogress));
-            }
-            if (!$before && $hasquiz_after) {
-                \core\notification::success(get_string('notify_pq_created_short', 'local_personalcourse'));
-            }
-        } catch (\Throwable $e) {}
         return;
     }
 
