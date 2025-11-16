@@ -128,11 +128,10 @@ class observers {
                     } catch (\Throwable $g) { return; }
                 }
 
-                // Defer ONLY when the flag change originates from the attempt page of the personal quiz
-                // and there is an in-progress/overdue attempt. For all other origins (including review and
-                // public course), apply immediately and delete the in-progress attempt to regenerate.
+                // Defer whenever there is an active attempt on the target personal quiz
+                // (regardless of origin). We will unlock + reconcile in an adhoc task.
                 $shoulddefer = false;
-                if ($ispcourse && !empty($pq) && $origin === 'attempt' && $DB->record_exists_select(
+                if (!empty($pq) && $DB->record_exists_select(
                         'quiz_attempts',
                         "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
                         [(int)$pq->quizid, (int)$targetuserid]
@@ -160,11 +159,6 @@ class observers {
                             ]);
                         }
                     }
-                    // If added from personal course and there is an in-progress attempt, clear it and proceed.
-                    if ($ispcourse && $shoulddefer && $pq && !empty($pq->quizid)) {
-                        self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                        $shoulddefer = false;
-                    }
                     if ($shoulddefer) {
                         // Defer structural changes; do not mutate quiz during active attempt.
                     } else if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
@@ -173,9 +167,7 @@ class observers {
                             "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
                             [(int)$pq->quizid, (int)$targetuserid]
                         );
-                        if ($hasip) {
-                            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                        }
+                        if ($hasip) { /* guarded by defer above */ }
                         // Dedupe: if this question is in another PQ inside this personal course, move it here.
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
@@ -324,9 +316,20 @@ class observers {
                             }
                             $svc = new \local_personalcourse\generator_service();
                             $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only', (bool)$deferflag);
-                            // When deferring (e.g., review-origin or in-progress PQ), enqueue an adhoc reconcile to run out-of-request and a sequence cleanup.
+                            // When deferring (e.g., in-progress PQ), enqueue an unlock+reconcile task and a sequence cleanup.
                             if ($deferflag) {
                                 try {
+                                    // Queue unlock + reconcile (dedup by userid+sourcequizid).
+                                    $classname0 = '\\local_personalcourse\\task\\unlock_reconcile_task';
+                                    $cd0a = '"userid":' . (int)$targetuserid;
+                                    $cd0b = '"sourcequizid":' . (int)$sourcequizid;
+                                    $exists0 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname0, "%$cd0a%", "%$cd0b%"]);
+                                    if (!$exists0) {
+                                        $unlock = new \local_personalcourse\task\unlock_reconcile_task();
+                                        $unlock->set_component('local_personalcourse');
+                                        $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid]);
+                                        \core\task\manager::queue_adhoc_task($unlock, true);
+                                    }
                                     $classname = '\\local_personalcourse\\task\\reconcile_view_task';
                                     $cd1 = '"userid":' . (int)$targetuserid;
                                     $cd2 = '"sourcequizid":' . (int)$sourcequizid;
