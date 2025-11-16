@@ -82,8 +82,11 @@ class observers {
                         $srcid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : (int)$quizid;
                         $ownerid = (int)$pc->userid;
                         $expected = 'pcq:' . $ownerid . ':' . $srcid;
-                        if (stripos($marker ?: '', $expected) !== 0) {
-                            return; // Do not touch non-PQ or mismatched activity.
+                        if (trim($marker) === '') {
+                            // Legacy PQ without marker: stamp it now so we don't skip valid operations.
+                            try { $DB->set_field('course_modules', 'idnumber', $expected, ['id' => (int)$cmcur->id]); } catch (\Throwable $e) { /* non-blocking */ }
+                        } else if (stripos($marker, $expected) !== 0) {
+                            return; // Mismatched marker - likely not our PQ instance.
                         }
                     } catch (\Throwable $g) { return; }
                 }
@@ -153,34 +156,34 @@ class observers {
                                 // If finished attempts exist on the old PQ, skip removal and keep its mapping to preserve reviews.
                             }
                         }
+                        // Ensure mapping row exists first (mapping drives desired state).
+                        $existingmap = $DB->get_record('local_personalcourse_questions', [
+                            'personalcourseid' => (int)$pc->id,
+                            'personalquizid' => (int)$pq->id,
+                            'questionid' => (int)$questionid,
+                        ]);
+                        if ($existingmap) {
+                            $existingmap->timemodified = time();
+                            if (empty($existingmap->flagcolor)) { $existingmap->flagcolor = ($flagcolor ?: 'blue'); }
+                            $DB->update_record('local_personalcourse_questions', $existingmap);
+                        } else {
+                            $DB->insert_record('local_personalcourse_questions', (object)[
+                                'personalcourseid' => (int)$pc->id,
+                                'personalquizid' => (int)$pq->id,
+                                'questionid' => (int)$questionid,
+                                'slotid' => null,
+                                'flagcolor' => $flagcolor ?: 'blue',
+                                'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
+                                'originalposition' => null,
+                                'currentposition' => null,
+                                'timecreated' => time(),
+                                'timemodified' => time(),
+                            ]);
+                        }
                         // Add to current PQ if not present in ACTUAL quiz slots (mapping is auxiliary).
                         $presentinslots = self::question_present_in_quiz_slots((int)$pq->quizid, (int)$questionid);
                         if (!$presentinslots) {
                             $qb->add_questions((int)$pq->quizid, [(int)$questionid]);
-                            // Upsert mapping (slot resolution is optional on 4.4+).
-                            $existingmap = $DB->get_record('local_personalcourse_questions', [
-                                'personalcourseid' => (int)$pc->id,
-                                'personalquizid' => (int)$pq->id,
-                                'questionid' => (int)$questionid,
-                            ]);
-                            if ($existingmap) {
-                                $existingmap->timemodified = time();
-                                if (empty($existingmap->flagcolor)) { $existingmap->flagcolor = ($flagcolor ?: 'blue'); }
-                                $DB->update_record('local_personalcourse_questions', $existingmap);
-                            } else {
-                                $DB->insert_record('local_personalcourse_questions', (object)[
-                                    'personalcourseid' => (int)$pc->id,
-                                    'personalquizid' => (int)$pq->id,
-                                    'questionid' => (int)$questionid,
-                                    'slotid' => null,
-                                    'flagcolor' => $flagcolor ?: 'blue',
-                                    'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
-                                    'originalposition' => null,
-                                    'currentposition' => null,
-                                    'timecreated' => time(),
-                                    'timemodified' => time(),
-                                ]);
-                            }
                             // Enforce visibility immediately, sort quizzes in section by name, and queue a modinfo rebuild.
                             try {
                                 if (!empty($pq->sourcequizid)) {
