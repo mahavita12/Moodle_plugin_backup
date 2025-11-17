@@ -52,14 +52,23 @@ class flag_question extends external_api {
         $cm = get_coursemodule_from_id('quiz', $params['cmid']);
         $quizid = $cm ? (int)$cm->instance : null;
 
-        if ($params['isflagged']) {
-            // Remove any existing flag for this question first
-            $DB->delete_records('local_questionflags', [
-                'userid' => $USER->id,
-                'questionid' => $params['questionid']
-            ]);
+        $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => (int)$params['questionid']], IGNORE_MISSING);
+        $siblings = [];
+        if (!empty($qbeid)) {
+            $siblings = $DB->get_fieldset_select('question_versions', 'questionid', 'questionbankentryid = ?', [(int)$qbeid]);
+        }
 
-            // Add new flag
+        if ($params['isflagged']) {
+            if (!empty($siblings)) {
+                list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
+                $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$USER->id], $inparams));
+            } else {
+                $DB->delete_records('local_questionflags', [
+                    'userid' => $USER->id,
+                    'questionid' => $params['questionid']
+                ]);
+            }
+
             $record = new \stdClass();
             $record->userid = $USER->id;
             $record->questionid = $params['questionid'];
@@ -71,7 +80,24 @@ class flag_question extends external_api {
 
             $insertid = $DB->insert_record('local_questionflags', $record);
 
-            // Trigger event: flag added
+            if (!empty($siblings)) {
+                foreach ($siblings as $sid) {
+                    $sid = (int)$sid;
+                    if ($sid === (int)$params['questionid']) { continue; }
+                    if (!$DB->record_exists('local_questionflags', ['userid' => (int)$USER->id, 'questionid' => $sid])) {
+                        $r2 = new \stdClass();
+                        $r2->userid = (int)$USER->id;
+                        $r2->questionid = $sid;
+                        $r2->flagcolor = $params['flagcolor'];
+                        $r2->cmid = $params['cmid'];
+                        $r2->quizid = $quizid;
+                        $r2->timecreated = $time;
+                        $r2->timemodified = $time;
+                        try { $DB->insert_record('local_questionflags', $r2, false); } catch (\Throwable $e) {}
+                    }
+                }
+            }
+
             $event = \local_questionflags\event\flag_added::create([
                 'context' => $context,
                 'objectid' => $insertid,
@@ -85,13 +111,16 @@ class flag_question extends external_api {
             ]);
             $event->trigger();
         } else {
-            // Remove all flags for this question (any color) to reflect a single boolean state after initial generation.
-            $DB->delete_records('local_questionflags', [
-                'userid' => $USER->id,
-                'questionid' => $params['questionid']
-            ]);
+            if (!empty($siblings)) {
+                list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
+                $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$USER->id], $inparams));
+            } else {
+                $DB->delete_records('local_questionflags', [
+                    'userid' => $USER->id,
+                    'questionid' => $params['questionid']
+                ]);
+            }
 
-            // Trigger event: flag removed (color provided is the button the user toggled off).
             $event = \local_questionflags\event\flag_removed::create([
                 'context' => $context,
                 'objectid' => 0,

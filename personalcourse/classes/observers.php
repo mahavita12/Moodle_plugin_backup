@@ -389,12 +389,33 @@ class observers {
                         'personalcourseid' => (int)$pc->id,
                         'questionid' => (int)$questionid,
                     ]);
-                    // If we re-attributed to the owner, also remove the owner's flag rows.
+                    // If we re-attributed to the owner, also remove the owner's flag rows across the whole QBE.
                     if ($targetuserid !== $userid) {
-                        $DB->delete_records('local_questionflags', [
-                            'userid' => (int)$targetuserid,
-                            'questionid' => (int)$questionid,
-                        ]);
+                        try {
+                            $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => (int)$questionid], IGNORE_MISSING);
+                            if (!empty($qbeid)) {
+                                $siblings = $DB->get_fieldset_select('question_versions', 'questionid', 'questionbankentryid = ?', [(int)$qbeid]);
+                                if (!empty($siblings)) {
+                                    list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
+                                    $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$targetuserid], $inparams));
+                                } else {
+                                    $DB->delete_records('local_questionflags', [
+                                        'userid' => (int)$targetuserid,
+                                        'questionid' => (int)$questionid,
+                                    ]);
+                                }
+                            } else {
+                                $DB->delete_records('local_questionflags', [
+                                    'userid' => (int)$targetuserid,
+                                    'questionid' => (int)$questionid,
+                                ]);
+                            }
+                        } catch (\Throwable $e) {
+                            $DB->delete_records('local_questionflags', [
+                                'userid' => (int)$targetuserid,
+                                'questionid' => (int)$questionid,
+                            ]);
+                        }
                     }
                     if ($shoulddefer) {
                         // Defer structural changes; do not remove from quiz during active attempt.

@@ -125,14 +125,22 @@ class before_footer_html_generation {
                     if ($cm) { $quizid = (int)$cm->instance; }
                 }
 
-                // Remove any existing flag for this user+question.
-                $DB->delete_records('local_questionflags', [
-                    'userid' => $USER->id,
-                    'questionid' => $questionid
-                ]);
+                $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => (int)$questionid], IGNORE_MISSING);
+                $siblings = [];
+                if (!empty($qbeid)) {
+                    $siblings = $DB->get_fieldset_select('question_versions', 'questionid', 'questionbankentryid = ?', [(int)$qbeid]);
+                }
+                if (!empty($siblings)) {
+                    list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
+                    $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$USER->id], $inparams));
+                } else {
+                    $DB->delete_records('local_questionflags', [
+                        'userid' => $USER->id,
+                        'questionid' => $questionid
+                    ]);
+                }
 
                 if ($current_state !== $flagcolor) {
-                    // Add new flag and emit event.
                     $record = new \stdClass();
                     $record->userid = $USER->id;
                     $record->questionid = $questionid;
@@ -142,6 +150,23 @@ class before_footer_html_generation {
                     $record->timecreated = $time;
                     $record->timemodified = $time;
                     $insertid = $DB->insert_record('local_questionflags', $record);
+                    if (!empty($siblings)) {
+                        foreach ($siblings as $sid) {
+                            $sid = (int)$sid;
+                            if ($sid === (int)$questionid) { continue; }
+                            if (!$DB->record_exists('local_questionflags', ['userid' => (int)$USER->id, 'questionid' => $sid])) {
+                                $r2 = new \stdClass();
+                                $r2->userid = (int)$USER->id;
+                                $r2->questionid = $sid;
+                                $r2->flagcolor = $flagcolor;
+                                $r2->cmid = $cmid ?: null;
+                                $r2->quizid = $quizid;
+                                $r2->timecreated = $time;
+                                $r2->timemodified = $time;
+                                try { $DB->insert_record('local_questionflags', $r2, false); } catch (\Throwable $e) {}
+                            }
+                        }
+                    }
 
                     $origin = ($PAGE->pagetype === 'mod-quiz-review') ? 'review' : (($PAGE->pagetype === 'mod-quiz-attempt') ? 'attempt' : '');
                     $event = \local_questionflags\event\flag_added::create([
@@ -158,7 +183,6 @@ class before_footer_html_generation {
                     ]);
                     $event->trigger();
                 } else {
-                    // Toggled off -> emit removal event.
                     $origin = ($PAGE->pagetype === 'mod-quiz-review') ? 'review' : (($PAGE->pagetype === 'mod-quiz-attempt') ? 'attempt' : '');
                     $event = \local_questionflags\event\flag_removed::create([
                         'context' => \context_module::instance($cmid),
