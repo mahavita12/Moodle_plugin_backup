@@ -115,6 +115,8 @@ class observers {
                     \core\task\manager::queue_adhoc_task($task, true);
                     self::log("queued reconcile task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
                 } else {
+                    $rec = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
+                    if ($rec && (int)$rec->nextruntime > time()) { $DB->set_field('task_adhoc', 'nextruntime', time(), ['id' => (int)$rec->id]); }
                     self::log("reconcile already queued (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
                 }
 
@@ -130,6 +132,9 @@ class observers {
                             $unlock->set_next_run_time(time());
                             \core\task\manager::queue_adhoc_task($unlock, true);
                             self::log("queued unlock task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
+                        } else { 
+                            $urec = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$unlockclassname, "%$cd1%", "%$cd2%"]);
+                            if ($urec && (int)$urec->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$urec->id]); }
                         }
                     } catch (\Throwable $ue) { /* best-effort */ }
                 }
@@ -291,6 +296,8 @@ class observers {
                                     \core\task\manager::queue_adhoc_task($task, true);
                                     self::log("queued reconcile task (add) user={$targetuserid} source={$sourcequizid_for_unlock}");
                                 } else {
+                                    $rec2 = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$rc, "%$cd1%", "%$cd2%"]); 
+                                    if ($rec2 && (int)$rec2->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$rec2->id]); }
                                     self::log("reconcile already queued (add) user={$targetuserid} source={$sourcequizid_for_unlock}");
                                 }
                             }
@@ -521,6 +528,10 @@ class observers {
                                         $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid, 'fromattempt' => (bool)$frompcattempt, 'origin' => (string)$origin]);
                                         \core\task\manager::queue_adhoc_task($task, true);
                                         self::log("queued reconcile task (deferflag) user={$targetuserid} source={$sourcequizid}");
+                                    }
+                                    else {
+                                        $rec3 = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
+                                        if ($rec3 && (int)$rec3->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$rec3->id]); }
                                     }
                                     // Also queue a sequence cleanup for the personal course to heal any stale CMIDs.
                                     $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
