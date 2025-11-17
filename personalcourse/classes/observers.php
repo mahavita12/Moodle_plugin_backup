@@ -110,6 +110,16 @@ class observers {
                 } else {
                     self::log("reconcile already queued (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
                 }
+
+                // Also queue an early unlock to ensure in-progress attempts don't block reconcile.
+                try {
+                    $unlock = new \local_personalcourse\task\unlock_reconcile_task();
+                    $unlock->set_component('local_personalcourse');
+                    $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_early]);
+                    $unlock->set_next_run_time(time());
+                    \core\task\manager::queue_adhoc_task($unlock, true);
+                    self::log("queued unlock task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
+                } catch (\Throwable $ue) { /* best-effort */ }
             }
 
             // Lightweight heartbeat for ops diagnostics.

@@ -28,7 +28,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             ], 'id, quizid');
         }
 
-        // If there is an in-progress/overdue attempt on the personal quiz, reschedule.
+        // If there is an in-progress/overdue attempt on the personal quiz, unlock instead of rescheduling.
         $hasinprogress = false;
         if ($pq && !empty($pq->quizid)) {
             $hasinprogress = $DB->record_exists_select('quiz_attempts',
@@ -44,7 +44,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             $deleting = ($cmrow && !empty($cmrow->deletioninprogress));
         }
 
-        if ($hasinprogress || $deleting) {
+        if ($deleting) {
             // Reschedule shortly.
             $next = new self();
             $next->set_component('local_personalcourse');
@@ -62,6 +62,23 @@ class reconcile_view_task extends \core\task\adhoc_task {
                 \core\task\manager::queue_adhoc_task($cleanup, true);
             }
             return;
+        }
+
+        // If an attempt is in progress, proactively unlock here (idempotent).
+        if ($hasinprogress && $pq && !empty($pq->quizid)) {
+            try {
+                require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+                $attempts = $DB->get_records_select('quiz_attempts',
+                    "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                    [(int)$pq->quizid, (int)$userid], 'id ASC');
+                if (!empty($attempts)) {
+                    $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
+                    if ($quiz) {
+                        try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
+                        foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
+                    }
+                }
+            } catch (\Throwable $e) { /* best-effort unlock */ }
         }
 
         // Perform flags-only reconcile outside request. Apply changes (defer=false).
