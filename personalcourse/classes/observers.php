@@ -64,6 +64,74 @@ class observers {
         $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,courseid,userid');
         $targetuserid = $pcowner ? (int)$pcowner->userid : (int)$userid;
 
+        // Unconditional early enqueue: always schedule a reconcile task before deeper lookups.
+        // This prevents event drops during PQ fork/rebuild windows.
+        try {
+            $sourcequizid_early = 0;
+            if ($pcowner) {
+                // Personal course path: resolve source quiz id cheaply.
+                $src = (int)($DB->get_field('local_personalcourse_quizzes', 'sourcequizid', [
+                    'personalcourseid' => (int)$pcowner->id,
+                    'quizid' => (int)$cm->instance,
+                ], IGNORE_MISSING) ?: 0);
+                if ($src > 0) {
+                    $sourcequizid_early = $src;
+                } else {
+                    // Fallback by name to infer the source quiz id without relying on mapping readiness.
+                    $qname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$cm->instance], IGNORE_MISSING);
+                    if ($qname !== '') {
+                        $srcid = $DB->get_field_sql(
+                            "SELECT q.id FROM {quiz} q WHERE q.name = ? AND q.course <> ? ORDER BY q.id DESC",
+                            [$qname, (int)$courseid]
+                        );
+                        if (!empty($srcid)) {
+                            $sourcequizid_early = (int)$srcid;
+                        }
+                    }
+                }
+            } else {
+                // Public course path: the instance is the source quiz.
+                $sourcequizid_early = (int)($quizid ?: (int)$cm->instance);
+            }
+
+            if ($sourcequizid_early > 0) {
+                $classname = '\\local_personalcourse\\task\\reconcile_view_task';
+                $cd1 = '"userid":' . (int)$targetuserid;
+                $cd2 = '"sourcequizid":' . (int)$sourcequizid_early;
+                $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
+                if (!$exists) {
+                    $task = new \local_personalcourse\task\reconcile_view_task();
+                    $task->set_component('local_personalcourse');
+                    $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_early]);
+                    // Small delay to avoid racing immediately after fork/switch.
+                    $task->set_next_run_time(time() + 10);
+                    \core\task\manager::queue_adhoc_task($task, true);
+                    self::log("queued reconcile task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
+                } else {
+                    self::log("reconcile already queued (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
+                }
+            }
+
+            // Lightweight heartbeat for ops diagnostics.
+            try {
+                $heartbeat = json_encode([
+                    'ts' => time(),
+                    'event' => $added ? 'add' : 'remove',
+                    'userid' => (int)$userid,
+                    'targetuserid' => (int)$targetuserid,
+                    'courseid' => (int)$courseid,
+                    'cmid' => (int)$cmid,
+                    'sourcequizid' => (int)$sourcequizid_early,
+                    'origin' => $origin,
+                ]);
+                if ($heartbeat !== false) {
+                    set_config('pcq_last_event', $heartbeat, 'local_personalcourse');
+                }
+            } catch (\Throwable $hb) { /* non-blocking */ }
+        } catch (\Throwable $e) {
+            // Best-effort early enqueue; continue with existing logic.
+        }
+
         try {
             if (!$quizid) { $quizid = (int)$cm->instance; }
             // Ensure personal course mapping exists for target user; if not, we only handle removal from any existing PQ.
