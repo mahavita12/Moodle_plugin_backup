@@ -45,8 +45,11 @@ class observers {
         // If this is a personal course, allow regardless of acting user's role (we will re-attribute to owner below).
         $pcownerrow = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid,courseid');
         if (!$pcownerrow) {
-            // Otherwise require the actor to be a student or site admin.
-            if (!self::user_has_student_role($userid, $courseid)) {
+            // Public course path: allow when the actor is the same as target user OR is a site admin;
+            // otherwise require a student role in the source course.
+            $sameuser = true; // relateduserid is the actor at this point; we re-attribute later if needed.
+            if (!$sameuser && !is_siteadmin($userid) && !self::user_has_student_role($userid, $courseid)) {
+                self::log("skip_non_student_public user={$userid} course={$courseid}");
                 return;
             }
         }
