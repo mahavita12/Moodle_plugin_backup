@@ -9,10 +9,11 @@ class reconcile_view_task extends \core\task\adhoc_task {
     }
 
     public function execute() {
-        global $DB;
+        global $DB, $CFG;
         $data = (object)($this->get_custom_data() ?? []);
         $userid = isset($data->userid) ? (int)$data->userid : 0;
         $sourcequizid = isset($data->sourcequizid) ? (int)$data->sourcequizid : 0;
+        $fromattempt = !empty($data->fromattempt);
         if ($userid <= 0 || $sourcequizid <= 0) {
             return;
         }
@@ -28,7 +29,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             ], 'id, quizid');
         }
 
-        // If there is an in-progress/overdue attempt on the personal quiz, unlock instead of rescheduling.
+        // Determine state of current personal quiz attempt.
         $hasinprogress = false;
         if ($pq && !empty($pq->quizid)) {
             $hasinprogress = $DB->record_exists_select('quiz_attempts',
@@ -44,13 +45,14 @@ class reconcile_view_task extends \core\task\adhoc_task {
             $deleting = ($cmrow && !empty($cmrow->deletioninprogress));
         }
 
-        if ($deleting) {
+        if ($deleting || ($fromattempt && $hasinprogress)) {
             // Reschedule shortly.
             $next = new self();
             $next->set_component('local_personalcourse');
             $next->set_custom_data([
                 'userid' => $userid,
                 'sourcequizid' => $sourcequizid,
+                'fromattempt' => (bool)$fromattempt,
             ]);
             $next->set_next_run_time(time() + 120);
             \core\task\manager::queue_adhoc_task($next, true);
@@ -64,8 +66,8 @@ class reconcile_view_task extends \core\task\adhoc_task {
             return;
         }
 
-        // If an attempt is in progress, proactively unlock here (idempotent).
-        if ($hasinprogress && $pq && !empty($pq->quizid)) {
+        // If an attempt is in progress and NOT from personal-quiz attempt, proactively unlock (idempotent).
+        if (!$fromattempt && $hasinprogress && $pq && !empty($pq->quizid)) {
             try {
                 require_once($CFG->dirroot . '/mod/quiz/locallib.php');
                 $attempts = $DB->get_records_select('quiz_attempts',
@@ -99,6 +101,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             $retry->set_custom_data([
                 'userid' => $userid,
                 'sourcequizid' => $sourcequizid,
+                'fromattempt' => (bool)$fromattempt,
             ]);
             $retry->set_next_run_time(time() + 300);
             \core\task\manager::queue_adhoc_task($retry, true);
