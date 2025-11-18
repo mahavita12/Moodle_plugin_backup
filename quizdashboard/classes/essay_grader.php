@@ -33,6 +33,35 @@ class essay_grader {
         $this->service_account_path = $this->get_service_account_path();
     }
 
+    /**
+     * Enforce name policy on AI output. Remove/normalise greetings and placeholders.
+     */
+    protected function enforce_name_policy(string $text, string $studentname): string {
+        $out = (string)$text;
+        // Remove salutations with names (Dear/Hi/Hello/Hey Name,)
+        $out = preg_replace('/^\s*(Dear|Hi|Hello|Hey)\s+[^,\n]{1,60},\s*/mi', 'Hello, ', $out);
+        // Replace placeholders with real name or neutral phrase
+        if ($studentname !== '') {
+            $replacements = [
+                '/\[(student\s*name|name)\]/i' => $studentname,
+                '/\{\s*student(_?name)?\s*\}/i' => $studentname,
+                '/<\s*student\s*>/i' => $studentname,
+            ];
+        } else {
+            $replacements = [
+                '/\[(student\s*name|name)\]/i' => 'the student',
+                '/\{\s*student(_?name)?\s*\}/i' => 'the student',
+                '/<\s*student\s*>/i' => 'the student',
+            ];
+        }
+        foreach ($replacements as $re => $rep) { $out = preg_replace($re, $rep, $out); }
+        // Normalise any remaining greeting+name to a neutral greeting
+        if ($studentname !== '') {
+            $out = preg_replace('/^\s*(Dear|Hi|Hello|Hey)\s+([^,\n]{1,60}),/mi', 'Hello,', $out);
+        }
+        return $out;
+    }
+
     protected function write_plugin_log($line): void {
         global $CFG;
         $file = $CFG->dirroot . '/local/quizdashboard/logs/homework_json.log';
@@ -237,8 +266,15 @@ class essay_grader {
             // 4.5. Get initial essay and generate progress commentary
             $initial_essay = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
             $progress_commentary = '';
+            // Resolve student's first name for name policy in journey commentary
+            $student_name = '';
+            try {
+                if (isset($essay_data['user']) && !empty($essay_data['user']->firstname)) {
+                    $student_name = format_string($essay_data['user']->firstname, true);
+                }
+            } catch (\Throwable $e) { $student_name = ''; }
             if ($initial_essay) {
-                $progress_commentary = $this->generate_progress_commentary($initial_essay, $essay_data['answer_text']);
+                $progress_commentary = $this->generate_progress_commentary($initial_essay, $essay_data['answer_text'], $student_name);
             }
             
             // 5. Generate homework if requested
@@ -417,7 +453,7 @@ class essay_grader {
     /**
      * Generate progress commentary comparing initial draft to final submission
      */
-    protected function generate_progress_commentary($initial_text, $final_text) {
+    protected function generate_progress_commentary($initial_text, $final_text, $student_name = '') {
         // Clean both texts
         $clean_initial = strip_tags($initial_text);
         $clean_final = strip_tags($final_text);
@@ -445,7 +481,9 @@ Write a moderate-length paragraph (4-6 sentences) that:
 
 If there are NO significant improvements, you MUST note this and provide a constructive warning.
 
-Format your response as plain text (no HTML tags, no markdown). Be specific about what improved.";
+Format your response as plain text (no HTML tags, no markdown). Be specific about what improved.
+
+NAME POLICY: Do not address the student by name or include salutations such as 'Dear ...'. " . ($student_name !== '' ? "If you must refer to the student by name anywhere, use exactly '{$student_name}' (no titles)." : "Do not refer to the student by any name; use 'the student' if needed.") . "";
 
         $user_prompt = "Initial Draft:
 {$clean_initial}
@@ -479,8 +517,9 @@ Provide an encouraging but factual commentary about the student's writing journe
             }
             
             if ($result['success']) {
+                $resp = $this->enforce_name_policy((string)$result['response'], (string)$student_name);
                 return '<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">' .
-                       '<p style="color: #2e7d32; margin: 0; line-height: 1.6;">' . htmlspecialchars($result['response']) . '</p>' .
+                       '<p style="color: #2e7d32; margin: 0; line-height: 1.6;">' . htmlspecialchars($resp) . '</p>' .
                        '</div>';
             } else {
                 return '<div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin: 15px 0;">' .
@@ -906,6 +945,14 @@ Provide an encouraging but factual commentary about the student's writing journe
     protected function generate_essay_feedback($essay_data, $level) {
         $apikey = $this->get_openai_api_key();
 
+        // Resolve student's first name for name policy
+        $student_name = '';
+        try {
+            if (isset($essay_data['user']) && !empty($essay_data['user']->firstname)) {
+                $student_name = format_string($essay_data['user']->firstname, true);
+            }
+        } catch (\Throwable $e) { $student_name = ''; }
+
         $system_prompt = "You are an expert essay grader for students aged 11 to 16. You will ONLY provide structured feedback. When giving scores for each criteria, first, assess whether the student's essay directly responds to the given question and specific points asked. If not, detail what has not been addressed clearly and reflect in the marking. Use Australian English for feedback.
 
         **CRITICAL FORMATTING RULES FOR EXAMPLES:**
@@ -994,6 +1041,8 @@ Provide an encouraging but factual commentary about the student's writing journe
 
         Remember: ONLY provide feedback. Do NOT include any revision or rewritten version of the essay. When showing original and improved examples in Language Use and Mechanics sections, ALWAYS use separate lines with clear 'Original:' and 'Improved:' labels. All examples must be in blue color (#3399cc). 
 
+        NAME POLICY: Do not address the student by name or include salutations such as 'Dear ...'. " . ($student_name !== '' ? "If you must refer to the student by name anywhere, use exactly '{$student_name}' (no titles)." : "Do not refer to the student by any name; use 'the student' if needed.") . "
+
         CRITICAL: After the Final Score section, you MUST include the JSON scores block exactly as shown above, replacing each X with the actual numeric score (no /25, /20, /10 - just the number). This JSON will be used for database storage.";
 
         $user_content = "Essay Question:\n" . $essay_data['question_text'] . "\n\nStudent Essay:\n" . $essay_data['answer_text'];
@@ -1028,7 +1077,7 @@ Provide an encouraging but factual commentary about the student's writing journe
             return $result;
         }
 
-        $feedback_html = $result['response'];
+        $feedback_html = $this->enforce_name_policy((string)$result['response'], (string)$student_name);
         // Normalize and sanitize AI output to prevent parsing issues
         // 1) Strip accidental markdown code fences around JSON or entire blocks
         $feedback_html = preg_replace('/```+\s*json\s*(.*?)```+/is', '$1', $feedback_html);
@@ -1471,7 +1520,7 @@ Provide an encouraging but factual commentary about the student's writing journe
         // Initial Draft section (if available) - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
         if (!empty($initial_essay)) {
             $html_output .= '<div class="feedback-section">';
-            $html_output .= '<h2 class="section-header" style="color: #9c27b0;">Initial Draft</h2>';
+            $html_output .= '<h2 class="section-header" style="color: #9c27b0;">Initial Draft - First Submission</h2>';
             $html_output .= '<hr>';
             // START MARKER for initial draft extraction
             $html_output .= '<!-- EXTRACT_INITIAL_START -->';
@@ -1490,9 +1539,9 @@ Provide an encouraging but factual commentary about the student's writing journe
             $html_output .= '</div>';
         }
 
-        // Original essay section - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
+        // Original/Final essay section - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
         $html_output .= '<div class="feedback-section">';
-        $html_output .= '<h2 class="section-header" style="color: #17a2b8;">Original Essay</h2>';
+        $html_output .= '<h2 class="section-header" style="color: #17a2b8;">Final Draft - First Submission</h2>';
         $html_output .= '<hr>';
         // START MARKER for original essay text extraction
         $html_output .= '<!-- EXTRACT_ORIGINAL_START -->';
@@ -1511,10 +1560,10 @@ Provide an encouraging but factual commentary about the student's writing journe
         $html_output .= '<hr>';
         $html_output .= '</div>';
         
-        // Your Writing Journey (progress commentary) - AFTER Original Essay
+        // Your Writing Journey (progress commentary) - AFTER Final Draft
         if (!empty($progress_commentary)) {
             $html_output .= '<div class="feedback-section">';
-            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft</h2>';
+            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft - First Submission</h2>';
             $html_output .= '<hr>';
             $html_output .= $progress_commentary;
             $html_output .= '<hr>';
@@ -1524,7 +1573,7 @@ Provide an encouraging but factual commentary about the student's writing journe
         // Revision section (if exists) - WITH STRATEGIC MARKERS
         if (!empty($revision_html)) {
             $html_output .= '<div class="feedback-section page-break-before">';
-            $html_output .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Revision</h2>';
+            $html_output .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Revision - First Submission</h2>';
             $html_output .= '<hr>';
             // START MARKER for revision text extraction
             $html_output .= '<!-- EXTRACT_REVISION_START -->';
@@ -1537,7 +1586,7 @@ Provide an encouraging but factual commentary about the student's writing journe
         
         // Feedback section - WITH STRATEGIC MARKERS FOR EACH SECTION
         $html_output .= '<div class="feedback-section page-break-before">';
-        $html_output .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Feedback</h2>';
+        $html_output .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Feedback - First Submission</h2>';
         $html_output .= '<hr>';
         // START MARKER for feedback extraction
         $html_output .= '<!-- EXTRACT_FEEDBACK_START -->';

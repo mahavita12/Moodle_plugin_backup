@@ -103,6 +103,18 @@ class generator_service {
         $allessay = (!empty($qtypes) && count(array_unique($qtypes)) === 1 && reset($qtypes) === 'essay');
         $settingsmode = $allessay ? null : 'default';
 
+        $hasessay = in_array('essay', $qtypes, true);
+        if ($hasessay) {
+            return (object)[
+                'personalcourseid' => $personalcourseid,
+                'mappingid' => 0,
+                'quizid' => 0,
+                'cmid' => 0,
+                'toadd' => [],
+                'toremove' => [],
+            ];
+        }
+
         // Ensure mapping (prefer existing mapping; otherwise reuse quiz by name; else create).
         $pq = $DB->get_record('local_personalcourse_quizzes', [
             'personalcourseid' => $personalcourseid,

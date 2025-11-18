@@ -392,7 +392,7 @@ class dashboard_manager {
         
         // For validation rounds (2, 4, 6), check if score meets threshold
         if (in_array($round, [2, 4, 6])) {
-            return floatval($score) >= 80; // Default threshold
+            return floatval($score) >= 50; // Unified threshold
         }
         
         // For non-validation rounds, consider passed if score is provided

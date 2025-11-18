@@ -16,6 +16,56 @@ class ai_helper {
     private const MAX_RETRY_ATTEMPTS = 2;
 
     /**
+     * Enforce Australian English spelling in AI outputs using conservative replacements.
+     * Applies only to the AI feedback/validation text, never to student submissions.
+     */
+    private function enforce_au_english(string $text): string {
+        // Simple, high-signal mappings (avoid risky noun/verb cases like practise/practice).
+        $patterns = [
+            // colour/favour family
+            '/\bcolor(s|ed|ing)?\b/i' => 'colour$1',
+            '/\bcolors\b/i' => 'colours',
+            '/\bfavorite(s)?\b/i' => 'favourite$1',
+            '/\bfavor(s|ed|ing)?\b/i' => 'favour$1',
+
+            // -ize/-ization families commonly expected as -ise/-isation
+            '/\borganize(d|s|r|rs|ing)?\b/i' => 'organise$1',
+            '/\borganization(s)?\b/i' => 'organisation$1',
+            '/\brecognize(d|s|ing)?\b/i' => 'recognise$1',
+            '/\banalyze(d|s|ing)?\b/i' => 'analyse$1',
+            '/\banalyzer(s)?\b/i' => 'analyser$1',
+
+            // centre/behaviour/honour/labour
+            '/\bcenter(s)?\b/i' => 'centre$1',
+            '/\bcentered\b/i' => 'centred',
+            '/\bcentering\b/i' => 'centring',
+            '/\bbehavior(s)?\b/i' => 'behaviour$1',
+            '/\bhonor(s|ed|ing)?\b/i' => 'honour$1',
+            '/\blabor(s|ed|ing)\b/i' => 'labour$1',
+
+            // doubled consonants and theatre/grey etc.
+            '/\bcanceled\b/i' => 'cancelled',
+            '/\bcanceling\b/i' => 'cancelling',
+            '/\btraveling\b/i' => 'travelling',
+            '/\btraveled\b/i' => 'travelled',
+            '/\btheater\b/i' => 'theatre',
+            '/\bgray\b/i' => 'grey',
+
+            // jewellery
+            '/\bjewelry\b/i' => 'jewellery',
+
+            // defence/offence
+            '/\bdefense\b/i' => 'defence',
+            '/\boffense\b/i' => 'offence',
+        ];
+
+        foreach ($patterns as $re => $rep) {
+            $text = preg_replace($re, $rep, $text);
+        }
+        return $text;
+    }
+
+    /**
      * Get current AI provider from Essays Master config.
      */
     protected function get_provider(): string {
@@ -81,11 +131,11 @@ class ai_helper {
     /**
      * Generate AI feedback for rounds 1, 3, 5
      */
-    public function generate_feedback($round, $student_text, $question_prompt = '') {
+    public function generate_feedback($round, $student_text, $question_prompt = '', $student_name = '') {
         error_log("🤖 Helper: Generating feedback for round $round");
         
         // Get the prompt based on round
-        $prompt = $this->get_feedback_prompt($round, $student_text, $question_prompt);
+        $prompt = $this->get_feedback_prompt($round, $student_text, $question_prompt, $student_name);
 
         $provider = $this->get_provider();
         if ($provider === 'anthropic') {
@@ -116,20 +166,24 @@ class ai_helper {
             ];
         }
 
+        // Enforce Australian English strictly in AI output.
+        $response = isset($result['response']) ? $this->enforce_au_english((string)$result['response']) : '';
+        // Enforce name policy
+        $response = $this->enforce_name_policy($response, (string)$student_name);
         return [
             'success' => true,
-            'feedback' => $result['response']
+            'feedback' => $response
         ];
     }
 
     /**
      * Generate AI validation for rounds 2, 4, 6  
      */
-    public function generate_validation($round, $original_text, $current_text, $question_prompt = '', $previous_feedback = '') {
+    public function generate_validation($round, $original_text, $current_text, $question_prompt = '', $previous_feedback = '', $student_name = '') {
         error_log("🔍 Helper: Generating validation for round $round");
         
         // Get the validation prompt based on round
-        $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback);
+        $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback, $student_name);
 
         $provider = $this->get_provider();
         if ($provider === 'anthropic') {
@@ -161,14 +215,17 @@ class ai_helper {
             ];
         }
 
+        // Enforce Australian English strictly before parsing the response.
+        $norm = isset($result['response']) ? $this->enforce_au_english((string)$result['response']) : '';
+        $norm = $this->enforce_name_policy($norm, (string)$student_name);
         // Parse validation response
-        return $this->parse_validation_response($result['response']);
+        return $this->parse_validation_response($norm);
     }
 
     /**
      * Get feedback prompts for rounds 1, 3, 5 (same as frontend)
      */
-    private function get_feedback_prompt($round, $student_text, $question_prompt) {
+    private function get_feedback_prompt($round, $student_text, $question_prompt, $student_name = '') {
         $prompts = [
             1 => [
                 'system' => 'You are a humorous writing tutor from GrowMinds Academy doing an initial proofreading check. Count all spelling and grammar errors in the student\'s essay.
@@ -269,13 +326,18 @@ DO NOT use emojis, asterisks, hashtags, or markdown formatting.',
             ]
         ];
 
-        return $prompts[$round] ?? $prompts[1];
+        $p = $prompts[$round] ?? $prompts[1];
+        $namehint = ($student_name !== '')
+            ? "If you must refer to the student by name anywhere, use exactly '{$student_name}' (no titles)."
+            : "Do not refer to the student by any name; use 'the student' if needed.";
+        $p['system'] .= "\n\nNAME POLICY: Do not address the student by name or include salutations such as 'Dear ...'. {$namehint}";
+        return $p;
     }
 
     /**
      * Get validation prompts for rounds 2, 4, 6 (with context awareness for Round 4)
      */
-    private function get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback = '') {
+    private function get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback = '', $student_name = '') {
         $prompts = [
             2 => [
                 'system' => 'You are a writing tutor from GrowMinds Academy validating proofreading improvements. Compare original vs revised text.
@@ -416,7 +478,43 @@ DO NOT use section headers - just list improvements directly. DO NOT use emojis,
             ]
         ];
 
-        return $prompts[$round] ?? $prompts[2];
+        $p = $prompts[$round] ?? $prompts[2];
+        $namehint = ($student_name !== '')
+            ? "If you must refer to the student by name anywhere, use exactly '{$student_name}' (no titles)."
+            : "Do not refer to the student by any name; use 'the student' if needed.";
+        $p['system'] .= "\n\nNAME POLICY: Do not address the student by name or include salutations such as 'Dear ...'. {$namehint}";
+        return $p;
+    }
+
+    /**
+     * Enforce name policy on AI output. Remove or normalise greetings and placeholders.
+     */
+    private function enforce_name_policy(string $text, string $student_name): string {
+        $out = $text;
+        // 1) Remove salutations with names (e.g., Dear John, / Hi Anna, ). Keep a neutral greeting.
+        $out = preg_replace('/^\s*(Dear|Hi|Hello|Hey)\s+[^,\n]{1,60},\s*/mi', 'Hello, ', $out);
+
+        // 2) Replace common placeholders with the real name or generic student
+        if ($student_name !== '') {
+            $replacements = [
+                '/\[(student\s*name|name)\]/i' => $student_name,
+                '/\{\s*student(_?name)?\s*\}/i' => $student_name,
+                '/<\s*student\s*>/i' => $student_name,
+            ];
+        } else {
+            $replacements = [
+                '/\[(student\s*name|name)\]/i' => 'the student',
+                '/\{\s*student(_?name)?\s*\}/i' => 'the student',
+                '/<\s*student\s*>/i' => 'the student',
+            ];
+        }
+        foreach ($replacements as $re => $rep) { $out = preg_replace($re, $rep, $out); }
+
+        // 3) If a line starts with a salutation + a wrong name, re-normalise to neutral greeting
+        if ($student_name !== '') {
+            $out = preg_replace('/^\s*(Dear|Hi|Hello|Hey)\s+([^,\n]{1,60}),/mi', 'Hello,', $out);
+        }
+        return $out;
     }
 
     /**

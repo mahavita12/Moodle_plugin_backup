@@ -136,14 +136,21 @@ switch ($currenttab) {
         $filter_form .= html_writer::start_div('filter-group');
         $filter_form .= html_writer::tag('label', 'Course:', ['for' => 'course']);
         $course_options = [0 => 'All Courses'];
-        foreach ($courses as $course) {
-            if (!empty($categoryid) && isset($course->category) && (int)$course->category !== (int)$categoryid) {
-                continue;
-            }
-            $course_options[$course->id] = $course->fullname;
+        // Use structural list when a category is selected to support Personal Review Courses (no attempts yet)
+        if (!empty($categoryid)) {
+            try {
+                $struct_courses = $DB->get_records('course', ['category' => (int)$categoryid, 'visible' => 1], 'fullname', 'id, fullname');
+                foreach ($struct_courses as $c) { $course_options[$c->id] = $c->fullname; }
+            } catch (\Throwable $e) { /* ignore and fall back */ }
         }
-        $filter_form .= html_writer::select($course_options, 'course', $courseid, false, 
-            ['id' => 'course']);
+        // Fallback to accessible courses if structural list is empty or no category chosen
+        if (count($course_options) === 1) {
+            foreach ($courses as $course) {
+                if (!empty($categoryid) && isset($course->category) && (int)$course->category !== (int)$categoryid) { continue; }
+                $course_options[$course->id] = $course->fullname;
+            }
+        }
+        $filter_form .= html_writer::select($course_options, 'course', $courseid, false, ['id' => 'course']);
         $filter_form .= html_writer::end_div();
         
         // Status filter

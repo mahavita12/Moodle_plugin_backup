@@ -97,6 +97,22 @@ class observers {
             }
 
             if ($sourcequizid_early > 0) {
+                // Gate: skip entire source quiz if it contains any essay questions.
+                $hasessay_early = false;
+                try {
+                    $hasessay_early = (bool)$DB->record_exists_sql(
+                        "SELECT 1\n                           FROM {quiz_slots} qs\n                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                           JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid\n                           JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id\n                           JOIN {question} q ON q.id = qv.questionid\n                          WHERE qs.quizid = ? AND q.qtype = 'essay'",
+                        [(int)$sourcequizid_early]
+                    );
+                } catch (\Throwable $e) {
+                    try {
+                        $hasessay_early = (bool)$DB->record_exists_sql(
+                            "SELECT 1 FROM {quiz_slots} qs JOIN {question} q ON q.id = qs.questionid WHERE qs.quizid = ? AND q.qtype = 'essay'",
+                            [(int)$sourcequizid_early]
+                        );
+                    } catch (\Throwable $e2) { $hasessay_early = false; }
+                }
+                if ($hasessay_early) { self::log('skip_essay_quiz source=' . (int)$sourcequizid_early); return; }
                 $classname = '\\local_personalcourse\\task\\reconcile_view_task';
                 $cd1 = '"userid":' . (int)$targetuserid;
                 $cd2 = '"sourcequizid":' . (int)$sourcequizid_early;

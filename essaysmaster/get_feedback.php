@@ -46,21 +46,31 @@ try {
         exit;
     }
 
-    // ✅ IDEMPOTENT: Get or create session with duplicate prevention
+    // Resolve student display name (firstname only) for prompt name policy
+    $student_name = '';
+    try {
+        $student = $DB->get_record('user', ['id' => (int)$attempt->userid], 'id,firstname,lastname', IGNORE_MISSING);
+        if ($student && !empty($student->firstname)) {
+            $student_name = format_string($student->firstname, true);
+        }
+    } catch (Exception $e) { $student_name = ''; }
+
+    // IDEMPOTENT: Get or create session with duplicate prevention
     $session = $DB->get_record('local_essaysmaster_sessions', [
         'attempt_id' => $attemptid, 
         'user_id' => $USER->id
     ]);
 
     if (!$session) {
-        // ✅ ATOMIC SESSION CREATION: Try to create, handle duplicates gracefully
+        // ATOMIC SESSION CREATION: Try to create, handle duplicates gracefully
         $session = new stdClass();
         $session->attempt_id = $attemptid;
         $session->question_attempt_id = 0;
         $session->user_id = $USER->id;
         $session->current_level = 1;
         $session->max_level = 6; // UPDATED: Support 6-round system
-        $session->threshold_percentage = 80.0;
+        $session->threshold_percentage = 50.0;
+
         $session->status = 'active';
         $session->session_start_time = time();
         $session->session_end_time = 0;
@@ -72,7 +82,7 @@ try {
         try {
             $session->id = $DB->insert_record('local_essaysmaster_sessions', $session);
         } catch (Exception $e) {
-            // ✅ HANDLE DUPLICATE: If insert fails, try to get existing session
+            // HANDLE DUPLICATE: If insert fails, try to get existing session
             $existing = $DB->get_record('local_essaysmaster_sessions', [
                 'attempt_id' => $attemptid, 
                 'user_id' => $USER->id
@@ -94,12 +104,12 @@ try {
         }
     }
 
-    // 🔍 ALLOW RE-ATTEMPTS: Log nonce but don't block re-attempts
+    // ALLOW RE-ATTEMPTS: Log nonce but don't block re-attempts
     if ($nonce) {
         error_log("Essays Master: Processing request with nonce: $nonce for attempt $attemptid, round $round - allowing re-attempt");
     }
 
-    // ✅ ALLOW RE-ATTEMPTS: Check if feedback record exists, but allow overwriting
+    // ALLOW RE-ATTEMPTS: Check if feedback record exists, but allow overwriting
     $existing_feedback = $DB->get_record('local_essaysmaster_feedback', [
         'version_id' => $attemptid, // Using attemptid as version_id for now
         'level_type' => "round_$round"
@@ -110,7 +120,7 @@ try {
         // Don't return existing feedback - allow re-processing to overwrite
     }
 
-    // ✅ ALLOW ROUND RE-ATTEMPTS: Allow any round to be attempted/re-attempted
+    // ALLOW ROUND RE-ATTEMPTS: Allow any round to be attempted/re-attempted
     // Students can now retry any round without strict progression requirements
     error_log("Essays Master: Allowing round $round attempt/re-attempt for attempt $attemptid");
 
@@ -130,7 +140,7 @@ try {
         exit;
     }
 
-    // ✅ LOCK: Prevent parallel feedback generation for same attempt/round
+    // LOCK: Prevent parallel feedback generation for same attempt/round
     $factory = \core\lock\lock_config::get_lock_factory('local_essaysmaster');
     $lock_key = "feedback_{$attemptid}_r{$round}";
     $lock = $factory->get_lock($lock_key, 20); // 20 second timeout
@@ -141,13 +151,13 @@ try {
     }
 
     try {
-        // ✅ ALLOW RE-ATTEMPTS: Skip round completion check to allow overwriting
+        // ALLOW RE-ATTEMPTS: Skip round completion check to allow overwriting
         $session_recheck = $DB->get_record('local_essaysmaster_sessions', ['id' => $session->id]);
         if ($session_recheck) {
             error_log("Essays Master: Session recheck - allowing round $round re-attempt for attempt $attemptid");
         }
 
-        // ✅ ALLOW OVERWRITING: Check for existing feedback but don't block re-attempts
+        // ALLOW OVERWRITING: Check for existing feedback but don't block re-attempts
         $recheck_feedback = $DB->get_record('local_essaysmaster_feedback', [
             'version_id' => $attemptid,
             'level_type' => "round_$round"
@@ -201,7 +211,7 @@ try {
         // Use real question text if available, otherwise use the parameter sent from frontend
         $question_prompt = ($real_question_text !== 'Sample question prompt') ? $real_question_text : $question_prompt;
 
-        // 🤖 REAL AI INTEGRATION: Use AI helper instead of fake analysis
+        // REAL AI INTEGRATION: Use AI helper instead of fake analysis
         require_once(__DIR__ . '/classes/ai_helper.php');
         $ai_helper = new \local_essaysmaster\ai_helper();
         
@@ -212,7 +222,7 @@ try {
             // VALIDATION ROUNDS (2, 4, 6) - Real AI validation
             error_log("Essays Master: Calling AI validation for round $round");
             
-            // ðŸ”„ CONTEXT AWARENESS: Retrieve previous feedback round to avoid contradictions
+            // CONTEXT AWARENESS: Retrieve previous feedback round to avoid contradictions
             $previous_feedback_text = '';
             if ($round == 4) {
                 // Get Round 3 feedback for context
@@ -238,7 +248,7 @@ try {
             
             if (!empty($original_text) && !empty($essay_text)) {
                 try {
-                    $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt, $previous_feedback_text);
+                    $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt, $previous_feedback_text, $student_name);
 
                     // Save version snapshot (rounds 1-5) right after sending to AI
                     if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {
@@ -271,12 +281,12 @@ try {
                     // CRITICAL FIX: Check actual score, not just API success
                     $validation_passed = ($ai_result['score'] >= 50);
                     if ($validation_passed) {
-                        $feedback_text = "GrowMinds Academy Validation Round $round - PASSED ✅\n\n";
+                        $feedback_text = "GrowMinds Academy Validation Round $round - PASSED \n\n";
                         $feedback_text .= "Score: {$ai_result['score']}/100\n";
                         $feedback_text .= "Analysis: {$ai_result['analysis']}\n\n";
                         $feedback_text .= "Feedback: " . $ai_result['feedback'];
                     } else {
-                        $feedback_text = "GrowMinds Academy Validation Round $round - FAILED ❌\n\n";
+                        $feedback_text = "GrowMinds Academy Validation Round $round - FAILED \n\n";
                         $feedback_text .= "Score: {$ai_result['score']}/100\n";
                         $feedback_text .= "Analysis: {$ai_result['analysis']}\n\n";
                         $feedback_text .= "Feedback: " . $ai_result['feedback'];
@@ -301,7 +311,7 @@ try {
             
             if (!empty($essay_text)) {
                 try {
-                    $ai_result = $ai_helper->generate_feedback($round, $essay_text, $question_prompt);
+                    $ai_result = $ai_helper->generate_feedback($round, $essay_text, $question_prompt, $student_name);
 
                     // Save version snapshot (rounds 1-5) right after sending to AI
                     if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {

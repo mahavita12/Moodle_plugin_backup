@@ -231,7 +231,14 @@ try {
 $unique_users    = $quizmanager->get_unique_users();
 $unique_courses  = $quizmanager->get_unique_course_names((int)$categoryid);
 $unique_quizzes  = $quizmanager->get_unique_quiz_names();
-$unique_sections = $quizmanager->get_unique_sections((int)$categoryid); // NEW: Get sections filtered by category
+// Determine selected courseid (server-side) from selected coursename option
+$selected_courseid = 0;
+if (!empty($coursename) && !empty($unique_courses)) {
+    foreach ($unique_courses as $cobj) {
+        if (isset($cobj->fullname) && $cobj->fullname === $coursename) { $selected_courseid = (int)$cobj->id; break; }
+    }
+}
+$unique_sections = $quizmanager->get_unique_sections((int)$categoryid, (int)$selected_courseid);
 
 // Get unique user IDs
 $unique_userids = [];

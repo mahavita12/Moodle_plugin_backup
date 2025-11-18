@@ -166,27 +166,7 @@ try {
 
 $filterdata = $quizmanager->get_all_filter_data();
 $unique_users = $filterdata['users'];
-// Filter courses by category
-$unique_courses = [];
-if (!empty($categoryid)) {
-    $unique_courses = $DB->get_records_sql(
-        "SELECT DISTINCT c.id, c.fullname
-           FROM {course} c
-           JOIN {quiz} q ON q.course = c.id
-           JOIN {quiz_attempts} qa ON qa.quiz = q.id
-          WHERE c.visible = 1 AND qa.state IN ('finished','inprogress') AND c.category = ?
-       ORDER BY c.fullname", [(int)$categoryid]
-    );
-} else {
-    $unique_courses = $DB->get_records_sql(
-        "SELECT DISTINCT c.id, c.fullname
-           FROM {course} c
-           JOIN {quiz} q ON q.course = c.id
-           JOIN {quiz_attempts} qa ON qa.quiz = q.id
-          WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')
-       ORDER BY c.fullname"
-    );
-}
+$unique_courses = $quizmanager->get_unique_course_names((int)$categoryid);
 $unique_quizzes = $filterdata['quizzes'];
 $unique_questions = $filterdata['questions'];
 $unique_userids = $filterdata['userids'];

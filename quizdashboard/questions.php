@@ -414,7 +414,8 @@ try {
 } catch (\Throwable $e) { /* ignore */ }
 
 $courses = $questionsmanager->get_unique_courses((int)$categoryid);
-$sections = $questionsmanager->get_unique_sections((int)$categoryid); // NEW: Get sections
+// Pass selected course id so sections can be listed structurally for PRC even without attempts
+$sections = $questionsmanager->get_unique_sections((int)$categoryid, (int)$courseid);
 
 // Debug: Log sections data
 error_log('Questions Dashboard: Sections data count: ' . count($sections));

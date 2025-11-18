@@ -169,14 +169,48 @@ class questions_manager {
                 {$where}
                 ORDER BY c.fullname";
         
-        return $DB->get_records_sql($sql, $params);
+        $records = $DB->get_records_sql($sql, $params);
+        
+        // Fallback for categories like Personal Review Courses where there may be no attempts yet
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname, c.shortname
+                       FROM {course} c
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname, c.shortname
+                       FROM {course} c
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname",
+                    []
+                );
+            }
+        }
+        return $records;
     }
     
     /**
      * Get unique sections that have quizzes with attempts
      */
-    public function get_unique_sections($categoryid = 0) {
+    public function get_unique_sections($categoryid = 0, $courseid = 0) {
         global $DB;
+        
+        // If a specific course is selected, prefer structural lookup (works even when no attempts exist)
+        if (!empty($courseid)) {
+            return $DB->get_records_sql(
+                "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                   FROM {course_sections} cs
+                   JOIN {course} c ON c.id = cs.course
+                  WHERE c.visible = 1 AND c.id = :courseid
+               ORDER BY cs.section",
+                ['courseid' => (int)$courseid]
+            );
+        }
         
         $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
         $params = [];
@@ -193,7 +227,29 @@ class questions_manager {
                 {$where}
                 ORDER BY c.fullname, cs.section";
         
-        return $DB->get_records_sql($sql, $params);
+        $records = $DB->get_records_sql($sql, $params);
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname, cs.section",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname, cs.section",
+                    []
+                );
+            }
+        }
+        return $records;
     }
     
     /**

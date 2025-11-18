@@ -984,7 +984,29 @@ class quiz_manager {
                   JOIN {quiz_attempts} qa ON qa.quiz = q.id
                 {$where}
               ORDER BY c.fullname";
-        return $DB->get_records_sql($sql, $params);
+        $records = $DB->get_records_sql($sql, $params);
+
+        // Fallback for categories like Personal Review Courses where there may be no attempts yet
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname
+                       FROM {course} c
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname
+                       FROM {course} c
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname",
+                    []
+                );
+            }
+        }
+        return $records;
     }
 
     public function get_unique_quiz_names() {
@@ -999,8 +1021,21 @@ class quiz_manager {
         return $DB->get_records_sql($sql);
     }
 
-    public function get_unique_sections($categoryid = 0) {
+    public function get_unique_sections($categoryid = 0, $courseid = 0) {
         global $DB;
+        // If a specific course is selected, prefer structural lookup of its sections (works even without attempts)
+        if (!empty($courseid)) {
+            return $DB->get_records_sql(
+                "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                   FROM {course_sections} cs
+                   JOIN {course} c ON c.id = cs.course
+                  WHERE c.visible = 1 AND c.id = :courseid
+               ORDER BY cs.section",
+                ['courseid' => (int)$courseid]
+            );
+        }
+
+        // Default attempt-based list (original behavior)
         $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
         $params = [];
         if (!empty($categoryid)) {
@@ -1015,7 +1050,31 @@ class quiz_manager {
                   JOIN {quiz_attempts} qa ON qa.quiz = q.id
                 {$where}
               ORDER BY c.fullname, cs.section";
-        return $DB->get_records_sql($sql, $params);
+        $records = $DB->get_records_sql($sql, $params);
+
+        // Fallback structural list by category when attempts don't exist yet
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname, cs.section",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname, cs.section",
+                    []
+                );
+            }
+        }
+        return $records;
     }
 }
 ?>

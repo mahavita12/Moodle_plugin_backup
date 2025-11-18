@@ -292,9 +292,9 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '</div>';
         }
 
-        // Current essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
+        // Current (Final Draft) essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
         $html .= '<div class="feedback-section">';
-        $html .= '<h2 class="section-header" style="color: #17a2b8;">Current Essay - ' . $ordinal . ' Submission</h2>';
+        $html .= '<h2 class="section-header" style="color: #17a2b8;">Final Draft - ' . $ordinal . ' Submission</h2>';
         $html .= '<hr>';
         $html .= '<div style="background: #e8f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #17a2b8; margin: 10px 0;">';
         $answer_text = trim($current_essay_data['answer_text']);
