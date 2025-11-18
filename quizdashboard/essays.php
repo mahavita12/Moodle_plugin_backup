@@ -562,17 +562,52 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             </td>
                             <td class="homework-cell" style="text-align: center;">
                                 <?php 
-                                // Check if homework exists
-                                $grading_result = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $row->attemptid]);
-                                if ($grading_result && !empty($grading_result->homework_html)): ?>
-                                    <span class="homework-status homework-yes">Yes</span>
-                                <?php elseif ($row->is_graded): ?>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="generateHomework(<?php echo $row->attemptid; ?>, this)">Generate</button>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="homework-status homework-no">Grade First</span>
-                                <?php endif; ?>
+                                // Be compatible with sites where homework_json may not exist yet
+                                $grading_result = null;
+                                try {
+                                    $grading_result = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $row->attemptid], 'id, homework_html, homework_json');
+                                } catch (Throwable $e) {
+                                    $grading_result = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $row->attemptid], 'id, homework_html');
+                                }
+                                $has_html = $grading_result && !empty($grading_result->homework_html);
+                                $has_json = false;
+                                $inj_cmid = 0; $inj_quizid = 0; $inj_time = 0; $inj_count = null; $inj_level = '';
+                                if ($grading_result && isset($grading_result->homework_json) && !empty($grading_result->homework_json)) {
+                                    $jd = json_decode((string)$grading_result->homework_json, true);
+                                    if (is_array($jd) && !empty($jd['injection']) && !empty($jd['injection']['success'])) {
+                                        $inj_cmid = isset($jd['injection']['cmid']) ? (int)$jd['injection']['cmid'] : 0;
+                                        $inj_quizid = isset($jd['injection']['quizid']) ? (int)$jd['injection']['quizid'] : 0;
+                                        $inj_time = isset($jd['injection']['time']) ? (int)$jd['injection']['time'] : 0;
+                                        $inj_count = isset($jd['injection']['questioncount']) ? (int)$jd['injection']['questioncount'] : null;
+                                        $inj_level = isset($jd['injection']['level']) ? (string)$jd['injection']['level'] : '';
+                                        if ($inj_cmid > 0 || $inj_quizid > 0) { $has_json = true; }
+                                    }
+                                }
+                                if ($has_json && $inj_cmid <= 0 && $inj_quizid > 0) {
+                                    $modid = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+                                    if ($modid) {
+                                        $maybe = (int)$DB->get_field('course_modules', 'id', ['instance' => $inj_quizid, 'module' => $modid]);
+                                        if ($maybe) { $inj_cmid = $maybe; }
+                                    }
+                                }
+                                if ($has_html || $has_json) {
+                                    $label = $has_html && $has_json ? 'HTML + JSON' : ($has_html ? 'HTML' : 'JSON');
+                                    echo '<span class="homework-status homework-yes">' . $label . '</span>';
+                                    if ($has_json && $inj_cmid > 0) {
+                                        $parts = [];
+                                        if ($inj_time > 0) { $parts[] = 'Injected ' . date('Y-m-d H:i', $inj_time); }
+                                        if (!is_null($inj_count)) { $parts[] = $inj_count . ' questions'; }
+                                        if ($inj_level !== '') { $parts[] = ucfirst($inj_level); }
+                                        $tt = !empty($parts) ? implode(' • ', $parts) : 'Open injected quiz';
+                                        $href = (new moodle_url('/mod/quiz/view.php', ['id' => $inj_cmid]))->out(false);
+                                        echo ' <a href="' . $href . '" class="quiz-link" target="_blank" title="' . htmlspecialchars($tt, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" style="margin-left:6px;">↗</a>';
+                                    }
+                                } else if ($row->is_graded) {
+                                    echo '<span class="homework-status homework-no">None</span>';
+                                } else {
+                                    echo '<span class="homework-status homework-no">Grade First</span>';
+                                }
+                                ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

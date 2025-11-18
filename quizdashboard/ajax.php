@@ -662,9 +662,33 @@ try {
             $res = \local_quizdashboard\homework_injector::inject_single_essay((int)$userid, (string)$label, $norm);
             $cmid = (int)($res->cmid ?? 0);
             $url = $cmid > 0 ? (new moodle_url('/mod/quiz/view.php', ['id' => $cmid]))->out(false) : '';
+            // Record injection metadata onto grading row if available
+            try {
+                if ($attemptid > 0) {
+                    $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => (int)$attemptid]);
+                    if ($grading) {
+                        $json = [];
+                        if (!empty($grading->homework_json)) {
+                            $decoded = json_decode($grading->homework_json, true);
+                            if (is_array($decoded)) { $json = $decoded; }
+                        }
+                        $json['injection'] = [
+                            'success' => true,
+                            'quizid' => (int)($res->quizid ?? 0),
+                            'cmid' => $cmid,
+                            'courseid' => (int)($res->courseid ?? 0),
+                            'time' => time(),
+                        ];
+                        $grading->homework_json = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                        $grading->timemodified = time();
+                        $DB->update_record('local_quizdashboard_gradings', $grading);
+                    }
+                }
+            } catch (Throwable $e) { /* non-fatal */ }
             while (ob_get_level() > 0) { @ob_end_clean(); }
             echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>(int)$res->courseid,'url'=>$url], JSON_UNESCAPED_UNICODE);
             exit;
+
         case 'inject_homework_json':
             // Inputs
             $attemptid = required_param('attemptid', PARAM_INT);
@@ -697,9 +721,33 @@ try {
             $res = \local_quizdashboard\homework_injector::inject_from_json((int)$userid, (string)$label, (string)$jsontext, (string)$level);
             $cmid = (int)($res->cmid ?? 0);
             $url = $cmid > 0 ? (new moodle_url('/mod/quiz/view.php', ['id' => $cmid]))->out(false) : '';
+            // Record injection metadata onto grading row
+            try {
+                $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => (int)$attemptid]);
+                if ($grading) {
+                    $json = [];
+                    if (!empty($grading->homework_json)) {
+                        $decoded = json_decode($grading->homework_json, true);
+                        if (is_array($decoded)) { $json = $decoded; }
+                    }
+                    $json['injection'] = [
+                        'success' => true,
+                        'quizid' => (int)($res->quizid ?? 0),
+                        'cmid' => $cmid,
+                        'courseid' => (int)($res->courseid ?? 0),
+                        'questioncount' => (int)($res->questioncount ?? 0),
+                        'level' => (string)$level,
+                        'time' => time(),
+                    ];
+                    $grading->homework_json = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    $grading->timemodified = time();
+                    $DB->update_record('local_quizdashboard_gradings', $grading);
+                }
+            } catch (Throwable $e) { /* non-fatal */ }
             while (ob_get_level() > 0) { @ob_end_clean(); }
-            echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>(int)$res->courseid,'questioncount'=>(int)($res->questioncount ?? 0),'url'=>$url], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['success'=>true,'quizid'=>(int)$res->quizid,'cmid'=>$cmid,'courseid'=>$res->courseid,'questioncount'=>(int)($res->questioncount ?? 0),'url'=>$url], JSON_UNESCAPED_UNICODE);
             exit;
+
         case 'grade_resubmission':
             $attemptid = required_param('attemptid', PARAM_INT);
             $level = optional_param('level', 'general', PARAM_ALPHA);
