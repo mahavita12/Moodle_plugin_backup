@@ -73,7 +73,9 @@
       "Bash(nul)",
       "Bash(temp_git_version.php)",
       "Bash(del:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rev-parse:*)"
     ],
     "deny": [],
     "ask": []
