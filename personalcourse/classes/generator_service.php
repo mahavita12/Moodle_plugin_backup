@@ -396,7 +396,7 @@ class generator_service {
         $toremove = array_values(array_diff($currqids, $desired));
 
         // If finished attempts exist and removals are needed, fork to a new quiz to preserve reviews.
-        if ($hasfinishedany && !empty($toremove)) {
+        if (!$defer && $hasfinishedany && !empty($toremove)) {
             // Delete in-progress/overdue attempts for this user to unlock CM changes.
             $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
             if (!empty($attempts)) {
@@ -469,7 +469,7 @@ class generator_service {
             $hasfinished = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND userid = ? AND state = 'finished'", [(int)$pq->quizid, (int)$userid]);
 
             if (!empty($realcurrqids)) {
-                if ($hasfinished) {
+                if (!$defer && $hasfinished) {
                     // Delete in-progress/overdue attempts.
                     $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
                     if (!empty($attempts)) {
