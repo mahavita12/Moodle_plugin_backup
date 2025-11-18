@@ -125,6 +125,16 @@ class generator_service {
         $sm = new \local_personalcourse\section_manager();
 
         if (!$pq) {
+            if (!\local_personalcourse\threshold_policy::allow_initial_creation((int)$userid, (int)$sourcequizid)) {
+                return (object)[
+                    'personalcourseid' => $personalcourseid,
+                    'mappingid' => 0,
+                    'quizid' => 0,
+                    'cmid' => 0,
+                    'toadd' => [],
+                    'toremove' => [],
+                ];
+            }
             // Always create a fresh personal quiz; do not reuse by name.
             $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
             $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);

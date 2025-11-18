@@ -54,22 +54,10 @@ class flag_sync_task extends \core\task\adhoc_task {
         ]);
 
         if (!$pq) {
-            // Gate first creation by initial thresholds on student's attempts.
-            $attempts = $DB->get_records('quiz_attempts', ['quiz' => $quizid, 'userid' => $userid], 'attempt ASC', 'id,attempt,sumgrades');
-            $quizrow = $DB->get_record('quiz', ['id' => $quizid], 'id,sumgrades,course,name', MUST_EXIST);
-            $totalsum = (float)($quizrow->sumgrades ?? 0.0);
-            $allow = false;
-            foreach ($attempts as $a) {
-                $n = (int)$a->attempt;
-                $grade = ($totalsum > 0.0) ? (((float)($a->sumgrades ?? 0.0) / $totalsum) * 100.0) : 0.0;
-                if ($n === 1 && $grade > 80.0) { $allow = true; break; }
-                if ($n === 2 && $grade >= 40.0) { $allow = true; break; }
-                if ($n >= 3 && $grade >= 40.0) { $allow = true; break; }
-            }
-            if (!$allow) {
-                // Not yet eligible to create personal quiz for this source; return early.
+            if (!\local_personalcourse\threshold_policy::allow_initial_creation((int)$userid, (int)$quizid)) {
                 return;
             }
+            $quizrow = $DB->get_record('quiz', ['id' => $quizid], 'id,sumgrades,course,name', MUST_EXIST);
 
             // Determine current flagged questions that belong to this source quiz (Moodle 4.4 references schema).
             $flagged = $DB->get_records_sql(
