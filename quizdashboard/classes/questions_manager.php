@@ -409,23 +409,24 @@ class questions_manager {
         $where_conditions = [];
         
         if ($userid) {
-            $where_conditions[] = "qa.userid = ?";
-            $params[] = $userid;
+            $where_conditions[] = "qa.userid = :userid";
+            $params['userid'] = (int)$userid;
         }
         
         if ($month) {
             $start_time = strtotime($month . '-01 00:00:00');
             $end_time = strtotime($month . '-01 00:00:00 +1 month') - 1;
-            $where_conditions[] = "qa.timefinish >= ? AND qa.timefinish <= ?";
-            $params[] = $start_time;
-            $params[] = $end_time;
+            $where_conditions[] = "qa.timefinish >= :starttime AND qa.timefinish <= :endtime";
+            $params['starttime'] = (int)$start_time;
+            $params['endtime'] = (int)$end_time;
         }
         
         $where_clause = !empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "";
         
         try {
             // Build IN clause for attempts (single id if not a personal-course context)
-            list($in_sql_quiz, $in_params_quiz) = $DB->get_in_or_equal($targetquizids, SQL_PARAMS_QM);
+            // Use NAMED params to avoid mixing placeholder styles when adding :minpercent later
+            list($in_sql_quiz, $in_params_quiz) = $DB->get_in_or_equal($targetquizids, \SQL_PARAMS_NAMED, 'qz');
 
             $sql_attempts = "SELECT qa.id as attemptid, qa.userid, qa.quiz AS quizid, qa.timefinish, qa.timestart,
                                    qa.attempt as attemptno,
@@ -447,8 +448,9 @@ class questions_manager {
                             JOIN {course_categories} cat ON cat.id = c.category
                             WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause;
 
-            if (!empty($minpercent) && (int)$minpercent > 0) {
-                $sql_attempts .= " AND ((qa.sumgrades / NULLIF(q.sumgrades, 0)) * 100) > :minpercent";
+            if ((int)$minpercent > 0) {
+                // Guard against NULL/zero max scores so comparison behaves like PHP fallback
+                $sql_attempts .= " AND (CASE WHEN q.sumgrades > 0 THEN ((qa.sumgrades / q.sumgrades) * 100) ELSE 0 END) > :minpercent";
                 $params['minpercent'] = (int)$minpercent;
             }
 
@@ -473,7 +475,7 @@ class questions_manager {
             try {
                 $attempt_ids = array_keys($user_attempts);
                 if (!empty($attempt_ids)) {
-                    list($attempt_sql, $attempt_params) = $DB->get_in_or_equal($attempt_ids, SQL_PARAMS_NAMED);
+                    list($attempt_sql, $attempt_params) = $DB->get_in_or_equal($attempt_ids, \SQL_PARAMS_NAMED);
                     
                     $sql_results = "
                         SELECT
