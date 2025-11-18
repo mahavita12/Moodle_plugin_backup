@@ -476,6 +476,18 @@ if ($action === 'dryrun_settings' && confirm_sesskey()) {
     $timelimit = optional_param('timelimit', 0, PARAM_INT);
     $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
 
+    // Server-side fallback: compose timeclose from Y/M/D/H/M selects if hidden field missing
+    if ($timeclose_enable && (empty($timeclose) || strlen(trim($timeclose)) < 10)) {
+        $yy = optional_param('timeclose_year', '', PARAM_RAW);
+        $mm = optional_param('timeclose_month', '', PARAM_RAW);
+        $dd = optional_param('timeclose_day', '', PARAM_RAW);
+        $hh = optional_param('timeclose_hour', '', PARAM_RAW);
+        $ii = optional_param('timeclose_min', '', PARAM_RAW);
+        if ($yy && $mm && $dd && $hh !== '' && $ii !== '') {
+            $timeclose = sprintf('%04d-%02d-%02d %02d:%02d', (int)$yy, (int)$mm, (int)$dd, (int)$hh, (int)$ii);
+        }
+    }
+
     if (empty($cmids)) {
         echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
     } else {
@@ -532,6 +544,18 @@ if ($action === 'confirm_settings' && confirm_sesskey()) {
     $timeclose_enable = optional_param('timeclose_enable', 0, PARAM_BOOL);
     $timelimit = optional_param('timelimit', 0, PARAM_INT);
     $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
+
+    // Server-side fallback (again) in case the hidden field is empty
+    if ($timeclose_enable && (empty($timeclose) || strlen(trim($timeclose)) < 10)) {
+        $yy = optional_param('timeclose_year', '', PARAM_RAW);
+        $mm = optional_param('timeclose_month', '', PARAM_RAW);
+        $dd = optional_param('timeclose_day', '', PARAM_RAW);
+        $hh = optional_param('timeclose_hour', '', PARAM_RAW);
+        $ii = optional_param('timeclose_min', '', PARAM_RAW);
+        if ($yy && $mm && $dd && $hh !== '' && $ii !== '') {
+            $timeclose = sprintf('%04d-%02d-%02d %02d:%02d', (int)$yy, (int)$mm, (int)$dd, (int)$hh, (int)$ii);
+        }
+    }
 
     if (empty($cmids)) {
         echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
