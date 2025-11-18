@@ -149,6 +149,25 @@ class questions_manager {
             return false;
         }
     }
+
+    /**
+     * Robust fallback: check if the user has any flags for questions present in a specific attempt.
+     * Works regardless of Moodle 3.11 vs 4.x schema because it uses question_attempts linkage.
+     */
+    public function attempt_has_flags(int $userid, int $attemptid): bool {
+        global $DB;
+        if ($userid <= 0 || $attemptid <= 0) { return false; }
+        try {
+            $sql = "SELECT 1
+                      FROM {local_questionflags} qf
+                      JOIN {question_attempts} qatt ON qatt.questionid = qf.questionid
+                      JOIN {quiz_attempts} qa ON qa.uniqueid = qatt.questionusageid
+                     WHERE qa.id = :attemptid AND qf.userid = :userid";
+            return $DB->record_exists_sql($sql, ['attemptid' => $attemptid, 'userid' => $userid]);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
     
     /**
      * Get unique courses that have quiz attempts
@@ -448,11 +467,7 @@ class questions_manager {
                             JOIN {course_categories} cat ON cat.id = c.category
                             WHERE qa.quiz {$in_sql_quiz} AND qa.state IN ('finished', 'inprogress') AND u.deleted = 0" . $where_clause;
 
-            if ((int)$minpercent > 0) {
-                // Guard against NULL/zero max scores so comparison behaves like PHP fallback
-                $sql_attempts .= " AND (CASE WHEN q.sumgrades > 0 THEN ((qa.sumgrades / q.sumgrades) * 100) ELSE 0 END) > :minpercent";
-                $params['minpercent'] = (int)$minpercent;
-            }
+            
 
             $sql_attempts .= "
                             ORDER BY u.lastname, u.firstname";

@@ -504,11 +504,16 @@ if (!empty($user_attempts) && (int)$minscore > 0) {
             $percent = (($ua->total_score / $ua->max_score) * 100.0);
         }
         $keep = ($percent > (int)$minscore);
-        if (!$keep && $includeflagged && !empty($ua->quizid)) {
+        if (!$keep && $includeflagged) {
             try {
-                if ($questionsmanager->user_has_flags_for_quiz((int)$ua->userid, (int)$ua->quizid)) {
-                    $keep = true;
+                // Prefer quiz-level flags, then fall back to attempt-level mapping
+                $hasflags = false;
+                if (!empty($ua->quizid) && $questionsmanager->user_has_flags_for_quiz((int)$ua->userid, (int)$ua->quizid)) {
+                    $hasflags = true;
+                } else if (!empty($ua->attemptid) && $questionsmanager->attempt_has_flags((int)$ua->userid, (int)$ua->attemptid)) {
+                    $hasflags = true;
                 }
+                if ($hasflags) { $keep = true; }
             } catch (Throwable $e) { /* ignore */ }
         }
         if ($keep) {
