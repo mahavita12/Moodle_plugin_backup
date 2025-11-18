@@ -306,15 +306,37 @@ if ($tab === 'settings') {
     echo html_writer::start_div('form-group');
     echo html_writer::label('Close the quiz', 'id_timeclose');
     echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timeclose_enable', 'id' => 'id_timeclose_enable', 'value' => 1]);
-    echo html_writer::empty_tag('input', [
-        'type' => 'text',
-        'name' => 'timeclose',
-        'id' => 'id_timeclose',
-        'placeholder' => 'YYYY-MM-DD HH:MM',
-        'size' => 20,
-        'autocomplete' => 'off',
-        'inputmode' => 'numeric'
-    ]);
+    // hidden field that will be submitted as YYYY-MM-DD HH:MM
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose', 'id' => 'id_timeclose']);
+
+    // Build date/time selects: year, month, day, hour, minute
+    $nowts = time();
+    $initY = (int)date('Y', $nowts);
+    $initM = date('m', $nowts);
+    $initD = date('d', $nowts);
+    $initH = date('H', $nowts);
+    $initI = date('i', $nowts);
+
+    $yearoptions = [];
+    for ($y = $initY - 1; $y <= $initY + 3; $y++) { $yearoptions[(string)$y] = (string)$y; }
+    echo html_writer::select($yearoptions, 'timeclose_year', (string)$initY, null, ['id' => 'id_timeclose_year', 'style' => 'margin-left:8px;']);
+
+    $monthoptions = [];
+    for ($m = 1; $m <= 12; $m++) { $k = str_pad((string)$m, 2, '0', STR_PAD_LEFT); $monthoptions[$k] = date('F', mktime(0,0,0,$m,1)); }
+    echo html_writer::select($monthoptions, 'timeclose_month', (string)$initM, null, ['id' => 'id_timeclose_month', 'style' => 'margin-left:6px;']);
+
+    $dayoptions = [];
+    for ($d = 1; $d <= 31; $d++) { $k = str_pad((string)$d, 2, '0', STR_PAD_LEFT); $dayoptions[$k] = $k; }
+    echo html_writer::select($dayoptions, 'timeclose_day', (string)$initD, null, ['id' => 'id_timeclose_day', 'style' => 'margin-left:6px;']);
+
+    $houroptions = [];
+    for ($h = 0; $h <= 23; $h++) { $k = str_pad((string)$h, 2, '0', STR_PAD_LEFT); $houroptions[$k] = $k; }
+    echo html_writer::select($houroptions, 'timeclose_hour', (string)$initH, null, ['id' => 'id_timeclose_hour', 'style' => 'margin-left:12px;']);
+
+    $minoptions = [];
+    for ($i = 0; $i <= 59; $i++) { $k = str_pad((string)$i, 2, '0', STR_PAD_LEFT); $minoptions[$k] = $k; }
+    echo html_writer::select($minoptions, 'timeclose_min', (string)$initI, null, ['id' => 'id_timeclose_min', 'style' => 'margin-left:6px;']);
+
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
@@ -325,7 +347,7 @@ if ($tab === 'settings') {
 
     echo html_writer::start_div('form-group');
     echo html_writer::label('Activity classification', 'id_activityclass');
-    echo html_writer::select(['New' => 'New', 'Review' => 'Review', 'Practice' => 'Practice'], 'activityclass', 'New', null, ['id' => 'id_activityclass']);
+    echo html_writer::select(['None' => 'None', 'New' => 'New', 'Revision' => 'Revision'], 'activityclass', 'None', null, ['id' => 'id_activityclass']);
     echo html_writer::end_div();
 
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'dryrun_settings']);
@@ -337,7 +359,12 @@ if ($tab === 'settings') {
 (function(){
   function init(){
     var e1 = document.getElementById('id_timeclose_enable');
-    var t1 = document.getElementById('id_timeclose');
+    var hiddenTime = document.getElementById('id_timeclose');
+    var ySel = document.getElementById('id_timeclose_year');
+    var mSel = document.getElementById('id_timeclose_month');
+    var dSel = document.getElementById('id_timeclose_day');
+    var hSel = document.getElementById('id_timeclose_hour');
+    var iSel = document.getElementById('id_timeclose_min');
     var e2 = document.getElementById('id_timelimit_enable');
     var t2 = document.getElementById('id_timelimit');
     function setEnabled(input, enabled){
@@ -349,14 +376,42 @@ if ($tab === 'settings') {
         try { input.setAttribute('disabled','disabled'); } catch(_) {}
       }
     }
+    function pad2(n){ n = parseInt(n, 10); return (n < 10 ? '0' : '') + n; }
+    function daysInMonth(yy, mm){
+      var y = parseInt(yy, 10); var m = parseInt(mm, 10); if (!y || !m) return 31;
+      return new Date(y, m, 0).getDate(); // mm is 1..12
+    }
+    function composeClose(){
+      if (!hiddenTime) return;
+      var yy = ySel ? ySel.value : '';
+      var mm = mSel ? mSel.value : '';
+      var dd = dSel ? dSel.value : '';
+      var hh = hSel ? hSel.value : '';
+      var ii = iSel ? iSel.value : '';
+      // Normalize day within month
+      var maxd = daysInMonth(yy, mm);
+      var ddi = parseInt(dd || '1', 10);
+      if (ddi > maxd) { ddi = maxd; if (dSel) dSel.value = pad2(ddi); }
+      hiddenTime.value = yy + '-' + mm + '-' + pad2(ddi) + ' ' + hh + ':' + ii;
+    }
     function sync(){
-      // Keep close time always editable; server-side respects the Enable checkbox
-      setEnabled(t1, true);
-      setEnabled(t2, !!(e2 && e2.checked));
+      // Keep time limit always editable; server-side respects the Enable checkbox
+      setEnabled(t2, true);
+      composeClose();
     }
     ['change','click'].forEach(function(ev){
       if (e2) e2.addEventListener(ev, sync);
+      if (ySel) ySel.addEventListener(ev, sync);
+      if (mSel) mSel.addEventListener(ev, sync);
+      if (dSel) dSel.addEventListener(ev, sync);
+      if (hSel) hSel.addEventListener(ev, sync);
+      if (iSel) iSel.addEventListener(ev, sync);
     });
+    // Ensure hidden field is composed before submit
+    var form = ySel ? ySel.closest('form') : null;
+    if (form) {
+      form.addEventListener('submit', function(){ composeClose(); });
+    }
     sync();
   }
   if (document.readyState === 'loading') {
