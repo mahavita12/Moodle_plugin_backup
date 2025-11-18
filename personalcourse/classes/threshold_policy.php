@@ -28,7 +28,7 @@ class threshold_policy {
             $grade = ($totalsum > 0.0)
                 ? (((float)($a->sumgrades ?? 0.0) / $totalsum) * 100.0)
                 : 0.0;
-            if (($n === 1 && $grade > 80.0) || ($n >= 2 && $grade >= 40.0)) {
+            if ($grade >= 100.0) {
                 return true;
             }
         }

@@ -45,7 +45,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             $deleting = ($cmrow && !empty($cmrow->deletioninprogress));
         }
 
-        if ($deleting || $fromattempt) {
+        if ($deleting || $hasinprogress || $fromattempt) {
             // Reschedule shortly.
             $next = new self();
             $next->set_component('local_personalcourse');
@@ -66,22 +66,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             return;
         }
 
-        // If an attempt is in progress and NOT from personal-quiz attempt, proactively unlock (idempotent).
-        if (!$fromattempt && $hasinprogress && $pq && !empty($pq->quizid)) {
-            try {
-                require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-                $attempts = $DB->get_records_select('quiz_attempts',
-                    "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                    [(int)$pq->quizid, (int)$userid], 'id ASC');
-                if (!empty($attempts)) {
-                    $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                    if ($quiz) {
-                        try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                        foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
-                    }
-                }
-            } catch (\Throwable $e) { /* best-effort unlock */ }
-        }
+        // No unlock: avoid deleting in-progress attempts from background tasks.
 
         // Perform flags-only reconcile outside request. Apply changes (defer=false).
         try {

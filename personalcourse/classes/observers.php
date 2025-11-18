@@ -668,9 +668,9 @@ class observers {
         if ($hasquiz) {
             \core\notification::info(get_string('notify_pq_exists_short', 'local_personalcourse'));
         } else {
-            if ($n === 1 && !($grade > 80.0)) {
+            if ($n === 1 && $grade < 100.0) {
                 \core\notification::warning(get_string('notify_pq_not_created_first_short', 'local_personalcourse'));
-            } else if ($n >= 2 && $grade < 40.0) {
+            } else if ($n >= 2 && $grade < 100.0) {
                 \core\notification::warning(get_string('notify_pq_not_created_next_short', 'local_personalcourse'));
             }
         }
@@ -908,8 +908,12 @@ class observers {
                         'userid' => $ownerid,
                         'sourcequizid' => (int)$pq->sourcequizid,
                         'cmid' => (int)$cmid,
+                        'fromattempt' => false,
+                        'origin' => 'view',
                     ]);
                     $task->set_component('local_personalcourse');
+                    // Delay to avoid race before an in-progress attempt row exists.
+                    $task->set_next_run_time(time() + 120);
                     \core\task\manager::queue_adhoc_task($task, true);
                     \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
                 }
