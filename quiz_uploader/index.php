@@ -306,13 +306,21 @@ if ($tab === 'settings') {
     echo html_writer::start_div('form-group');
     echo html_writer::label('Close the quiz', 'id_timeclose');
     echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timeclose_enable', 'id' => 'id_timeclose_enable', 'value' => 1]);
-    echo html_writer::empty_tag('input', ['type' => 'datetime-local', 'name' => 'timeclose', 'id' => 'id_timeclose', 'disabled' => 'disabled']);
+    echo html_writer::empty_tag('input', [
+        'type' => 'text',
+        'name' => 'timeclose',
+        'id' => 'id_timeclose',
+        'placeholder' => 'YYYY-MM-DD HH:MM',
+        'size' => 20,
+        'autocomplete' => 'off',
+        'inputmode' => 'numeric'
+    ]);
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
     echo html_writer::label('Time limit (minutes) — applies when Preset = Test', 'id_timelimit');
     echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timelimit_enable', 'id' => 'id_timelimit_enable', 'value' => 1]);
-    echo html_writer::empty_tag('input', ['type' => 'number', 'name' => 'timelimit', 'id' => 'id_timelimit', 'min' => 0, 'step' => 1, 'value' => 45, 'disabled' => 'disabled']);
+    echo html_writer::empty_tag('input', ['type' => 'number', 'name' => 'timelimit', 'id' => 'id_timelimit', 'min' => 0, 'step' => 1, 'value' => 45]);
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
@@ -326,19 +334,37 @@ if ($tab === 'settings') {
     echo html_writer::end_tag('form');
 
     $PAGE->requires->js_amd_inline(<<<'JS'
-document.addEventListener('DOMContentLoaded', function(){
-  var e1 = document.getElementById('id_timeclose_enable');
-  var t1 = document.getElementById('id_timeclose');
-  var e2 = document.getElementById('id_timelimit_enable');
-  var t2 = document.getElementById('id_timelimit');
-  function sync(){
-    if (t1) t1.disabled = !(e1 && e1.checked);
-    if (t2) t2.disabled = !(e2 && e2.checked);
+(function(){
+  function init(){
+    var e1 = document.getElementById('id_timeclose_enable');
+    var t1 = document.getElementById('id_timeclose');
+    var e2 = document.getElementById('id_timelimit_enable');
+    var t2 = document.getElementById('id_timelimit');
+    function setEnabled(input, enabled){
+      if (!input) return;
+      input.disabled = !enabled;
+      if (enabled) {
+        try { input.removeAttribute('disabled'); } catch(_) {}
+      } else {
+        try { input.setAttribute('disabled','disabled'); } catch(_) {}
+      }
+    }
+    function sync(){
+      // Keep close time always editable; server-side respects the Enable checkbox
+      setEnabled(t1, true);
+      setEnabled(t2, !!(e2 && e2.checked));
+    }
+    ['change','click'].forEach(function(ev){
+      if (e2) e2.addEventListener(ev, sync);
+    });
+    sync();
   }
-  if (e1) e1.addEventListener('change', sync);
-  if (e2) e2.addEventListener('change', sync);
-  sync();
-});
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
 JS
     );
 }
