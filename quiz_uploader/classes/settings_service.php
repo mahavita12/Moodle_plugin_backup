@@ -4,10 +4,12 @@ namespace local_quiz_uploader;
 defined('MOODLE_INTERNAL') || die();
 
 class settings_service {
-    public static function apply_bulk_settings(array $cmids, string $preset, string $timeclosestr, string $activityclass): array {
+    public static function apply_bulk_settings(array $cmids, string $preset, string $timeclosestr, string $activityclass, int $timeclose_enable = 0, int $timelimit_minutes = 0, int $timelimit_enable = 0): array {
         global $DB;
         $results = [];
-        $timeclose = self::parse_timeclose($timeclosestr);
+        $timeclose = $timeclose_enable ? self::parse_timeclose($timeclosestr) : null;
+        $applyTimelimit = ($preset === 'test') && !empty($timelimit_enable);
+        $timelimit_minutes = $applyTimelimit ? max(0, (int)$timelimit_minutes) : 0;
         foreach ($cmids as $cmid) {
             $res = (object)['cmid' => $cmid, 'success' => false, 'message' => ''];
             try {
@@ -17,7 +19,10 @@ class settings_service {
                     throw new \moodle_exception('invalidquiz', 'error');
                 }
                 // Apply preset defaults (behaviour, review, timelimit, completion). Leave timeclose as provided only.
-                preset_helper::apply_to_quiz($quizid, $preset === 'nochange' ? 'default' : $preset, $timeclose, null);
+                $mode = ($preset === 'nochange') ? 'timeonly' : 'full';
+                $effpreset = ($preset === 'nochange') ? 'default' : $preset;
+                $timelimitArg = $applyTimelimit ? $timelimit_minutes : null;
+                preset_helper::apply_to_quiz($quizid, $effpreset, $timeclose, $timelimitArg, $mode, $applyTimelimit);
 
                 // Activity classification: best-effort placeholder until field details are provided.
                 // If a custom field with shortname 'activityclassification' exists for mod_quiz, the code below attempts to store it.
@@ -36,8 +41,10 @@ class settings_service {
 
     private static function parse_timeclose(?string $val): ?int {
         if (empty($val)) { return null; }
-        // Expect HTML datetime-local format: YYYY-MM-DDTHH:MM
-        $ts = strtotime($val);
+        // HTML datetime-local typically posts as YYYY-MM-DDTHH:MM (no timezone). Normalise to space for robust parsing.
+        $norm = str_replace('T', ' ', trim((string)$val));
+        // If seconds missing, ok; strtotime can handle. If fails, return null.
+        $ts = strtotime($norm);
         return $ts ?: null;
     }
 

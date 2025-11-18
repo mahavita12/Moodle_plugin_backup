@@ -63,30 +63,32 @@ class preset_helper {
         ];
     }
 
-    public static function apply_to_quiz(int $quizid, string $preset = 'default', ?int $timeclose = null, ?int $timelimitminutes = null): bool {
+    public static function apply_to_quiz(int $quizid, string $preset = 'default', ?int $timeclose = null, ?int $timelimitminutes = null, string $mode = 'full', bool $applyTimelimit = true): bool {
         global $DB;
         $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', \MUST_EXIST);
         $cfg = self::get_preset($preset, $timelimitminutes ?? 45);
 
-        $quiz->preferredbehaviour = $cfg['preferredbehaviour'];
-        if ($preset === 'test') {
-            $quiz->timelimit = $cfg['timelimit'];
-        } else {
-            $quiz->timelimit = 0;
+        if ($mode !== 'timeonly') {
+            $quiz->preferredbehaviour = $cfg['preferredbehaviour'];
+            if ($applyTimelimit) {
+                if ($preset === 'test') {
+                    $quiz->timelimit = $cfg['timelimit'];
+                } else {
+                    $quiz->timelimit = 0;
+                }
+            }
+            foreach ($cfg['reviewbits'] as $field => $bits) {
+                $quiz->$field = $bits;
+            }
         }
         if ($timeclose !== null) {
             $quiz->timeclose = $timeclose;
         }
 
-        foreach ($cfg['reviewbits'] as $field => $bits) {
-            $quiz->$field = $bits;
-        }
-
         $DB->update_record('quiz', $quiz);
 
         $cm = \get_coursemodule_from_instance('quiz', $quiz->id, $quiz->course, false, \MUST_EXIST);
-        if (!empty($cfg['completion']['enable'])) {
-            // Enable automatic completion on the CM and set min attempts on the quiz instance.
+        if ($mode !== 'timeonly' && !empty($cfg['completion']['enable'])) {
             $DB->set_field('course_modules', 'completion', 2, ['id' => $cm->id]);
             if ($DB->get_manager()->field_exists('quiz', 'completionminattempts')) {
                 $DB->set_field('quiz', 'completionminattempts', (int)$cfg['completion']['minattempts'], ['id' => $quiz->id]);

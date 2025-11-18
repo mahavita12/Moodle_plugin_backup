@@ -304,8 +304,15 @@ if ($tab === 'settings') {
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
-    echo html_writer::label('Close the quiz (optional)', 'id_timeclose');
-    echo html_writer::empty_tag('input', ['type' => 'datetime-local', 'name' => 'timeclose', 'id' => 'id_timeclose']);
+    echo html_writer::label('Close the quiz', 'id_timeclose');
+    echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timeclose_enable', 'id' => 'id_timeclose_enable', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'datetime-local', 'name' => 'timeclose', 'id' => 'id_timeclose', 'disabled' => 'disabled']);
+    echo html_writer::end_div();
+
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Time limit (minutes) — applies when Preset = Test', 'id_timelimit');
+    echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timelimit_enable', 'id' => 'id_timelimit_enable', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'number', 'name' => 'timelimit', 'id' => 'id_timelimit', 'min' => 0, 'step' => 1, 'value' => 45, 'disabled' => 'disabled']);
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
@@ -317,6 +324,23 @@ if ($tab === 'settings') {
     echo html_writer::tag('button', 'Dry run update', ['type' => 'submit', 'class' => 'btn btn-primary']);
 
     echo html_writer::end_tag('form');
+
+    $PAGE->requires->js_amd_inline(<<<'JS'
+document.addEventListener('DOMContentLoaded', function(){
+  var e1 = document.getElementById('id_timeclose_enable');
+  var t1 = document.getElementById('id_timeclose');
+  var e2 = document.getElementById('id_timelimit_enable');
+  var t2 = document.getElementById('id_timelimit');
+  function sync(){
+    if (t1) t1.disabled = !(e1 && e1.checked);
+    if (t2) t2.disabled = !(e2 && e2.checked);
+  }
+  if (e1) e1.addEventListener('change', sync);
+  if (e2) e2.addEventListener('change', sync);
+  sync();
+});
+JS
+    );
 }
 
 if ($action === 'dryrun_copy' && confirm_sesskey()) {
@@ -367,13 +391,17 @@ if ($action === 'dryrun_settings' && confirm_sesskey()) {
     $preset = optional_param('preset', 'default', PARAM_ALPHA);
     $timeclose = optional_param('timeclose', '', PARAM_RAW);
     $activityclass = optional_param('activityclass', 'New', PARAM_TEXT);
+    $timeclose_enable = optional_param('timeclose_enable', 0, PARAM_BOOL);
+    $timelimit = optional_param('timelimit', 0, PARAM_INT);
+    $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
 
     if (empty($cmids)) {
         echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
     } else {
         $count = count($cmids);
         $summary = 'Preset: ' . $preset . ' — Activity classification: ' . s($activityclass);
-        if (!empty($timeclose)) { $summary .= ' — Close time provided'; } else { $summary .= ' — Close time not set'; }
+        $summary .= $timeclose_enable ? ' — Close time: enabled' : ' — Close time: not changed';
+        if ($timelimit_enable) { $summary .= ' — Time limit: ' . (int)$timelimit . ' min (Test preset)'; }
         echo $OUTPUT->notification("Dry run: {$count} quiz(es) will be updated. " . $summary, 'info');
         echo html_writer::start_tag('form', ['method' => 'post']);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
@@ -382,6 +410,9 @@ if ($action === 'dryrun_settings' && confirm_sesskey()) {
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'preset', 'value' => $preset]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose', 'value' => $timeclose]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'activityclass', 'value' => $activityclass]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose_enable', 'value' => (int)$timeclose_enable]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timelimit', 'value' => (int)$timelimit]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timelimit_enable', 'value' => (int)$timelimit_enable]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'confirm_settings']);
         echo html_writer::tag('button', 'Confirm and proceed', ['type' => 'submit', 'class' => 'btn btn-danger']);
         echo html_writer::end_tag('form');
@@ -417,11 +448,14 @@ if ($action === 'confirm_settings' && confirm_sesskey()) {
     $preset = optional_param('preset', 'default', PARAM_ALPHA);
     $timeclose = optional_param('timeclose', '', PARAM_RAW);
     $activityclass = optional_param('activityclass', 'New', PARAM_TEXT);
+    $timeclose_enable = optional_param('timeclose_enable', 0, PARAM_BOOL);
+    $timelimit = optional_param('timelimit', 0, PARAM_INT);
+    $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
 
     if (empty($cmids)) {
         echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
     } else {
-        $results = \local_quiz_uploader\settings_service::apply_bulk_settings($cmids, $preset, $timeclose, $activityclass);
+        $results = \local_quiz_uploader\settings_service::apply_bulk_settings($cmids, $preset, $timeclose, $activityclass, (int)$timeclose_enable, (int)$timelimit, (int)$timelimit_enable);
         $ok = array_reduce($results, function($c,$r){ return $c && !empty($r->success); }, true);
         if ($ok) {
             echo $OUTPUT->notification('Settings updated successfully.', 'success');
