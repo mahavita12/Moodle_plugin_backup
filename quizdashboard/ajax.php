@@ -80,7 +80,7 @@ try {
             $ctx = context_course::instance($courseid);
             require_capability('moodle/course:view', $ctx);
 
-            // Only include quizzes that have at least one attempt in progress or finished
+            // Attempt-based list first (keeps prior behavior)
             $sql = "SELECT DISTINCT q.id, q.name
                       FROM {quiz} q
                       JOIN {course_modules} cm ON cm.instance = q.id
@@ -100,11 +100,29 @@ try {
             $sql .= " ORDER BY q.name";
 
             $records = $DB->get_records_sql($sql, $params);
+
+            // Fallback for Personal Review Courses (no attempts yet): structural by course/section
+            if (empty($records)) {
+                $fallback = "SELECT DISTINCT q.id, q.name
+                               FROM {quiz} q
+                               JOIN {course_modules} cm ON cm.instance = q.id
+                               JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                              WHERE q.course = :courseid";
+                $fparams = ['courseid' => $courseid];
+                if (!empty($sectionid)) {
+                    $fallback .= " AND cm.section = :sectionid";
+                    $fparams['sectionid'] = $sectionid;
+                }
+                $fallback .= " ORDER BY q.name";
+                $records = $DB->get_records_sql($fallback, $fparams);
+            }
+
             $result = array_map(function($r) { return ['id' => (int)$r->id, 'name' => (string)$r->name]; }, array_values($records));
 
             while (ob_get_level() > 0) { @ob_end_clean(); }
             echo json_encode(['success' => true, 'quizzes' => $result], JSON_UNESCAPED_UNICODE);
             exit;
+
         case 'show_key_source':
             $k1 = get_config('local_quizdashboard', 'openai_api_key');
             $k2 = get_config('openai_api_key');

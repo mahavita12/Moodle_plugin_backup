@@ -262,13 +262,26 @@ class questions_manager {
             return [];
         }
         
+        // Attempt-based list first (existing behavior)
         $sql = "SELECT DISTINCT q.id, q.name, q.course
                 FROM {quiz} q
                 JOIN {quiz_attempts} qa ON qa.quiz = q.id
                 WHERE q.course = ? AND qa.state IN ('finished', 'inprogress')
                 ORDER BY q.name";
+        $records = $DB->get_records_sql($sql, [$courseid]);
+
+        // Fallback for Personal Review Courses (no attempts yet): structural by course
+        if (empty($records)) {
+            $fallback = "SELECT DISTINCT q.id, q.name, q.course
+                         FROM {quiz} q
+                         JOIN {course_modules} cm ON cm.instance = q.id
+                         JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                        WHERE q.course = ?
+                        ORDER BY q.name";
+            $records = $DB->get_records_sql($fallback, [$courseid]);
+        }
         
-        return $DB->get_records_sql($sql, [$courseid]);
+        return $records;
     }
     
     /**
