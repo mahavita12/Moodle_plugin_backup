@@ -45,7 +45,7 @@ class reconcile_view_task extends \core\task\adhoc_task {
             $deleting = ($cmrow && !empty($cmrow->deletioninprogress));
         }
 
-        if ($deleting || ($fromattempt && $hasinprogress)) {
+        if ($deleting || $fromattempt) {
             // Reschedule shortly.
             $next = new self();
             $next->set_component('local_personalcourse');

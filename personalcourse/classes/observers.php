@@ -126,8 +126,8 @@ class observers {
                         'fromattempt' => (bool)$frompcattempt_early,
                         'origin' => (string)$origin,
                     ]);
-                    // Small delay to avoid racing immediately after fork/switch.
-                    $task->set_next_run_time(time() + 10);
+                    // Small delay; longer when originating from a personal-quiz attempt to avoid race.
+                    $task->set_next_run_time(time() + ($frompcattempt_early ? 120 : 10));
                     \core\task\manager::queue_adhoc_task($task, true);
                     self::log("queued reconcile task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
                 } else {
@@ -267,7 +267,9 @@ class observers {
                 $shoulddefer = false;
                 $ispcourse = ((int)$pc->courseid === (int)$courseid);
                 $frompcattempt = ($ispcourse && $origin === 'attempt');
-                if (!empty($pq) && $DB->record_exists_select(
+                if ($frompcattempt) {
+                    $shoulddefer = true;
+                } else if (!empty($pq) && $DB->record_exists_select(
                         'quiz_attempts',
                         "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
                         [(int)$pq->quizid, (int)$targetuserid]
