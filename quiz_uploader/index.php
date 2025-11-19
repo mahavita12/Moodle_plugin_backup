@@ -101,27 +101,29 @@ if ($tab === 'copy') {
     $total = 0;
     if ($sourcecourse && !empty($sourcesections)) {
         $selcount = count($sourcesections);
-        if ($selcount > $maxsections) { echo $OUTPUT->notification("You selected $selcount sections; only the first $maxsections are used.", 'warning'); $sourcesections = array_slice($sourcesections, 0, $maxsections); }
-        $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
-        if ($module) {
-            list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
-            $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
-            $countsql = "SELECT COUNT(*)
+        if ($maxsections > 0 && $selcount > $maxsections) { echo $OUTPUT->notification("You selected $selcount sections; only the first $maxsections are used.", 'warning'); $sourcesections = array_slice($sourcesections, 0, $maxsections); }
+        if (!empty($sourcesections)) {
+            $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
+            if ($module) {
+                list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+                $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
+                $countsql = "SELECT COUNT(*)
                            FROM {course_modules} cm
                            JOIN {quiz} q ON q.id = cm.instance
                            JOIN {course_sections} cs ON cs.id = cm.section
                           WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
-            $total = $DB->count_records_sql($countsql, $params);
+                $total = $DB->count_records_sql($countsql, $params);
 
-            $offset = ($page - 1) * $perpage;
-            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
+                $offset = ($page - 1) * $perpage;
+                $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
                           FROM {course_modules} cm
                           JOIN {quiz} q ON q.id = cm.instance
                           JOIN {course_sections} cs ON cs.id = cm.section
                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
                       ORDER BY cs.section ASC, q.name ASC";
-            $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
-            $quizrows = array_values($all);
+                $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
+                $quizrows = array_values($all);
+            }
         }
     }
 
@@ -159,7 +161,7 @@ if ($tab === 'copy') {
         }
         echo html_writer::end_tag('div');
 
-        if ($total > $perpage) {
+        if ($perpage > 0 && $total > $perpage) {
             $pburl = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
             if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl->param('sourcesections[]', $sid); } }
             echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl);
@@ -310,27 +312,29 @@ if ($tab === 'settings') {
     $quizrows = [];
     $total = 0;
     if ($sourcecourse && !empty($sourcesections)) {
-        if (count($sourcesections) > $maxsections) { $sourcesections = array_slice($sourcesections, 0, $maxsections); }
-        $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
-        if ($module) {
-            list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
-            $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
-            $countsql = "SELECT COUNT(*)
+        if ($maxsections > 0 && count($sourcesections) > $maxsections) { $sourcesections = array_slice($sourcesections, 0, $maxsections); }
+        if (!empty($sourcesections)) {
+            $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
+            if ($module) {
+                list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+                $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
+                $countsql = "SELECT COUNT(*)
                            FROM {course_modules} cm
                            JOIN {quiz} q ON q.id = cm.instance
                            JOIN {course_sections} cs ON cs.id = cm.section
                           WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
-            $total = $DB->count_records_sql($countsql, $params);
+                $total = $DB->count_records_sql($countsql, $params);
 
-            $offset = ($page - 1) * $perpage;
-            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
+                $offset = ($page - 1) * $perpage;
+                $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
                           FROM {course_modules} cm
                           JOIN {quiz} q ON q.id = cm.instance
                           JOIN {course_sections} cs ON cs.id = cm.section
                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
                       ORDER BY cs.section ASC, q.name ASC";
-            $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
-            $quizrows = array_values($all);
+                $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
+                $quizrows = array_values($all);
+            }
         }
     }
 
@@ -361,7 +365,7 @@ if ($tab === 'settings') {
         }
         echo html_writer::end_tag('div');
 
-        if ($total > $perpage) {
+        if ($perpage > 0 && $total > $perpage) {
             $pburl2 = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
             if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl2->param('sourcesections[]', $sid); } }
             echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl2);
