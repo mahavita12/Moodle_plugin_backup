@@ -38,9 +38,9 @@ $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 $legacysection = optional_param('sourcesection', 0, PARAM_INT);
 if ($legacysection && empty($sourcesections)) { $sourcesections = [$legacysection]; }
 $maxsections = (int)get_config('local_quiz_uploader', 'maxsections');
-if (!$maxsections) { $maxsections = 4; }
+if ($maxsections < 0) { $maxsections = 0; }
 
-$perpage = 20;
+$perpage = 0;
 
 $renderer = $PAGE->get_renderer('core');
 
@@ -50,6 +50,7 @@ $tabs = [];
 $tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
 $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
 $tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+$tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
 print_tabs([$tabs], $tab);
 
 if ($tab === 'copy') {
@@ -159,7 +160,9 @@ if ($tab === 'copy') {
         echo html_writer::end_tag('div');
 
         if ($total > $perpage) {
-            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesections' => $sourcesections]));
+            $pburl = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
+            if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl->param('sourcesections[]', $sid); } }
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl);
         }
     } else {
         if ($sourcecourse && !empty($sourcesections)) {
@@ -359,7 +362,9 @@ if ($tab === 'settings') {
         echo html_writer::end_tag('div');
 
         if ($total > $perpage) {
-            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesections' => $sourcesections]));
+            $pburl2 = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
+            if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl2->param('sourcesections[]', $sid); } }
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl2);
         }
     } else {
         if ($sourcecourse && !empty($sourcesections)) {
