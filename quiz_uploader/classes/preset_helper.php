@@ -59,10 +59,6 @@ class preset_helper {
             'preferredbehaviour' => $behaviour,
             'timelimit' => $timelimit,
             'reviewbits' => $rv,
-            'completion' => [
-                'enable' => true,
-                'minattempts' => 2,
-            ],
         ];
     }
 
@@ -101,13 +97,32 @@ class preset_helper {
         quiz_update_open_attempts(['quizid' => $quiz->id]);
 
         $cm = \get_coursemodule_from_instance('quiz', $quiz->id, $quiz->course, false, \MUST_EXIST);
-        if ($mode !== 'timeonly' && !empty($cfg['completion']['enable'])) {
-            $DB->set_field('course_modules', 'completion', 2, ['id' => $cm->id]);
-            if ($DB->get_manager()->field_exists('quiz', 'completionminattempts')) {
-                $DB->set_field('quiz', 'completionminattempts', (int)$cfg['completion']['minattempts'], ['id' => $quiz->id]);
+        // Clear completion settings when applying a preset (not in time-only mode).
+        if ($mode !== 'timeonly') {
+            // Course module-level completion flags.
+            $DB->set_field('course_modules', 'completion', 0, ['id' => $cm->id]);
+            if ($DB->get_manager()->field_exists('course_modules', 'completionview')) {
+                $DB->set_field('course_modules', 'completionview', 0, ['id' => $cm->id]);
             }
+            if ($DB->get_manager()->field_exists('course_modules', 'completionexpected')) {
+                $DB->set_field('course_modules', 'completionexpected', 0, ['id' => $cm->id]);
+            }
+            if ($DB->get_manager()->field_exists('course_modules', 'completiongradeitemnumber')) {
+                $DB->set_field('course_modules', 'completiongradeitemnumber', null, ['id' => $cm->id]);
+            }
+
+            // Quiz table-specific completion flags (if present on this Moodle version).
             if ($DB->get_manager()->field_exists('quiz', 'completionminattemptsenabled')) {
-                $DB->set_field('quiz', 'completionminattemptsenabled', 1, ['id' => $quiz->id]);
+                $DB->set_field('quiz', 'completionminattemptsenabled', 0, ['id' => $quiz->id]);
+            }
+            if ($DB->get_manager()->field_exists('quiz', 'completionminattempts')) {
+                $DB->set_field('quiz', 'completionminattempts', 0, ['id' => $quiz->id]);
+            }
+            if ($DB->get_manager()->field_exists('quiz', 'completionattemptsexhausted')) {
+                $DB->set_field('quiz', 'completionattemptsexhausted', 0, ['id' => $quiz->id]);
+            }
+            if ($DB->get_manager()->field_exists('quiz', 'completionpass')) {
+                $DB->set_field('quiz', 'completionpass', 0, ['id' => $quiz->id]);
             }
         }
 

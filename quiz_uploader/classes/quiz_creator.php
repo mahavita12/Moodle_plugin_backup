@@ -53,10 +53,6 @@ class quiz_creator {
                 'closed' => $allreviewoptions // All 8 options
             ];
             
-            // Completion conditions
-            $settings->completionminattempts = 2;
-            $settings->completionminattemptsenabled = 1;
-            
         } else {
             // Default mode settings
             $settings->preferredbehaviour = 'interactive';
@@ -69,10 +65,6 @@ class quiz_creator {
                 'open' => $allreviewoptions, // All 8 options
                 'closed' => $allreviewoptions // All 8 options
             ];
-            
-            // Completion conditions
-            $settings->completionminattempts = 2;
-            $settings->completionminattemptsenabled = 1;
         }
 
         return $settings;
@@ -196,15 +188,7 @@ class quiz_creator {
             $moduleinfo->grade = $settings->grade ?? $quizconfig->maximumgrade ?? 10;
             $moduleinfo->showuserpicture = $settings->showuserpicture ?? $quizconfig->showuserpicture ?? 0;
             $moduleinfo->showblocks = $settings->showblocks ?? $quizconfig->showblocks ?? 0;
-            $moduleinfo->completionattemptsexhausted = $settings->completionattemptsexhausted ?? 0;
-            $moduleinfo->completionpass = $settings->completionpass ?? 0;
             
-            // Completion tracking settings
-            if (isset($settings->completionminattemptsenabled) && $settings->completionminattemptsenabled) {
-                $moduleinfo->completion = 2; // COMPLETION_TRACKING_AUTOMATIC
-                $moduleinfo->completionminattempts = $settings->completionminattempts ?? 2;
-                $moduleinfo->completionminattemptsenabled = 1;
-            }
 
             // Create the module
             $moduleinfo = add_moduleinfo($moduleinfo, $course);
