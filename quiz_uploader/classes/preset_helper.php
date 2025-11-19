@@ -70,6 +70,7 @@ class preset_helper {
 
         if ($mode !== 'timeonly') {
             $quiz->preferredbehaviour = $cfg['preferredbehaviour'];
+            $quiz->shuffleanswers = 0;
             if ($applyTimelimit) {
                 if ($timelimitminutes !== null) {
                     $quiz->timelimit = max(0, (int)$timelimitminutes) * 60;

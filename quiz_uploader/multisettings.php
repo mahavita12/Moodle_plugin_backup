@@ -70,7 +70,7 @@ for ($i = 1; $i <= $columns; $i++) {
 echo html_writer::start_tag('form', ['method' => 'post']);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 
-$gridstyle = 'display:grid;grid-template-columns:repeat(' . $columns . ',minmax(240px,1fr));gap:12px;align-items:start';
+$gridstyle = 'display:grid;grid-template-columns:400px 400px repeat(3, minmax(300px,1fr));gap:12px;align-items:start';
 echo html_writer::start_tag('div', ['style' => $gridstyle]);
 for ($i = 1; $i <= $columns; $i++) {
     $cd = $coldata[$i];
@@ -79,18 +79,18 @@ for ($i = 1; $i <= $columns; $i++) {
 
     echo html_writer::start_div('form-group');
     echo html_writer::label('Category', 'id_cat' . $i);
-    echo html_writer::select($catoptions, 'cat' . $i, $cd->cat, null, ['id' => 'id_cat' . $i, 'onchange' => 'this.form.submit()']);
+    echo html_writer::select($catoptions, 'cat' . $i, $cd->cat, null, ['id' => 'id_cat' . $i, 'onchange' => 'this.form.submit()', 'style' => 'width:100%']);
     echo html_writer::end_div();
 
     $courseoptions = ['0' => '-- Select course --'] + $cd->courses;
     echo html_writer::start_div('form-group');
     echo html_writer::label('Course', 'id_sourcecourse' . $i);
-    echo html_writer::select($courseoptions, 'sourcecourse' . $i, $cd->course, null, ['id' => 'id_sourcecourse' . $i, 'onchange' => 'this.form.submit()']);
+    echo html_writer::select($courseoptions, 'sourcecourse' . $i, $cd->course, null, ['id' => 'id_sourcecourse' . $i, 'onchange' => 'this.form.submit()', 'style' => 'width:100%']);
     echo html_writer::end_div();
 
     echo html_writer::start_div('form-group');
     echo html_writer::label('Sections', 'id_sourcesections' . $i);
-    echo html_writer::select($cd->sectionoptions, 'sourcesections' . $i . '[]', $cd->sections, null, ['id' => 'id_sourcesections' . $i, 'multiple' => 'multiple', 'size' => 8]);
+    echo html_writer::select($cd->sectionoptions, 'sourcesections' . $i . '[]', $cd->sections, null, ['id' => 'id_sourcesections' . $i, 'multiple' => 'multiple', 'size' => 8, 'style' => 'width:100%']);
     echo html_writer::tag('button', 'Load quizzes', ['type' => 'submit', 'class' => 'btn btn-secondary', 'style' => 'margin-left:8px']);
     echo html_writer::end_div();
 
@@ -121,7 +121,7 @@ if ($module) {
 
 // Quizzes list
 echo html_writer::tag('h4', 'Select quizzes to update');
-$gridstyle2 = 'display:grid;grid-template-columns:repeat(' . $columns . ',minmax(240px,1fr));gap:12px;align-items:start;';
+$gridstyle2 = 'display:grid;grid-template-columns:400px 400px repeat(3, minmax(300px,1fr));gap:12px;align-items:start;';
 echo html_writer::start_tag('div', ['style' => $gridstyle2]);
 for ($i = 1; $i <= $columns; $i++) {
     $cd = $coldata[$i];
