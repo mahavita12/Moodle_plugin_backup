@@ -30,11 +30,15 @@ if ($tab !== 'upload') {
 
 $selectedcat = optional_param('cat', 0, PARAM_INT);
 $sourcecourse = optional_param('sourcecourse', 0, PARAM_INT);
-$sourcesection = optional_param('sourcesection', 0, PARAM_INT);
+$sourcesections = optional_param_array('sourcesections', [], PARAM_INT);
 $targetcourse = optional_param('targetcourse', 0, PARAM_INT);
 $targetsection = optional_param('targetsection', 0, PARAM_INT);
 $page = max(1, optional_param('page', 1, PARAM_INT));
-$action = optional_param('action', '', PARAM_ALPHA);
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
+$legacysection = optional_param('sourcesection', 0, PARAM_INT);
+if ($legacysection && empty($sourcesections)) { $sourcesections = [$legacysection]; }
+$maxsections = (int)get_config('local_quiz_uploader', 'maxsections');
+if (!$maxsections) { $maxsections = 4; }
 
 $perpage = 20;
 
@@ -76,7 +80,7 @@ if ($tab === 'copy') {
     echo html_writer::select($courseoptions, 'sourcecourse', $sourcecourse, null, ['id' => 'id_sourcecourse', 'onchange' => 'this.form.submit()']);
     echo html_writer::end_div();
 
-    $sectionoptions = ['0' => '-- Select source section --'];
+    $sectionoptions = [];
     if ($sourcecourse) {
         $sections = $DB->get_records('course_sections', ['course' => $sourcecourse], 'section ASC', 'id, section, name');
         foreach ($sections as $s) {
@@ -85,30 +89,36 @@ if ($tab === 'copy') {
         }
     }
     echo html_writer::start_div('form-group');
-    echo html_writer::label('Source section', 'id_sourcesection');
-    echo html_writer::select($sectionoptions, 'sourcesection', $sourcesection, null, ['id' => 'id_sourcesection', 'onchange' => 'this.form.submit()']);
+    echo html_writer::label('Source sections', 'id_sourcesections');
+    echo html_writer::select($sectionoptions, 'sourcesections[]', $sourcesections, null, ['id' => 'id_sourcesections', 'multiple' => 'multiple', 'size' => 8]);
+    echo html_writer::tag('button', 'Load quizzes', ['type' => 'submit', 'class' => 'btn btn-secondary', 'style' => 'margin-left:8px']);
     echo html_writer::end_div();
 
     echo html_writer::end_tag('form');
 
     $quizrows = [];
     $total = 0;
-    if ($sourcecourse && $sourcesection) {
+    if ($sourcecourse && !empty($sourcesections)) {
+        $selcount = count($sourcesections);
+        if ($selcount > $maxsections) { echo $OUTPUT->notification("You selected $selcount sections; only the first $maxsections are used.", 'warning'); $sourcesections = array_slice($sourcesections, 0, $maxsections); }
         $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
         if ($module) {
-            $params = ['course' => $sourcecourse, 'section' => $sourcesection, 'module' => $module->id];
+            list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+            $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
             $countsql = "SELECT COUNT(*)
                            FROM {course_modules} cm
                            JOIN {quiz} q ON q.id = cm.instance
-                          WHERE cm.course = :course AND cm.section = :section AND cm.module = :module";
+                           JOIN {course_sections} cs ON cs.id = cm.section
+                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
             $total = $DB->count_records_sql($countsql, $params);
 
             $offset = ($page - 1) * $perpage;
-            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name
+            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
                           FROM {course_modules} cm
                           JOIN {quiz} q ON q.id = cm.instance
-                         WHERE cm.course = :course AND cm.section = :section AND cm.module = :module
-                      ORDER BY q.name ASC";
+                          JOIN {course_sections} cs ON cs.id = cm.section
+                         WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
+                      ORDER BY cs.section ASC, q.name ASC";
             $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
             $quizrows = array_values($all);
         }
@@ -119,26 +129,41 @@ if ($tab === 'copy') {
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'copy']);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
     echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesection', 'value' => $sourcesection]);
+    if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
 
     if (!empty($quizrows)) {
         echo html_writer::tag('h4', 'Select quizzes to copy');
+        echo html_writer::start_div('');
+        echo html_writer::tag('button', 'Select all', ['type' => 'button', 'class' => 'btn btn-link select-all-cmids']);
+        echo html_writer::tag('button', 'Clear all', ['type' => 'button', 'class' => 'btn btn-link clear-all-cmids', 'style' => 'margin-left:6px;']);
+        echo html_writer::end_div();
         echo html_writer::start_tag('div', ['style' => 'max-height:300px;overflow:auto;border:1px solid #ddd;padding:8px;']);
+        $cursec = -1;
         foreach ($quizrows as $r) {
+            $secname = ($r->sectionname !== null && $r->sectionname !== '') ? $r->sectionname : ('Section ' . $r->sectionnum);
+            if ($cursec !== (int)$r->sectionid) {
+                if ($cursec !== -1) { echo html_writer::empty_tag('hr'); }
+                echo html_writer::start_div('section-header');
+                echo html_writer::tag('h5', s($secname));
+                echo html_writer::tag('button', 'Select section', ['type' => 'button', 'class' => 'btn btn-sm btn-link select-section', 'data-section' => $r->sectionid]);
+                echo html_writer::tag('button', 'Clear section', ['type' => 'button', 'class' => 'btn btn-sm btn-link clear-section', 'data-section' => $r->sectionid, 'style' => 'margin-left:6px;']);
+                echo html_writer::end_div();
+                $cursec = (int)$r->sectionid;
+            }
             $id = 'q_' . $r->cmid;
             echo html_writer::start_div('');
-            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id]);
+            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id, 'data-section' => $r->sectionid]);
             echo html_writer::label(format_string($r->name) . " (cmid: {$r->cmid})", $id);
             echo html_writer::end_div();
         }
         echo html_writer::end_tag('div');
 
         if ($total > $perpage) {
-            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesection' => $sourcesection]));
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesections' => $sourcesections]));
         }
     } else {
-        if ($sourcecourse && $sourcesection) {
-            echo $OUTPUT->notification('No quizzes found in the selected section.', 'info');
+        if ($sourcecourse && !empty($sourcesections)) {
+            echo $OUTPUT->notification('No quizzes found in the selected section(s).', 'info');
         }
     }
 
@@ -204,6 +229,36 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 JS
     );
+    $PAGE->requires->js_amd_inline(<<<'JS'
+document.addEventListener('click', function(ev){
+  var t = ev.target;
+  if (!t) return;
+  if (t.classList.contains('select-all-cmids')) {
+    ev.preventDefault();
+    var form = t.closest('form');
+    var boxes = form ? form.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-all-cmids')) {
+    ev.preventDefault();
+    var form2 = t.closest('form');
+    var boxes2 = form2 ? form2.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes2.forEach(function(b){ b.checked = false; });
+  } else if (t.classList.contains('select-section')) {
+    ev.preventDefault();
+    var sec = t.getAttribute('data-section');
+    var f = t.closest('form');
+    var bs = f ? f.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]');
+    bs.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-section')) {
+    ev.preventDefault();
+    var sec2 = t.getAttribute('data-section');
+    var f2 = t.closest('form');
+    var bs2 = f2 ? f2.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]');
+    bs2.forEach(function(b){ b.checked = false; });
+  }
+});
+JS
+    );
 }
 
 if ($tab === 'settings') {
@@ -235,7 +290,7 @@ if ($tab === 'settings') {
     echo html_writer::select($courseoptions, 'sourcecourse', $sourcecourse, null, ['id' => 'id_sourcecourse2', 'onchange' => 'this.form.submit()']);
     echo html_writer::end_div();
 
-    $sectionoptions = ['0' => '-- Select section --'];
+    $sectionoptions = [];
     if ($sourcecourse) {
         $sections = $DB->get_records('course_sections', ['course' => $sourcecourse], 'section ASC', 'id, section, name');
         foreach ($sections as $s) {
@@ -244,28 +299,33 @@ if ($tab === 'settings') {
         }
     }
     echo html_writer::start_div('form-group');
-    echo html_writer::label('Section', 'id_sourcesection2');
-    echo html_writer::select($sectionoptions, 'sourcesection', $sourcesection, null, ['id' => 'id_sourcesection2', 'onchange' => 'this.form.submit()']);
+    echo html_writer::label('Sections', 'id_sourcesections2');
+    echo html_writer::select($sectionoptions, 'sourcesections[]', $sourcesections, null, ['id' => 'id_sourcesections2', 'multiple' => 'multiple', 'size' => 8]);
+    echo html_writer::tag('button', 'Load quizzes', ['type' => 'submit', 'class' => 'btn btn-secondary', 'style' => 'margin-left:8px']);
     echo html_writer::end_div();
 
     $quizrows = [];
     $total = 0;
-    if ($sourcecourse && $sourcesection) {
+    if ($sourcecourse && !empty($sourcesections)) {
+        if (count($sourcesections) > $maxsections) { $sourcesections = array_slice($sourcesections, 0, $maxsections); }
         $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
         if ($module) {
-            $params = ['course' => $sourcecourse, 'section' => $sourcesection, 'module' => $module->id];
+            list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+            $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
             $countsql = "SELECT COUNT(*)
                            FROM {course_modules} cm
                            JOIN {quiz} q ON q.id = cm.instance
-                          WHERE cm.course = :course AND cm.section = :section AND cm.module = :module";
+                           JOIN {course_sections} cs ON cs.id = cm.section
+                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
             $total = $DB->count_records_sql($countsql, $params);
 
             $offset = ($page - 1) * $perpage;
-            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name
+            $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
                           FROM {course_modules} cm
                           JOIN {quiz} q ON q.id = cm.instance
-                         WHERE cm.course = :course AND cm.section = :section AND cm.module = :module
-                      ORDER BY q.name ASC";
+                          JOIN {course_sections} cs ON cs.id = cm.section
+                         WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
+                      ORDER BY cs.section ASC, q.name ASC";
             $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
             $quizrows = array_values($all);
         }
@@ -273,22 +333,37 @@ if ($tab === 'settings') {
 
     if (!empty($quizrows)) {
         echo html_writer::tag('h4', 'Select quizzes to update');
+        echo html_writer::start_div('');
+        echo html_writer::tag('button', 'Select all', ['type' => 'button', 'class' => 'btn btn-link select-all-cmids']);
+        echo html_writer::tag('button', 'Clear all', ['type' => 'button', 'class' => 'btn btn-link clear-all-cmids', 'style' => 'margin-left:6px;']);
+        echo html_writer::end_div();
         echo html_writer::start_tag('div', ['style' => 'max-height:300px;overflow:auto;border:1px solid #ddd;padding:8px;']);
+        $cursec2 = -1;
         foreach ($quizrows as $r) {
+            $secname2 = ($r->sectionname !== null && $r->sectionname !== '') ? $r->sectionname : ('Section ' . $r->sectionnum);
+            if ($cursec2 !== (int)$r->sectionid) {
+                if ($cursec2 !== -1) { echo html_writer::empty_tag('hr'); }
+                echo html_writer::start_div('section-header');
+                echo html_writer::tag('h5', s($secname2));
+                echo html_writer::tag('button', 'Select section', ['type' => 'button', 'class' => 'btn btn-sm btn-link select-section', 'data-section' => $r->sectionid]);
+                echo html_writer::tag('button', 'Clear section', ['type' => 'button', 'class' => 'btn btn-sm btn-link clear-section', 'data-section' => $r->sectionid, 'style' => 'margin-left:6px;']);
+                echo html_writer::end_div();
+                $cursec2 = (int)$r->sectionid;
+            }
             $id = 'qq_' . $r->cmid;
             echo html_writer::start_div('');
-            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id]);
+            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id, 'data-section' => $r->sectionid]);
             echo html_writer::label(format_string($r->name) . " (cmid: {$r->cmid})", $id);
             echo html_writer::end_div();
         }
         echo html_writer::end_tag('div');
 
         if ($total > $perpage) {
-            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesection' => $sourcesection]));
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse, 'sourcesections' => $sourcesections]));
         }
     } else {
-        if ($sourcecourse && $sourcesection) {
-            echo $OUTPUT->notification('No quizzes found in the selected section.', 'info');
+        if ($sourcecourse && !empty($sourcesections)) {
+            echo $OUTPUT->notification('No quizzes found in the selected section(s).', 'info');
         }
     }
 
@@ -422,6 +497,36 @@ if ($tab === 'settings') {
 })();
 JS
     );
+    $PAGE->requires->js_amd_inline(<<<'JS'
+document.addEventListener('click', function(ev){
+  var t = ev.target;
+  if (!t) return;
+  if (t.classList.contains('select-all-cmids')) {
+    ev.preventDefault();
+    var form = t.closest('form');
+    var boxes = form ? form.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-all-cmids')) {
+    ev.preventDefault();
+    var form2 = t.closest('form');
+    var boxes2 = form2 ? form2.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes2.forEach(function(b){ b.checked = false; });
+  } else if (t.classList.contains('select-section')) {
+    ev.preventDefault();
+    var sec = t.getAttribute('data-section');
+    var f = t.closest('form');
+    var bs = f ? f.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]');
+    bs.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-section')) {
+    ev.preventDefault();
+    var sec2 = t.getAttribute('data-section');
+    var f2 = t.closest('form');
+    var bs2 = f2 ? f2.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]');
+    bs2.forEach(function(b){ b.checked = false; });
+  }
+});
+JS
+    );
 }
 
 if ($action === 'dryrun_copy' && confirm_sesskey()) {
@@ -457,6 +562,9 @@ if ($action === 'dryrun_copy' && confirm_sesskey()) {
         echo html_writer::start_tag('form', ['method' => 'post']);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'copy']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
+        if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
         foreach ($cmids as $id) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cmids[]', 'value' => $id]); }
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'targetcourse', 'value' => $targetcourse]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'targetsection', 'value' => $targetsection]);
@@ -499,6 +607,9 @@ if ($action === 'dryrun_settings' && confirm_sesskey()) {
         echo html_writer::start_tag('form', ['method' => 'post']);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'settings']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
+        if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
         foreach ($cmids as $id) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cmids[]', 'value' => $id]); }
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'preset', 'value' => $preset]);
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose', 'value' => $timeclose]);

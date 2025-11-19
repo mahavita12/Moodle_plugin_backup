@@ -8,8 +8,8 @@ class settings_service {
         global $DB;
         $results = [];
         $timeclose = $timeclose_enable ? self::parse_timeclose($timeclosestr) : null;
-        $applyTimelimit = ($preset === 'test') && !empty($timelimit_enable);
-        $timelimit_minutes = $applyTimelimit ? max(0, (int)$timelimit_minutes) : 0;
+        $applyTimelimit = !empty($timelimit_enable);
+        $timelimit_minutes = $applyTimelimit ? max(0, (int)$timelimit_minutes) : null;
         foreach ($cmids as $cmid) {
             $res = (object)['cmid' => $cmid, 'success' => false, 'message' => ''];
             try {
@@ -21,7 +21,7 @@ class settings_service {
                 // Apply preset defaults (behaviour, review, timelimit, completion). Leave timeclose as provided only.
                 $mode = ($preset === 'nochange') ? 'timeonly' : 'full';
                 $effpreset = ($preset === 'nochange') ? 'default' : $preset;
-                $timelimitArg = $applyTimelimit ? $timelimit_minutes : null;
+                $timelimitArg = $timelimit_minutes; // null when not applying
                 preset_helper::apply_to_quiz($quizid, $effpreset, $timeclose, $timelimitArg, $mode, $applyTimelimit);
 
                 // Activity classification: best-effort placeholder until field details are provided.
@@ -50,24 +50,41 @@ class settings_service {
 
     private static function maybe_set_activity_classification(int $cmid, string $value): void {
         global $DB;
-        // Attempt to find a customfield field for mod_quiz with shortname 'activityclassification'.
         if (!$DB->get_manager()->table_exists('customfield_field')) { return; }
-        $field = $DB->get_record('customfield_field', ['shortname' => 'activityclassification'], 'id,component,area,configdata');
-        if (!$field) { return; }
-        // Store in customfield_data with instanceid as cmid when area likely maps to module-level data.
+        if (!$DB->get_manager()->table_exists('customfield_category')) { return; }
         if (!$DB->get_manager()->table_exists('customfield_data')) { return; }
+
+        // Find a course module-level field suitable for classification. Prefer our shortname, else fallback to 'activity_tag'.
+        $sql = "SELECT f.id
+                  FROM {customfield_field} f
+                  JOIN {customfield_category} c ON c.id = f.categoryid
+                 WHERE c.component IN ('core_course', 'mod_quiz')
+                   AND c.area = 'course_modules'
+                   AND (f.shortname = :s1 OR f.shortname = :s2)
+              ORDER BY f.id ASC";
+        $field = $DB->get_record_sql($sql, ['s1' => 'activityclassification', 's2' => 'activity_tag']);
+        if (!$field) { return; }
+
+        $ctx = \context_module::instance($cmid, IGNORE_MISSING);
+        $contextid = $ctx ? $ctx->id : null;
+
+        $now = time();
         $data = $DB->get_record('customfield_data', ['fieldid' => $field->id, 'instanceid' => $cmid]);
-        $rec = new \stdClass();
         if ($data) {
-            $rec = $data;
-            $rec->value = $value;
-            $rec->valueformat = 0;
-            $DB->update_record('customfield_data', $rec);
+            $data->value = $value;
+            $data->valueformat = 0;
+            $data->timemodified = $now;
+            if ($contextid) { $data->contextid = $contextid; }
+            $DB->update_record('customfield_data', $data);
         } else {
+            $rec = new \stdClass();
             $rec->fieldid = $field->id;
             $rec->instanceid = $cmid;
             $rec->value = $value;
             $rec->valueformat = 0;
+            $rec->timecreated = $now;
+            $rec->timemodified = $now;
+            if ($contextid) { $rec->contextid = $contextid; }
             $DB->insert_record('customfield_data', $rec);
         }
     }

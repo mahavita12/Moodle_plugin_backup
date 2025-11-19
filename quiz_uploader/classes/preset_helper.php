@@ -71,10 +71,10 @@ class preset_helper {
         if ($mode !== 'timeonly') {
             $quiz->preferredbehaviour = $cfg['preferredbehaviour'];
             if ($applyTimelimit) {
-                if ($preset === 'test') {
+                if ($timelimitminutes !== null) {
+                    $quiz->timelimit = max(0, (int)$timelimitminutes) * 60;
+                } else if ($preset === 'test') {
                     $quiz->timelimit = $cfg['timelimit'];
-                } else {
-                    $quiz->timelimit = 0;
                 }
             }
             foreach ($cfg['reviewbits'] as $field => $bits) {
