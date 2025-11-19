@@ -7,9 +7,11 @@ class settings_service {
     public static function apply_bulk_settings(array $cmids, string $preset, string $timeclosestr, string $activityclass, int $timeclose_enable = 0, int $timelimit_minutes = 0, int $timelimit_enable = 0): array {
         global $DB;
         $results = [];
-        $timeclose = $timeclose_enable ? self::parse_timeclose($timeclosestr) : null;
-        $applyTimelimit = !empty($timelimit_enable);
-        $timelimit_minutes = $applyTimelimit ? max(0, (int)$timelimit_minutes) : null;
+        // If not enabled, explicitly clear (0). If enabled, parse to timestamp.
+        $timeclose = $timeclose_enable ? self::parse_timeclose($timeclosestr) : 0;
+        // Always apply a timelimit value: enabled -> minutes; disabled -> clear (0).
+        $applyTimelimit = true;
+        $timelimit_minutes = !empty($timelimit_enable) ? max(0, (int)$timelimit_minutes) : 0;
         foreach ($cmids as $cmid) {
             $res = (object)['cmid' => $cmid, 'success' => false, 'message' => ''];
             try {
@@ -18,10 +20,10 @@ class settings_service {
                 if (!$quizid) {
                     throw new \moodle_exception('invalidquiz', 'error');
                 }
-                // Apply preset defaults (behaviour, review, timelimit, completion). Leave timeclose as provided only.
+                // Apply preset defaults and requested changes.
                 $mode = ($preset === 'nochange') ? 'timeonly' : 'full';
                 $effpreset = ($preset === 'nochange') ? 'default' : $preset;
-                $timelimitArg = $timelimit_minutes; // null when not applying
+                $timelimitArg = $timelimit_minutes; // minutes or 0 to clear
                 preset_helper::apply_to_quiz($quizid, $effpreset, $timeclose, $timelimitArg, $mode, $applyTimelimit);
 
                 // Activity classification: best-effort placeholder until field details are provided.

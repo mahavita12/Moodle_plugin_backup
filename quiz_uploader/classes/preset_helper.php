@@ -71,15 +71,22 @@ class preset_helper {
         if ($mode !== 'timeonly') {
             $quiz->preferredbehaviour = $cfg['preferredbehaviour'];
             $quiz->shuffleanswers = 0;
-            if ($applyTimelimit) {
-                if ($timelimitminutes !== null) {
-                    $quiz->timelimit = max(0, (int)$timelimitminutes) * 60;
-                } else if ($preset === 'test') {
-                    $quiz->timelimit = $cfg['timelimit'];
-                }
-            }
             foreach ($cfg['reviewbits'] as $field => $bits) {
                 $quiz->$field = $bits;
+            }
+        }
+
+        // Handle timelimit: 0 always clears; positive value only applied for 'test' preset.
+        if ($applyTimelimit) {
+            if ($timelimitminutes !== null) {
+                $m = max(0, (int)$timelimitminutes);
+                if ($m === 0) {
+                    $quiz->timelimit = 0;
+                } else if ($preset === 'test') {
+                    $quiz->timelimit = $m * 60;
+                }
+            } else if ($mode !== 'timeonly' && $preset === 'test') {
+                $quiz->timelimit = $cfg['timelimit'];
             }
         }
         if ($timeclose !== null) {
