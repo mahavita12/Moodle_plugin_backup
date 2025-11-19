@@ -3,6 +3,9 @@ namespace local_quiz_uploader;
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once($CFG->dirroot . '/mod/quiz/lib.php');
+require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
 class preset_helper {
     public static function preset_names(): array {
         return [
@@ -94,6 +97,8 @@ class preset_helper {
         }
 
         $DB->update_record('quiz', $quiz);
+        quiz_update_events($quiz);
+        quiz_update_open_attempts(['quizid' => $quiz->id]);
 
         $cm = \get_coursemodule_from_instance('quiz', $quiz->id, $quiz->course, false, \MUST_EXIST);
         if ($mode !== 'timeonly' && !empty($cfg['completion']['enable'])) {

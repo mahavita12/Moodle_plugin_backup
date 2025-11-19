@@ -278,6 +278,7 @@ class observers {
                 }
                 self::log(($added ? 'ADD' : 'REMOVE') . " flag evt origin={$origin} cmid={$cmid} src={$quizid} pq=" . (!empty($pq)?(int)$pq->quizid:0) . " owner={$targetuserid} defer=" . ($shoulddefer ? '1':'0'));
 
+                // 1. Update Desired State (DB Mapping)
                 if ($added) {
                     // If we re-attributed to the owner, ensure the owner's flag row exists.
                     if ($targetuserid !== $userid) {
@@ -298,68 +299,19 @@ class observers {
                             ]);
                         }
                     }
-                    if ($shoulddefer) {
-                        // Defer structural changes; do not mutate quiz during active attempt.
-                        // Queue reconcile (and unlock only when NOT from personal attempt).
-                        try {
-                            $sourcequizid_for_unlock = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
-                            if (!empty($sourcequizid_for_unlock)) {
-                                if (!$frompcattempt) {
-                                    $unlock = new \local_personalcourse\task\unlock_reconcile_task();
-                                    $unlock->set_component('local_personalcourse');
-                                    $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock]);
-                                    $unlock->set_next_run_time(time());
-                                    \core\task\manager::queue_adhoc_task($unlock, true);
-                                    self::log("queued unlock task (add) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                }
-                                // Queue reconcile as a follow-up (deduped).
-                                $rc = '\\local_personalcourse\\task\\reconcile_view_task';
-                                $cd1 = '"userid":' . (int)$targetuserid;
-                                $cd2 = '"sourcequizid":' . (int)$sourcequizid_for_unlock;
-                                $existsrc = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$rc, "%$cd1%", "%$cd2%"]);
-                                if (!$existsrc) {
-                                    $task = new \local_personalcourse\task\reconcile_view_task();
-                                    $task->set_component('local_personalcourse');
-                                    $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock, 'fromattempt' => (bool)$frompcattempt, 'origin' => (string)$origin]);
-                                    \core\task\manager::queue_adhoc_task($task, true);
-                                    self::log("queued reconcile task (add) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                } else {
-                                    $rec2 = $DB->get_record_sql("SELECT id, nextruntime, attemptsavailable, faildelay, firststartingtime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$rc, "%$cd1%", "%$cd2%"]); 
-                                    if ($rec2) {
-                                        if ((int)$rec2->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$rec2->id]); }
-                                        if ($rec2->attemptsavailable !== null && (int)$rec2->attemptsavailable <= 0) { $DB->set_field('task_adhoc','attemptsavailable', 1, ['id' => (int)$rec2->id]); }
-                                        if (!empty($rec2->firststartingtime)) { $DB->set_field('task_adhoc','firststartingtime', null, ['id' => (int)$rec2->id]); }
-                                        if ((int)$rec2->faildelay > 0) { $DB->set_field('task_adhoc','faildelay', 0, ['id' => (int)$rec2->id]); }
-                                    }
-                                    self::log("reconcile already queued (add) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                }
-                            }
-                        } catch (\Throwable $e) { self::log('queue failed (add): ' . $e->getMessage()); }
-                    } else if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        // Ensure no in-progress/overdue attempts block immediate edits (apply for both public and personal origins).
-                        $hasip = $DB->record_exists_select('quiz_attempts',
-                            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                            [(int)$pq->quizid, (int)$targetuserid]
-                        );
-                        if ($hasip) { /* guarded by defer above */ }
-                        // Dedupe: if this question is in another PQ inside this personal course, move it here.
+
+                    // Soft Deduplication: If this question is in another PQ inside this personal course, remove it from there (softly).
+                    if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
                         $existing = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
                             'questionid' => (int)$questionid,
                         ]);
                         if ($existing && (int)$existing->personalquizid !== (int)$pq->id) {
-                            $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                            if ($oldpq) {
-                                $oldhasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$oldpq->quizid]);
-                                if (!$oldhasfinished) {
-                                    self::delete_inprogress_attempts_for_user_at_quiz((int)$oldpq->quizid, (int)$targetuserid);
-                                    $qb->remove_question((int)$oldpq->quizid, (int)$questionid);
-                                    $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                                }
-                                // If finished attempts exist on the old PQ, skip removal and keep its mapping to preserve reviews.
-                            }
+                            // We only delete the MAPPING for the old quiz. The Task will handle physical removal when safe.
+                            $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
                         }
-                        // Ensure mapping row exists first (mapping drives desired state).
+                        
+                        // Ensure mapping row exists for the new target PQ.
                         $existingmap = $DB->get_record('local_personalcourse_questions', [
                             'personalcourseid' => (int)$pc->id,
                             'personalquizid' => (int)$pq->id,
@@ -383,53 +335,15 @@ class observers {
                                 'timemodified' => time(),
                             ]);
                         }
-                        // Add to current PQ if not present in ACTUAL quiz slots (mapping is auxiliary).
-                        $presentinslots = self::question_present_in_quiz_slots((int)$pq->quizid, (int)$questionid);
-                        if (!$presentinslots) {
-                            $qb->add_questions((int)$pq->quizid, [(int)$questionid]);
-                            // Enforce visibility immediately, sort quizzes in section by name, and queue a modinfo rebuild.
-                            try {
-                                if (!empty($pq->sourcequizid)) {
-                                    \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
-                                }
-                                try {
-                                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
-                                    $sm = new \local_personalcourse\section_manager();
-                                    $sm->sort_quizzes_in_section_by_name((int)$pc->courseid, (int)$cmcur->section);
-                                } catch (\Throwable $se) {}
-                                \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_add');
-                            } catch (\Throwable $e) { }
-                        } else {
-                            // Already present in slots – ensure a mapping row exists/up-to-date.
-                            if (!$DB->record_exists('local_personalcourse_questions', [
-                                'personalcourseid' => (int)$pc->id,
-                                'personalquizid' => (int)$pq->id,
-                                'questionid' => (int)$questionid,
-                            ])) {
-                                $DB->insert_record('local_personalcourse_questions', (object)[
-                                    'personalcourseid' => (int)$pc->id,
-                                    'personalquizid' => (int)$pq->id,
-                                    'questionid' => (int)$questionid,
-                                    'slotid' => null,
-                                    'flagcolor' => $flagcolor ?: 'blue',
-                                    'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
-                                    'originalposition' => null,
-                                    'currentposition' => null,
-                                    'timecreated' => time(),
-                                    'timemodified' => time(),
-                                ]);
-                            }
-                        }
-                        // Quick reconcile to backfill any other mapped questions that are missing in slots.
-                        try { self::quick_reconcile_slots_for_pq((int)$pc->id, (int)$pq->id, (int)$pq->quizid, (int)$targetuserid); } catch (\Throwable $e) {}
                     }
                 } else {
-                    // Removal: remove this question from any personal quiz within the student's personal course.
+                    // Removal: Update DB to remove mapping.
                     $existing = $DB->get_record('local_personalcourse_questions', [
                         'personalcourseid' => (int)$pc->id,
                         'questionid' => (int)$questionid,
                     ]);
-                    // If we re-attributed to the owner, also remove the owner's flag rows across the whole QBE.
+                    
+                    // If we re-attributed to the owner, also remove the owner's flag rows.
                     if ($targetuserid !== $userid) {
                         try {
                             $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => (int)$questionid], IGNORE_MISSING);
@@ -439,76 +353,21 @@ class observers {
                                     list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
                                     $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$targetuserid], $inparams));
                                 } else {
-                                    $DB->delete_records('local_questionflags', [
-                                        'userid' => (int)$targetuserid,
-                                        'questionid' => (int)$questionid,
-                                    ]);
+                                    $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
                                 }
                             } else {
-                                $DB->delete_records('local_questionflags', [
-                                    'userid' => (int)$targetuserid,
-                                    'questionid' => (int)$questionid,
-                                ]);
+                                $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
                             }
                         } catch (\Throwable $e) {
-                            $DB->delete_records('local_questionflags', [
-                                'userid' => (int)$targetuserid,
-                                'questionid' => (int)$questionid,
-                            ]);
+                            $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
                         }
                     }
-                    if ($shoulddefer) {
-                        // Defer structural changes; do not remove from quiz during active attempt.
-                        // Queue reconcile (and unlock only when NOT from personal attempt).
-                        try {
-                            $sourcequizid_for_unlock = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
-                            if (!empty($sourcequizid_for_unlock)) {
-                                if (!$frompcattempt) {
-                                    $unlock = new \local_personalcourse\task\unlock_reconcile_task();
-                                    $unlock->set_component('local_personalcourse');
-                                    $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock]);
-                                    $unlock->set_next_run_time(time());
-                                    \core\task\manager::queue_adhoc_task($unlock, true);
-                                    self::log("queued unlock task (remove) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                }
-                                // Queue reconcile as well (deduped).
-                                $rc = '\\local_personalcourse\\task\\reconcile_view_task';
-                                $cd1 = '"userid":' . (int)$targetuserid;
-                                $cd2 = '"sourcequizid":' . (int)$sourcequizid_for_unlock;
-                                $existsrc = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$rc, "%$cd1%", "%$cd2%"]);
-                                if (!$existsrc) {
-                                    $task = new \local_personalcourse\task\reconcile_view_task();
-                                    $task->set_component('local_personalcourse');
-                                    $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_for_unlock, 'fromattempt' => (bool)$frompcattempt, 'origin' => (string)$origin]);
-                                    \core\task\manager::queue_adhoc_task($task, true);
-                                    self::log("queued reconcile task (remove) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                } else {
-                                    $rec3 = $DB->get_record_sql("SELECT id, nextruntime, attemptsavailable, faildelay, firststartingtime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$rc, "%$cd1%", "%$cd2%"]); 
-                                    if ($rec3) {
-                                        if ((int)$rec3->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$rec3->id]); }
-                                        if ($rec3->attemptsavailable !== null && (int)$rec3->attemptsavailable <= 0) { $DB->set_field('task_adhoc','attemptsavailable', 1, ['id' => (int)$rec3->id]); }
-                                        if (!empty($rec3->firststartingtime)) { $DB->set_field('task_adhoc','firststartingtime', null, ['id' => (int)$rec3->id]); }
-                                        if ((int)$rec3->faildelay > 0) { $DB->set_field('task_adhoc','faildelay', 0, ['id' => (int)$rec3->id]); }
-                                    }
-                                    self::log("reconcile already queued (remove) user={$targetuserid} source={$sourcequizid_for_unlock}");
-                                }
-                            }
-                        } catch (\Throwable $e) { self::log('queue failed (remove): ' . $e->getMessage()); }
-                    } else if ($existing) {
-                        $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existing->personalquizid], 'id, quizid');
-                        if ($targetpq) {
-                            $hasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$targetpq->quizid]);
-                            if (!$hasfinished) {
-                                self::delete_inprogress_attempts_for_user_at_quiz((int)$targetpq->quizid, (int)$targetuserid);
-                                $qb->remove_question((int)$targetpq->quizid, (int)$questionid);
-                                $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                            }
-                        }
-                    } else if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        $hasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$pq->quizid]);
-                        if (!$hasfinished) {
-                            self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
-                            $qb->remove_question((int)$pq->quizid, (int)$questionid);
+
+                    if ($existing) {
+                        $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
+                    } else {
+                        // Fallback: ensure it's gone from this specific PQ mapping if defined
+                        if (!empty($pq)) {
                             $DB->delete_records('local_personalcourse_questions', [
                                 'personalcourseid' => (int)$pc->id,
                                 'personalquizid' => (int)$pq->id,
@@ -516,80 +375,45 @@ class observers {
                             ]);
                         }
                     }
-                    // Quick reconcile to remove any stray slots left without mapping (safety).
-                    try { self::quick_reconcile_slots_for_pq((int)$pc->id, (int)$pq->id, (int)$pq->quizid, (int)$targetuserid); } catch (\Throwable $e) {}
-                    // Enforce visibility after removals, sort, and queue rebuild.
-                    try {
-                        if (!empty($pq) && !empty($pq->sourcequizid)) {
-                            \local_personalcourse\generator_service::enforce_archive_visibility((int)$pc->courseid, (int)$pq->sourcequizid, (int)$pq->quizid);
-                        }
-                        try {
-                            if (!empty($pq)) {
-                                $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
-                                $sm = new \local_personalcourse\section_manager();
-                                $sm->sort_quizzes_in_section_by_name((int)$pc->courseid, (int)$cmcur->section);
-                            }
-                        } catch (\Throwable $se) {}
-                        \local_personalcourse\modinfo_rebuilder::queue((int)$pc->courseid, 'flag_remove');
-                    } catch (\Throwable $e) { }
                 }
 
-                // Always reconcile: compute desired state immediately. Defer structural edits during active PQ attempts.
+                // 2. Queue Reconcile Task (The only way to update structure)
+                // We never call $qb->add/remove directly here.
                 try {
-                    if (!empty($pq) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        $sourcequizid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
-                        if (!empty($sourcequizid)) {
-                            $deferflag = (bool)$shoulddefer;
-                            if ($ispcourse && !$deferflag) {
-                                // Safe to apply immediately: no active attempt; clear in-progress then reconcile.
-                                self::delete_inprogress_attempts_for_user_at_quiz((int)$pq->quizid, (int)$targetuserid);
+                    $sourcequizid_for_task = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
+                    if (!empty($sourcequizid_for_task)) {
+                        // If this event came from a personal attempt, we treat it as 'fromattempt' to respect potential races
+                        $classname = '\\local_personalcourse\\task\\reconcile_view_task';
+                        $cd1 = '"userid":' . (int)$targetuserid;
+                        $cd2 = '"sourcequizid":' . (int)$sourcequizid_for_task;
+                        
+                        // Check if task exists
+                        $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
+                        
+                        if (!$exists) {
+                            $task = new \local_personalcourse\task\reconcile_view_task();
+                            $task->set_component('local_personalcourse');
+                            $task->set_custom_data([
+                                'userid' => (int)$targetuserid,
+                                'sourcequizid' => (int)$sourcequizid_for_task,
+                                'fromattempt' => (bool)$frompcattempt,
+                                'origin' => (string)$origin
+                            ]);
+                            // Run ASAP
+                            $task->set_next_run_time(time()); 
+                            \core\task\manager::queue_adhoc_task($task, true);
+                            self::log("queued reconcile task (queue-first) user={$targetuserid} source={$sourcequizid_for_task}");
+                        } else {
+                            // Task exists, ensure it runs soon
+                            $rec = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
+                            if ($rec && (int)$rec->nextruntime > time()) { 
+                                $DB->set_field('task_adhoc', 'nextruntime', time(), ['id' => (int)$rec->id]); 
                             }
-                            $svc = new \local_personalcourse\generator_service();
-                            $svc->generate_from_source((int)$targetuserid, (int)$sourcequizid, null, 'flags_only', (bool)$deferflag);
-                            // When deferring (e.g., in-progress PQ), enqueue an unlock+reconcile task and a sequence cleanup.
-                            if ($deferflag) {
-                                try {
-                                    // Queue unlock + reconcile for deferred operations, except when originating from personal quiz attempt.
-                                    if (!$frompcattempt) {
-                                        $unlock = new \local_personalcourse\task\unlock_reconcile_task();
-                                        $unlock->set_component('local_personalcourse');
-                                        $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid]);
-                                        $unlock->set_next_run_time(time());
-                                        \core\task\manager::queue_adhoc_task($unlock, true);
-                                        self::log("queued unlock task (deferflag) user={$targetuserid} source={$sourcequizid}");
-                                    }
-                                    $classname = '\\local_personalcourse\\task\\reconcile_view_task';
-                                    $cd1 = '"userid":' . (int)$targetuserid;
-                                    $cd2 = '"sourcequizid":' . (int)$sourcequizid;
-                                    $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
-                                    if (!$exists) {
-                                        $task = new \local_personalcourse\task\reconcile_view_task();
-                                        $task->set_component('local_personalcourse');
-                                        $task->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid, 'fromattempt' => (bool)$frompcattempt, 'origin' => (string)$origin]);
-                                        \core\task\manager::queue_adhoc_task($task, true);
-                                        self::log("queued reconcile task (deferflag) user={$targetuserid} source={$sourcequizid}");
-                                    }
-                                    else {
-                                        $rec3 = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
-                                        if ($rec3 && (int)$rec3->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$rec3->id]); }
-                                    }
-                                    // Also queue a sequence cleanup for the personal course to heal any stale CMIDs.
-                                    $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
-                                    $cd = '"courseid":' . (int)$pc->courseid;
-                                    $exists2 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ?', [$classname2, "%$cd%"]);
-                                    if (!$exists2) {
-                                        $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
-                                        $cleanup->set_component('local_personalcourse');
-                                        $cleanup->set_custom_data(['courseid' => (int)$pc->courseid]);
-                                        \core\task\manager::queue_adhoc_task($cleanup, true);
-                                    }
-                                } catch (\Throwable $q) { self::log('queue deferflag failed: ' . $q->getMessage()); }
-                            }
+                            self::log("reconcile already queued (queue-first) user={$targetuserid} source={$sourcequizid_for_task}");
                         }
                     }
-                } catch (\Throwable $reconerr) {
-                    // Best-effort reconciliation; defer to adhoc if any error occurs.
-                    self::log('reconcile block error: ' . $reconerr->getMessage());
+                } catch (\Throwable $e) {
+                    self::log('queue failed (queue-first): ' . $e->getMessage());
                 }
             }
         } catch (\Throwable $t) {
@@ -790,6 +614,15 @@ class observers {
     private static function quick_reconcile_slots_for_pq(int $personalcourseid, int $pqid, int $quizid, int $ownerid): void {
         global $DB;
         if ($personalcourseid <= 0 || $pqid <= 0 || $quizid <= 0 || $ownerid <= 0) { return; }
+        
+        // Safety Check: Abort if there are active attempts on this quiz.
+        // We do not delete active attempts here. We let the background reconciler handle it later.
+        if ($DB->record_exists_select('quiz_attempts',
+                "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
+                [(int)$quizid, (int)$ownerid])) {
+            return;
+        }
+
         $rows = $DB->get_records('local_personalcourse_questions', [
             'personalcourseid' => $personalcourseid,
             'personalquizid' => $pqid,
@@ -802,8 +635,7 @@ class observers {
             }
         }
         if (empty($missing)) { return; }
-        // Unlock and add all missing in one pass.
-        self::delete_inprogress_attempts_for_user_at_quiz((int)$quizid, (int)$ownerid);
+        // Unlock and add all missing in one pass (only if safe, already checked above).
         try {
             $qb = new \local_personalcourse\quiz_builder();
             $qb->add_questions((int)$quizid, $missing);

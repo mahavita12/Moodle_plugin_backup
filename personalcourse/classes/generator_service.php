@@ -349,6 +349,44 @@ class generator_service {
             ];
         }
 
+        // Check for in-progress/overdue attempts that block structural changes.
+        // If present, we DEFER the update unless the attempt is very old (abandoned).
+        $active_attempts = $DB->get_records_select('quiz_attempts', 
+            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
+            [(int)$pq->quizid, (int)$userid], 'id ASC');
+            
+        $has_active = !empty($active_attempts);
+        $force_break_lock = false;
+        
+        if ($has_active && !$defer) {
+            // Check if attempt is abandoned (e.g., > 24 hours old).
+            // If so, we can delete it to unblock the system.
+            foreach ($active_attempts as $at) {
+                $timemod = (int)($at->timemodified ?? $at->timecreated);
+                if ((time() - $timemod) > 24 * 3600) {
+                    $force_break_lock = true; // Found an abandoned attempt
+                } else {
+                    $force_break_lock = false; // Found a recent attempt, must respect it
+                    break; 
+                }
+            }
+            
+            if (!$force_break_lock) {
+                // Return deferred status - DO NOT MODIFY QUIZ
+                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
+                return (object)[
+                    'personalcourseid' => $personalcourseid,
+                    'mappingid' => (int)$pq->id,
+                    'quizid' => (int)$pq->quizid,
+                    'cmid' => $cmid,
+                    'toadd' => [], 
+                    'toremove' => [],
+                    'deferred' => true,
+                    'reason' => 'active_attempt'
+                ];
+            }
+        }
+
         // Dedupe across the student's personal course: if any desired qid exists in another personal quiz, move it here.
         if (!$defer && !empty($desired)) {
             foreach ($desired as $qid) {
@@ -360,7 +398,11 @@ class generator_service {
                     $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existingpcq->personalquizid], 'id, quizid');
                     if ($oldpq) {
                         $oldhasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$oldpq->quizid]);
-                        if (!$oldhasfinished) {
+                        $oldhasactive = $DB->record_exists_select('quiz_attempts', 
+                            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
+                            [(int)$oldpq->quizid, (int)$userid]);
+
+                        if (!$oldhasfinished && !$oldhasactive) {
                             $qb->remove_question((int)$oldpq->quizid, (int)$qid);
                         }
                     }
@@ -380,6 +422,44 @@ class generator_service {
 
         // If any finished attempts exist for this personal quiz, restrict structural changes to append-only.
         $hasfinishedany = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$pq->quizid]);
+
+        // Check for in-progress/overdue attempts that block structural changes.
+        // If present, we DEFER the update unless the attempt is very old (abandoned).
+        $active_attempts = $DB->get_records_select('quiz_attempts', 
+            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
+            [(int)$pq->quizid, (int)$userid], 'id ASC');
+            
+        $has_active = !empty($active_attempts);
+        $force_break_lock = false;
+        
+        if ($has_active && !$defer) {
+            // Check if attempt is abandoned (e.g., > 24 hours old).
+            // If so, we can delete it to unblock the system.
+            foreach ($active_attempts as $at) {
+                $timemod = (int)($at->timemodified ?? $at->timecreated);
+                if ((time() - $timemod) > 24 * 3600) {
+                    $force_break_lock = true; // Found an abandoned attempt
+                } else {
+                    $force_break_lock = false; // Found a recent attempt, must respect it
+                    break; 
+                }
+            }
+            
+            if (!$force_break_lock) {
+                // Return deferred status - DO NOT MODIFY QUIZ
+                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
+                return (object)[
+                    'personalcourseid' => $personalcourseid,
+                    'mappingid' => (int)$pq->id,
+                    'quizid' => (int)$pq->quizid,
+                    'cmid' => $cmid,
+                    'toadd' => [], // Pretend nothing to add
+                    'toremove' => [], // Pretend nothing to remove
+                    'deferred' => true,
+                    'reason' => 'active_attempt'
+                ];
+            }
+        }
 
         // Detect any existing placeholder description questions in this quiz by idnumber prefix.
         $placeholderprefix = 'pcq_placeholder_';
@@ -548,13 +628,14 @@ class generator_service {
         }
 
         // Delete in-progress/overdue attempts before structural changes.
+        // ONLY if we determined they are abandoned (force_break_lock) or if toadd/toremove logic mandates it (safety).
+        // Since we return deferred above if active attempts exist, this block now only runs if attempts are abandoned.
         if (!empty($toadd) || !empty($toremove)) {
-            $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
-            if (!empty($attempts)) {
+            if (!empty($active_attempts)) { // Re-use fetched attempts
                 $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
                 if ($quiz) {
                     try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                    foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
+                    foreach ($active_attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
                 }
             }
         }
