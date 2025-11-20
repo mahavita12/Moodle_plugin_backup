@@ -28,7 +28,7 @@ $statusfilter  = optional_param('status', '', PARAM_TEXT);
 $quiztypefilter = optional_param('quiztype', '', PARAM_TEXT);
 $classfilter   = optional_param('classification', '', PARAM_ALPHA);
 $weekvalue     = optional_param('week', '', PARAM_TEXT);
-$sort          = optional_param('sort', 'timefinish', PARAM_ALPHA);
+$sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
 
 function local_homeworkdashboard_sort_arrows(string $column, string $current_sort, string $current_dir): string {
@@ -215,7 +215,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                 <div class="filter-group">
                     <label for="courseid"><?php echo get_string('filtercourse', 'local_homeworkdashboard'); ?></label>
                     <select name="courseid" id="courseid">
-                        <option value="0"><?php echo get_string('allcourses'); ?></option>
+                        <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
                         <?php foreach ($courses as $c): ?>
                             <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
                                 <?php echo format_string($c->fullname); ?>
@@ -270,7 +270,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                 </div>
 
                 <div class="filter-group">
-                    <label for="quiztype"><?php echo get_string('quiztype', 'quiz'); ?></label>
+                    <label for="quiztype"><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
                     <select name="quiztype" id="quiztype">
                         <option value=""><?php echo get_string('all'); ?></option>
                         <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
@@ -334,7 +334,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="quizname">
-                        <?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?>
+                        <?php echo get_string('quiz', 'quiz'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="attemptno">
@@ -346,7 +346,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="quiz_type">
-                        <?php echo get_string('quiztype', 'quiz'); ?>
+                        <?php echo get_string('quiztype', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="status">
@@ -365,8 +365,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         Duration
                         <?php echo local_homeworkdashboard_sort_arrows('time_taken', $sort, $dir); ?>
                     </th>
-                    <th class="sortable-column" data-sort="score">
+                    <th>
                         Score
+                    </th>
+                    <th class="sortable-column" data-sort="score">
+                        %
                         <?php echo local_homeworkdashboard_sort_arrows('score', $sort, $dir); ?>
                     </th>
                 </tr>
@@ -374,7 +377,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="13" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
+                        <td colspan="14" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
@@ -411,7 +414,15 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                     <?php echo get_string('view'); ?>
                                 </a>
                             </td>
-                            <td><?php echo (int)$row->attemptno; ?></td>
+                            <td>
+                                <?php if (!empty($row->lastattemptid)): ?>
+                                    <a href="<?php echo (new moodle_url('/mod/quiz/review.php', ['attempt' => (int)$row->lastattemptid]))->out(false); ?>" target="_blank">
+                                        <?php echo (int)$row->attemptno; ?>
+                                    </a>
+                                <?php else: ?>
+                                    <?php echo (int)$row->attemptno; ?>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <?php if ($row->classification !== ''): ?>
                                     <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['classification' => $row->classification]))->out(false); ?>">
@@ -434,11 +445,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php $statusurl = new moodle_url('/local/homeworkdashboard/index.php', ['status' => $row->status]); ?>
                                 <a href="<?php echo $statusurl->out(false); ?>">
                                     <?php if ($row->status === 'Completed'): ?>
-                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
+                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span></span>
                                     <?php elseif ($row->status === 'Low grade'): ?>
-                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
+                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span></span>
                                     <?php else: ?>
-                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
+                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span></span>
                                     <?php endif; ?>
                                 </a>
                             </td>
@@ -464,22 +475,24 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php endif; ?>
                             </td>
                             <td><?php echo s($row->time_taken); ?></td>
+                            <?php
+                                $rawscore = isset($row->score) ? (float)$row->score : 0.0;
+                                $maxscore = isset($row->maxscore) ? (float)$row->maxscore : 0.0;
+                                $percent  = isset($row->percentage) ? (float)$row->percentage : 0.0;
+                            ?>
                             <td>
-                                <?php
-                                    $rawscore = isset($row->score) ? (float)$row->score : 0.0;
-                                    $maxscore = isset($row->maxscore) ? (float)$row->maxscore : 0.0;
-                                    $percent  = isset($row->percentage) ? (float)$row->percentage : 0.0;
-                                ?>
                                 <?php if ($maxscore > 0.0 && $rawscore > 0.0): ?>
-                                    <?php echo format_float($rawscore, 2) . ' / ' . format_float($maxscore, 2); ?><br>
-                                    <?php echo format_float($percent, 2) . '%'; ?>
-                                <?php elseif ($percent > 0.0): ?>
+                                    <?php echo format_float($rawscore, 2) . ' / ' . format_float($maxscore, 2); ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($percent > 0.0): ?>
                                     <?php echo format_float($percent, 2) . '%'; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="13">
+                            <td colspan="14">
                                 <?php if (empty($attempts)): ?>
                                     <div class="no-data"><?php echo get_string('none'); ?></div>
                                 <?php else: ?>
@@ -487,10 +500,12 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                         <thead>
                                             <tr>
                                                 <th><?php echo get_string('attempt', 'quiz'); ?></th>
+                                                <th><?php echo get_string('status'); ?></th>
+                                                <th>Closed</th>
                                                 <th>Finished</th>
                                                 <th>Duration</th>
                                                 <th>Score</th>
-                                                <th><?php echo get_string('status'); ?></th>
+                                                <th>%</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -499,6 +514,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                                     $timestart = (int)$attempt->timestart;
                                                     $timefinish = (int)$attempt->timefinish;
                                                     $durationstr = '';
+                                                    $duration = 0;
                                                     if ($timestart > 0 && $timefinish > 0 && $timefinish > $timestart) {
                                                         $duration = $timefinish - $timestart;
                                                         $hours = (int) floor($duration / 3600);
@@ -514,9 +530,37 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                                     }
                                                     $score = $attempt->sumgrades !== null ? (float)$attempt->sumgrades : 0.0;
                                                     $percent = ($row->maxscore > 0 && $score > 0) ? round(($score / $row->maxscore) * 100.0, 2) : 0.0;
+
+                                                    $isshort = ($duration > 0 && $duration < 180);
+
+                                                    if ($isshort) {
+                                                        $statuslabel = get_string('attempt_status_short', 'local_homeworkdashboard');
+                                                    } else if ($percent >= 30.0) {
+                                                        $statuslabel = get_string('attempt_status_completed', 'local_homeworkdashboard');
+                                                    } else if ($percent > 0.0) {
+                                                        $statuslabel = get_string('attempt_status_below', 'local_homeworkdashboard');
+                                                    } else if ($duration > 0) {
+                                                        $statuslabel = get_string('attempt_status_attempted', 'local_homeworkdashboard');
+                                                    } else {
+                                                        $statuslabel = s($attempt->state);
+                                                    }
                                                 ?>
-                                                <tr>
-                                                    <td><?php echo (int)$attempt->attempt; ?></td>
+                                                <tr class="<?php echo $isshort ? 'hw-attempt-short' : ''; ?>">
+                                                    <td>
+                                                        <?php if (!empty($attempt->id)): ?>
+                                                            <a href="<?php echo (new moodle_url('/mod/quiz/review.php', ['attempt' => (int)$attempt->id]))->out(false); ?>" target="_blank">
+                                                                <?php echo (int)$attempt->attempt; ?>
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <?php echo (int)$attempt->attempt; ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?php echo s($statuslabel); ?></td>
+                                                    <td>
+                                                        <?php if (!empty($row->timeclose)): ?>
+                                                            <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
+                                                        <?php endif; ?>
+                                                    </td>
                                                     <td>
                                                         <?php if (!empty($attempt->timefinish)): ?>
                                                             <?php echo userdate($attempt->timefinish, get_string('strftimedatetime', 'langconfig')); ?>
@@ -525,13 +569,14 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                                     <td><?php echo s($durationstr); ?></td>
                                                     <td>
                                                         <?php if ($row->maxscore > 0 && $score > 0): ?>
-                                                            <?php echo format_float($score, 2) . ' / ' . format_float($row->maxscore, 2); ?><br>
-                                                            <?php echo format_float($percent, 2) . '%'; ?>
-                                                        <?php elseif ($percent > 0.0): ?>
+                                                            <?php echo format_float($score, 2) . ' / ' . format_float($row->maxscore, 2); ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <?php if ($percent > 0.0): ?>
                                                             <?php echo format_float($percent, 2) . '%'; ?>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td><?php echo s($attempt->state); ?></td>
                                                 </tr>
                                             <?php endforeach; ?>
                                         </tbody>

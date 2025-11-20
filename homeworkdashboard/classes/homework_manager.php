@@ -12,7 +12,7 @@ class homework_manager {
     private const DEFAULT_WINDOW_DAYS = 7;
 
     /** Minimum percentage to treat an attempt as completed (for green tick). */
-    private const COMPLETION_PERCENT_THRESHOLD = 20.0;
+    private const COMPLETION_PERCENT_THRESHOLD = 30.0;
 
     /**
      * Get effective homework window (days) for a course.
@@ -137,7 +137,7 @@ class homework_manager {
     private function build_window(int $timeclose, int $windowdays): array {
         $days = max(1, $windowdays);
         $end = $timeclose;
-        $start = $timeclose - ($days * 24 * 60 * 60);
+        $start = $timeclose - ($days * 24 * 60 * 60) + 60;
         return [$start, $end];
     }
 
@@ -159,7 +159,7 @@ class homework_manager {
         $params['start'] = $windowstart;
         $params['end'] = $windowend;
 
-        $sql = "SELECT qa.userid, qa.sumgrades, qa.timefinish
+        $sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
                   FROM {quiz_attempts} qa
                  WHERE qa.quiz = :quizid
                    AND qa.state = 'finished'
@@ -173,6 +173,17 @@ class homework_manager {
         $grade = ($quizgrade > 0.0) ? $quizgrade : 0.0;
 
         foreach ($attempts as $row) {
+            $timestart = (int)$row->timestart;
+            $timefinish = (int)$row->timefinish;
+            if ($timestart <= 0 || $timefinish <= $timestart) {
+                continue;
+            }
+            $duration = $timefinish - $timestart;
+            if ($duration < 180) {
+                // Treat attempts shorter than 3 minutes as non-attempts for status.
+                continue;
+            }
+
             $uid = (int)$row->userid;
             if (!isset($peruser[$uid])) {
                 $peruser[$uid] = ['attempts' => 0, 'bestpercent' => 0.0];
@@ -315,6 +326,21 @@ class homework_manager {
         return [$weekstart, $weekend];
     }
 
+    private function get_latest_sunday_week(): array {
+        $now = time();
+        if ((int)date('w', $now) === 0) {
+            $sundaydate = date('Y-m-d', $now);
+        } else {
+            $sundayts = strtotime('last sunday', $now);
+            if ($sundayts === false) {
+                return [0, 0];
+            }
+            $sundaydate = date('Y-m-d', $sundayts);
+        }
+
+        return $this->get_week_bounds($sundaydate);
+    }
+
     /**
      * Build homework dashboard rows (one row per student + quiz).
      *
@@ -347,6 +373,160 @@ class homework_manager {
 
         $now = time();
         $usesnapshots = ($weekstart > 0 && $weekend > 0 && $weekend < $now);
+
+        if (empty($weekvalue)) {
+            [$latestweekstart, $latestweekend] = $this->get_latest_sunday_week();
+            if ($latestweekstart > 0 && $latestweekend > 0) {
+                $params = [
+                    'lateststart' => $latestweekstart,
+                ];
+
+                $sql = "SELECT
+                            s.id,
+                            s.userid,
+                            s.courseid,
+                            s.cmid,
+                            s.quizid,
+                            s.timeclose,
+                            s.windowdays,
+                            s.windowstart,
+                            s.attempts,
+                            s.bestpercent,
+                            s.firstfinish,
+                            s.lastfinish,
+                            s.status,
+                            s.classification,
+                            s.quiztype,
+                            s.computedat,
+                            q.name      AS quizname,
+                            q.grade,
+                            c.fullname  AS coursename,
+                            cat.id      AS categoryid,
+                            cat.name    AS categoryname,
+                            cm.id       AS cmid_real,
+                            cs.id       AS sectionid,
+                            cs.name     AS sectionname,
+                            cs.section  AS sectionnumber
+                        FROM {local_homework_status} s
+                        JOIN {quiz} q ON q.id = s.quizid
+                        JOIN {course} c ON c.id = s.courseid
+                        JOIN {course_categories} cat ON cat.id = c.category
+                        JOIN {course_modules} cm ON cm.id = s.cmid
+                        JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                        JOIN {course_sections} cs ON cs.id = cm.section
+                       WHERE s.timeclose > 0 AND s.timeclose < :lateststart";
+
+                if ($categoryid > 0) {
+                    $sql .= " AND c.category = :categoryid";
+                    $params['categoryid'] = $categoryid;
+                }
+                if ($courseid > 0) {
+                    $sql .= " AND c.id = :courseid";
+                    $params['courseid'] = $courseid;
+                }
+                if ($sectionid > 0) {
+                    $sql .= " AND cs.id = :sectionid";
+                    $params['sectionid'] = $sectionid;
+                }
+                if ($quizid > 0) {
+                    $sql .= " AND q.id = :quizid";
+                    $params['quizid'] = $quizid;
+                }
+                if ($userid > 0) {
+                    $sql .= " AND s.userid = :userid";
+                    $params['userid'] = $userid;
+                }
+                if ($classificationfilter !== '') {
+                    $sql .= " AND s.classification = :classification";
+                    $params['classification'] = $classificationfilter;
+                }
+                if ($quiztypefilter !== '') {
+                    $sql .= " AND s.quiztype = :quiztype";
+                    $params['quiztype'] = $quiztypefilter;
+                }
+
+                $sql .= " ORDER BY c.fullname, q.name";
+
+                $snapshots = $DB->get_records_sql($sql, $params);
+
+                if (!empty($snapshots)) {
+                    $userids = [];
+                    foreach ($snapshots as $s) {
+                        $userids[] = (int)$s->userid;
+                    }
+                    $userids = array_values(array_unique($userids));
+
+                    if (!empty($userids)) {
+                        list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
+                        $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
+                    } else {
+                        $userrecs = [];
+                    }
+
+                    foreach ($snapshots as $s) {
+                        $uid = (int)$s->userid;
+                        $userdata = $userrecs[$uid] ?? null;
+                        $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
+
+                        if ($studentname !== '' && $fullname !== $studentname) {
+                            continue;
+                        }
+
+                        $snapstatus = (string)$s->status;
+                        if ($snapstatus === 'completed') {
+                            $hwstatus = 'Completed';
+                        } else if ($snapstatus === 'lowgrade') {
+                            $hwstatus = 'Low grade';
+                        } else {
+                            $hwstatus = 'No attempt';
+                        }
+
+                        if ($statusfilter !== '' && strcasecmp($statusfilter, $hwstatus) !== 0) {
+                            continue;
+                        }
+
+                        $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
+
+                        $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
+                        $bestpercent = (float)$s->bestpercent;
+                        $bestscore = 0.0;
+                        if ($maxscore > 0.0 && $bestpercent > 0.0) {
+                            $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
+                        }
+
+                        $rows[] = (object) [
+                            'userid'       => $uid,
+                            'studentname'  => $fullname,
+                            'courseid'     => (int)$s->courseid,
+                            'coursename'   => $s->coursename,
+                            'categoryid'   => (int)$s->categoryid,
+                            'categoryname' => $s->categoryname,
+                            'sectionid'    => (int)$s->sectionid,
+                            'sectionname'  => $s->sectionname,
+                            'sectionnumber'=> $s->sectionnumber,
+                            'quizid'       => (int)$s->quizid,
+                            'quizname'     => $s->quizname,
+                            'cmid'         => (int)$s->cmid_real,
+                            'classification'=> $s->classification ?? '',
+                            'lastattemptid'=> 0,
+                            'attemptno'    => (int)$s->attempts,
+                            'status'       => $hwstatus,
+                            'timestart'    => 0,
+                            'timefinish'   => $timefinish,
+                            'time_taken'   => '',
+                            'score'        => $bestscore,
+                            'maxscore'     => $maxscore,
+                            'percentage'   => $bestpercent,
+                            'quiz_type'    => $s->quiztype ?? '',
+                            'timeclose'    => (int)$s->timeclose,
+                        ];
+                    }
+                }
+
+                $weekstart = $latestweekstart;
+                $weekend = $latestweekend;
+            }
+        }
 
         if ($usesnapshots) {
             $params = [
@@ -501,10 +681,23 @@ class homework_manager {
                 return [];
             }
 
-            $sortkey = $sort ?: 'timefinish';
+            $sortkey = $sort ?: 'timeclose';
             $direction = (strtoupper($dir) === 'ASC') ? 1 : -1;
 
             usort($rows, function($a, $b) use ($sortkey, $direction) {
+                if ($sortkey === 'timeclose') {
+                    $coursecmp = strcmp((string)$a->coursename, (string)$b->coursename);
+                    if ($coursecmp !== 0) {
+                        return $coursecmp;
+                    }
+                    $va = $a->timeclose ?? 0;
+                    $vb = $b->timeclose ?? 0;
+                    if ($va == $vb) {
+                        return 0;
+                    }
+                    return ($va < $vb ? -1 : 1) * $direction;
+                }
+
                 $map = [
                     'userid'       => 'userid',
                     'studentname'  => 'studentname',
@@ -520,7 +713,7 @@ class homework_manager {
                     'time_taken'   => 'time_taken',
                     'score'        => 'percentage',
                 ];
-                $field = $map[$sortkey] ?? 'timefinish';
+                $field = $map[$sortkey] ?? 'timeclose';
                 $va = $a->$field ?? null;
                 $vb = $b->$field ?? null;
                 if ($va == $vb) {
@@ -538,7 +731,7 @@ class homework_manager {
                     q.id       AS quizid,
                     q.name     AS quizname,
                     q.course   AS courseid,
-                    q.timeclose,
+                    COALESCE(q.timeclose, ev.eventclose) AS timeclose,
                     q.grade,
                     c.fullname AS coursename,
                     cat.id     AS categoryid,
@@ -553,7 +746,14 @@ class homework_manager {
                 JOIN {course_modules} cm ON cm.instance = q.id
                 JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
                 JOIN {course_sections} cs ON cs.id = cm.section
-                WHERE q.timeclose IS NOT NULL AND q.timeclose > 0";
+                LEFT JOIN (
+                    SELECT instance AS quizid, MAX(timestart) AS eventclose
+                      FROM {event}
+                     WHERE modulename = 'quiz' AND eventtype = 'close'
+                  GROUP BY instance
+                ) ev ON ev.quizid = q.id
+                WHERE ((q.timeclose IS NOT NULL AND q.timeclose > 0)
+                   OR ((q.timeclose IS NULL OR q.timeclose = 0) AND ev.eventclose IS NOT NULL))";
 
         if ($categoryid > 0) {
             $sql .= " AND c.category = :categoryid";
@@ -572,7 +772,7 @@ class homework_manager {
             $params['quizid'] = $quizid;
         }
         if ($weekstart > 0 && $weekend > 0) {
-            $sql .= " AND q.timeclose BETWEEN :weekstart AND :weekend";
+            $sql .= " AND COALESCE(q.timeclose, ev.eventclose) BETWEEN :weekstart AND :weekend";
             $params['weekstart'] = $weekstart;
             $params['weekend'] = $weekend;
         }
@@ -632,17 +832,28 @@ class homework_manager {
                               AND qa.timefinish BETWEEN :start AND :end";
             $attempts = $DB->get_records_sql($attemptsql, $apparams);
 
-            // Index attempts per user.
+            // Index attempts per user (filtering out very short attempts).
             $peruser = [];
             $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
 
             foreach ($attempts as $a) {
+                $timestart = (int)$a->timestart;
+                $timefinish = (int)$a->timefinish;
+                if ($timestart <= 0 || $timefinish <= $timestart) {
+                    continue;
+                }
+                $duration = $timefinish - $timestart;
+                if ($duration < 180) {
+                    // Attempts shorter than 3 minutes are ignored for homework status.
+                    continue;
+                }
+
                 $uid = (int)$a->userid;
                 if (!isset($peruser[$uid])) {
                     $peruser[$uid] = [
                         'attempts' => [],
                         'bestpercent' => 0.0,
-                        'last' => null,
+                        'best' => null,
                     ];
                 }
                 $peruser[$uid]['attempts'][] = $a;
@@ -651,11 +862,8 @@ class homework_manager {
                     $pct = ((float)$a->sumgrades / $grade) * 100.0;
                     if ($pct > $peruser[$uid]['bestpercent']) {
                         $peruser[$uid]['bestpercent'] = $pct;
+                        $peruser[$uid]['best'] = $a;
                     }
-                }
-
-                if ($peruser[$uid]['last'] === null || (int)$a->timefinish > (int)$peruser[$uid]['last']->timefinish) {
-                    $peruser[$uid]['last'] = $a;
                 }
             }
 
@@ -674,9 +882,9 @@ class homework_manager {
                     continue;
                 }
 
-                $summary = $peruser[$uid] ?? ['attempts' => [], 'bestpercent' => 0.0, 'last' => null];
+                $summary = $peruser[$uid] ?? ['attempts' => [], 'bestpercent' => 0.0, 'best' => null];
                 $best = $summary['bestpercent'];
-                $last = $summary['last'];
+                $bestattempt = $summary['best'];
 
                 // Determine homework status.
                 if (empty($summary['attempts'])) {
@@ -692,8 +900,8 @@ class homework_manager {
                     continue;
                 }
 
-                $timestart = $last ? (int)$last->timestart : 0;
-                $timefinish = $last ? (int)$last->timefinish : 0;
+                $timestart = $bestattempt ? (int)$bestattempt->timestart : 0;
+                $timefinish = $bestattempt ? (int)$bestattempt->timefinish : 0;
                 $time_taken = '';
                 if ($timestart > 0 && $timefinish > 0 && $timefinish > $timestart) {
                     $duration = $timefinish - $timestart;
@@ -709,7 +917,7 @@ class homework_manager {
                     }
                 }
 
-                $lastscore = $last && $last->sumgrades !== null ? (float)$last->sumgrades : 0.0;
+                $lastscore = $bestattempt && $bestattempt->sumgrades !== null ? (float)$bestattempt->sumgrades : 0.0;
 
                 $rows[] = (object) [
                     'userid'       => $uid,
@@ -725,8 +933,8 @@ class homework_manager {
                     'quizname'     => $qrec->quizname,
                     'cmid'         => (int)$qrec->cmid,
                     'classification'=> $classification,
-                    'lastattemptid'=> $last ? (int)$last->id : 0,
-                    'attemptno'    => $last ? (int)$last->attempt : 0,
+                    'lastattemptid'=> $bestattempt ? (int)$bestattempt->id : 0,
+                    'attemptno'    => $bestattempt ? (int)$bestattempt->attempt : 0,
                     'status'       => $hwstatus,
                     'timestart'    => $timestart,
                     'timefinish'   => $timefinish,
@@ -894,6 +1102,17 @@ class homework_manager {
 
             $peruser = [];
             foreach ($attempts as $a) {
+                $timestart = (int)$a->timestart;
+                $timefinish = (int)$a->timefinish;
+                if ($timestart <= 0 || $timefinish <= $timestart) {
+                    continue;
+                }
+                $duration = $timefinish - $timestart;
+                if ($duration < 180) {
+                    // Ignore attempts shorter than 3 minutes.
+                    continue;
+                }
+
                 $uid = (int)$a->userid;
                 if (!isset($peruser[$uid])) {
                     $peruser[$uid] = [
@@ -906,13 +1125,12 @@ class homework_manager {
 
                 $peruser[$uid]['attempts']++;
 
-                $tf = (int)$a->timefinish;
-                if ($tf > 0) {
-                    if ($peruser[$uid]['firstfinish'] === 0 || $tf < $peruser[$uid]['firstfinish']) {
-                        $peruser[$uid]['firstfinish'] = $tf;
+                if ($timefinish > 0) {
+                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
+                        $peruser[$uid]['firstfinish'] = $timefinish;
                     }
-                    if ($tf > $peruser[$uid]['lastfinish']) {
-                        $peruser[$uid]['lastfinish'] = $tf;
+                    if ($timefinish > $peruser[$uid]['lastfinish']) {
+                        $peruser[$uid]['lastfinish'] = $timefinish;
                     }
                 }
 

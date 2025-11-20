@@ -77,3 +77,9 @@
 .hw-info {
     margin-top: 10px;
 }
+
+.hw-attempts-table tr.hw-attempt-short td {
+    color: #6c757d;
+    background-color: #f8f9fa;
+    font-style: italic;
+}
