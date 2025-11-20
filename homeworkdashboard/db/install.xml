@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/homeworkdashboard/db" VERSION="2025112000" COMMENT="XMLDB for local_homeworkdashboard"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_homework_status" COMMENT="Per-user homework status snapshots by quiz close date">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timeclose" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz close time (timestamp)"/>
+        <FIELD NAME="windowdays" TYPE="int" LENGTH="4" NOTNULL="true" SEQUENCE="false" DEFAULT="7" COMMENT="Window length in days before close"/>
+        <FIELD NAME="windowstart" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Start of homework window (timestamp)"/>
+        <FIELD NAME="attempts" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Finished attempts in window"/>
+        <FIELD NAME="bestpercent" TYPE="number" LENGTH="5,2" NOTNULL="true" SEQUENCE="false" DEFAULT="0.00" COMMENT="Best percentage grade in window"/>
+        <FIELD NAME="firstfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="First finished attempt time within window"/>
+        <FIELD NAME="lastfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last finished attempt time within window"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="noattempt|completed|lowgrade"/>
+        <FIELD NAME="classification" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="New or Revision snapshot"/>
+        <FIELD NAME="quiztype" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Essay or Non-Essay"/>
+        <FIELD NAME="computedat" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When this snapshot was computed"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="user_timeclose_idx" UNIQUE="false" FIELDS="userid,timeclose"/>
+        <INDEX NAME="course_timeclose_idx" UNIQUE="false" FIELDS="courseid,timeclose"/>
+        <INDEX NAME="cmid_idx" UNIQUE="false" FIELDS="cmid"/>
+        <INDEX NAME="quizid_idx" UNIQUE="false" FIELDS="quizid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

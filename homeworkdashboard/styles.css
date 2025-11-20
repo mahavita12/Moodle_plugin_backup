@@ -1,0 +1,79 @@
+.hw-dashboard-container {
+    margin-top: 20px;
+}
+
+.hw-filters {
+    margin-bottom: 15px;
+}
+
+.hw-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.hw-filter-group {
+    min-width: 220px;
+}
+
+.hw-filter-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.hw-legend {
+    margin: 10px 0 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.hw-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    gap: 4px;
+}
+
+.hw-badge-icon {
+    font-size: 12px;
+}
+
+.hw-badge-completed {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.hw-badge-lowgrade {
+    background: #fff3cd;
+    color: #664d03;
+}
+
+.hw-badge-noattempt {
+    background: #f8d7da;
+    color: #842029;
+}
+
+.hw-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.hw-table th,
+.hw-table td {
+    padding: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.hw-table th {
+    text-align: left;
+    background: #f8f9fa;
+}
+
+.hw-info {
+    margin-top: 10px;
+}
