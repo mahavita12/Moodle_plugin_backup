@@ -333,6 +333,7 @@ class homework_manager {
         string $studentname,
         string $quiztypefilter,
         string $statusfilter,
+        string $classificationfilter,
         ?string $weekvalue,
         string $sort,
         string $dir
@@ -399,6 +400,12 @@ class homework_manager {
         foreach ($quizrecords as $qrec) {
             $qtimeclose = (int)$qrec->timeclose;
             if ($qtimeclose <= 0) {
+                continue;
+            }
+
+            // Activity classification is per course module.
+            $classification = $this->get_activity_classification((int)$qrec->cmid);
+            if ($classificationfilter !== '' && strcasecmp($classificationfilter, $classification) !== 0) {
                 continue;
             }
 
@@ -524,9 +531,14 @@ class homework_manager {
                     'coursename'   => $qrec->coursename,
                     'categoryid'   => (int)$qrec->categoryid,
                     'categoryname' => $qrec->categoryname,
+                    'sectionid'    => (int)$qrec->sectionid,
+                    'sectionname'  => $qrec->sectionname,
+                    'sectionnumber'=> $qrec->sectionnumber,
                     'quizid'       => (int)$qrec->quizid,
                     'quizname'     => $qrec->quizname,
                     'cmid'         => (int)$qrec->cmid,
+                    'classification'=> $classification,
+                    'lastattemptid'=> $last ? (int)$last->id : 0,
                     'attemptno'    => $last ? (int)$last->attempt : 0,
                     'status'       => $hwstatus,
                     'timestart'    => $timestart,
