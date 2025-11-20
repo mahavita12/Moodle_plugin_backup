@@ -486,6 +486,7 @@ class homework_manager {
                     'maxscore'     => ($s->grade > 0.0) ? (float)$s->grade : 0.0,
                     'percentage'   => (float)$s->bestpercent,
                     'quiz_type'    => $s->quiztype ?? '',
+                    'timeclose'    => (int)$s->timeclose,
                 ];
             }
 
@@ -722,6 +723,7 @@ class homework_manager {
                     'maxscore'     => $grade,
                     'percentage'   => ($grade > 0.0 && $lastscore > 0.0) ? round(($lastscore / $grade) * 100.0, 2) : 0.0,
                     'quiz_type'    => $quiztype,
+                    'timeclose'    => $qtimeclose,
                 ];
             }
         }

@@ -311,6 +311,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     <th><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></th>
                     <th><?php echo get_string('quiztype', 'quiz'); ?></th>
                     <th><?php echo get_string('status'); ?></th>
+                    <th>Closed</th>
                     <th>Finished</th>
                     <th>Duration</th>
                     <th>Score</th>
@@ -319,7 +320,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="12" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
+                        <td colspan="13" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
@@ -353,6 +354,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php endif; ?>
                             </td>
                             <td>
+                                <?php if (!empty($row->timeclose)): ?>
+                                    <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
                                 <?php if (!empty($row->timefinish)): ?>
                                     <?php echo userdate($row->timefinish, get_string('strftimedatetime', 'langconfig')); ?>
                                 <?php endif; ?>
@@ -365,7 +371,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             </td>
                         </tr>
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="12">
+                            <td colspan="13">
                                 <?php if (empty($attempts)): ?>
                                     <div class="no-data"><?php echo get_string('none'); ?></div>
                                 <?php else: ?>
