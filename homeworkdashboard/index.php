@@ -174,7 +174,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
     <?php if ($canmanage): ?>
     <div class="hw-backfill">
         <form method="post" action="<?php echo $baseurl->out(false); ?>" class="filter-form">
-            <?php echo sesskey(); ?>
+            <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>" />
             <label for="backfillweeks"><?php echo get_string('backfill_weeks', 'local_homeworkdashboard'); ?></label>
             <input type="number" name="backfillweeks" id="backfillweeks" value="4" min="1" max="52" />
             <button type="submit" name="backfill" value="1" class="btn btn-secondary"><?php echo get_string('backfill_from_events', 'local_homeworkdashboard'); ?></button>
