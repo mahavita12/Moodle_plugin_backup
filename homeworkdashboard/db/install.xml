@@ -12,10 +12,10 @@
         <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="timeclose" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz close time (timestamp)"/>
-        <FIELD NAME="windowdays" TYPE="int" LENGTH="4" NOTNULL="true" SEQUENCE="false" DEFAULT="7" COMMENT="Window length in days before close"/>
+        <FIELD NAME="windowdays" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="7" COMMENT="Window length in days before close"/>
         <FIELD NAME="windowstart" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Start of homework window (timestamp)"/>
         <FIELD NAME="attempts" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Finished attempts in window"/>
-        <FIELD NAME="bestpercent" TYPE="number" LENGTH="5,2" NOTNULL="true" SEQUENCE="false" DEFAULT="0.00" COMMENT="Best percentage grade in window"/>
+        <FIELD NAME="bestpercent" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Best percentage grade in window"/>
         <FIELD NAME="firstfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="First finished attempt time within window"/>
         <FIELD NAME="lastfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last finished attempt time within window"/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="noattempt|completed|lowgrade"/>
