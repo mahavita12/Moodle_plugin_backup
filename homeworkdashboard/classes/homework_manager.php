@@ -243,7 +243,7 @@ class homework_manager {
                        AND c.area = 'course_modules'
                        AND f.shortname = :s1
                   ORDER BY f.id ASC";
-            $field = $DB->get_record_sql($sql, ['s1' => 'activityclassification']);
+            $field = $DB->get_record_sql($sql, ['s1' => 'activity_tag']);
             if (!$field) {
                 return '';
             }
