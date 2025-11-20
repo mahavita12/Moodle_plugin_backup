@@ -20,6 +20,10 @@ $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 $maxsections = (int)get_config('local_quiz_uploader', 'maxsections');
 if ($maxsections < 1) { $maxsections = 0; }
 
+// Default category to 'Category 1' when not specified.
+$defaultcatid = (int)$DB->get_field('course_categories', 'id', ['name' => 'Category 1'], IGNORE_MISSING);
+if (!$defaultcatid) { $defaultcatid = 1; }
+
 echo $OUTPUT->header();
 
 $tabs = [];
@@ -39,6 +43,7 @@ $coldata = [];
 $preselected = optional_param_array('cmids', [], PARAM_INT);
 for ($i = 1; $i <= $columns; $i++) {
     $cat = optional_param('cat' . $i, 0, PARAM_INT);
+    if (empty($cat)) { $cat = $defaultcatid; }
     $course = optional_param('sourcecourse' . $i, 0, PARAM_INT);
     $sections = optional_param_array('sourcesections' . $i, [], PARAM_INT);
     $coldata[$i] = (object)[

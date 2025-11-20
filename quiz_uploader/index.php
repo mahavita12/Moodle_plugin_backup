@@ -37,6 +37,20 @@ $page = max(1, optional_param('page', 1, PARAM_INT));
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 $legacysection = optional_param('sourcesection', 0, PARAM_INT);
 if ($legacysection && empty($sourcesections)) { $sourcesections = [$legacysection]; }
+
+// Default category to 'Category 1' when not specified.
+if (empty($selectedcat)) {
+    $defaultcatid = (int)$DB->get_field('course_categories', 'id', ['name' => 'Category 1'], IGNORE_MISSING);
+    if (!$defaultcatid) { $defaultcatid = 1; }
+    $selectedcat = $defaultcatid;
+}
+
+// For Copy tab, default source course to Central Question Bank (or CQB) when not specified.
+if ($tab === 'copy' && empty($sourcecourse)) {
+    $cqb = $DB->get_record('course', ['fullname' => 'Central Question Bank'], 'id', IGNORE_MISSING);
+    if (!$cqb) { $cqb = $DB->get_record('course', ['shortname' => 'CQB'], 'id', IGNORE_MISSING); }
+    if ($cqb) { $sourcecourse = (int)$cqb->id; }
+}
 $maxsections = (int)get_config('local_quiz_uploader', 'maxsections');
 if ($maxsections < 0) { $maxsections = 0; }
 
