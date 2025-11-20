@@ -465,8 +465,16 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             </td>
                             <td><?php echo s($row->time_taken); ?></td>
                             <td>
-                                <?php if (!empty($row->percentage)): ?>
-                                    <?php echo format_float($row->percentage, 2) . '%'; ?>
+                                <?php
+                                    $rawscore = isset($row->score) ? (float)$row->score : 0.0;
+                                    $maxscore = isset($row->maxscore) ? (float)$row->maxscore : 0.0;
+                                    $percent  = isset($row->percentage) ? (float)$row->percentage : 0.0;
+                                ?>
+                                <?php if ($maxscore > 0.0 && $rawscore > 0.0): ?>
+                                    <?php echo format_float($rawscore, 2) . ' / ' . format_float($maxscore, 2); ?><br>
+                                    <?php echo format_float($percent, 2) . '%'; ?>
+                                <?php elseif ($percent > 0.0): ?>
+                                    <?php echo format_float($percent, 2) . '%'; ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -516,7 +524,10 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                                     </td>
                                                     <td><?php echo s($durationstr); ?></td>
                                                     <td>
-                                                        <?php if (!empty($percent)): ?>
+                                                        <?php if ($row->maxscore > 0 && $score > 0): ?>
+                                                            <?php echo format_float($score, 2) . ' / ' . format_float($row->maxscore, 2); ?><br>
+                                                            <?php echo format_float($percent, 2) . '%'; ?>
+                                                        <?php elseif ($percent > 0.0): ?>
                                                             <?php echo format_float($percent, 2) . '%'; ?>
                                                         <?php endif; ?>
                                                     </td>

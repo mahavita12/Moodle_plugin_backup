@@ -462,6 +462,13 @@ class homework_manager {
 
                 $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
 
+                $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
+                $bestpercent = (float)$s->bestpercent;
+                $bestscore = 0.0;
+                if ($maxscore > 0.0 && $bestpercent > 0.0) {
+                    $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
+                }
+
                 $rows[] = (object) [
                     'userid'       => $uid,
                     'studentname'  => $fullname,
@@ -482,9 +489,9 @@ class homework_manager {
                     'timestart'    => 0,
                     'timefinish'   => $timefinish,
                     'time_taken'   => '',
-                    'score'        => 0.0,
-                    'maxscore'     => ($s->grade > 0.0) ? (float)$s->grade : 0.0,
-                    'percentage'   => (float)$s->bestpercent,
+                    'score'        => $bestscore,
+                    'maxscore'     => $maxscore,
+                    'percentage'   => $bestpercent,
                     'quiz_type'    => $s->quiztype ?? '',
                     'timeclose'    => (int)$s->timeclose,
                 ];
