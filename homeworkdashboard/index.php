@@ -52,6 +52,16 @@ if (!empty($categoryid)) {
 
 $manager = new \local_homeworkdashboard\homework_manager();
 
+$canmanage = has_capability('local/homeworkdashboard:manage', $context);
+$backfillmessage = '';
+if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
+    require_sesskey();
+    $backfillweeks = optional_param('backfillweeks', 4, PARAM_INT);
+    $backfillweeks = max(1, min(52, $backfillweeks));
+    $created = $manager->backfill_snapshots_from_events($backfillweeks);
+    $backfillmessage = get_string('backfill_done', 'local_homeworkdashboard', $created);
+}
+
 $weekoptions = [];
 $now = time();
 $currsunday = strtotime('last Sunday', $now);
@@ -154,9 +164,23 @@ $PAGE->requires->js_init_code("document.addEventListener('DOMContentLoaded', fun
 
 echo $OUTPUT->header();
 
+if ($backfillmessage !== '') {
+    echo $OUTPUT->notification($backfillmessage, 'notifysuccess');
+}
+
 $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
 ?>
 <div class="essay-dashboard-container homework-dashboard-container">
+    <?php if ($canmanage): ?>
+    <div class="hw-backfill">
+        <form method="post" action="<?php echo $baseurl->out(false); ?>" class="filter-form">
+            <?php echo sesskey(); ?>
+            <label for="backfillweeks"><?php echo get_string('backfill_weeks', 'local_homeworkdashboard'); ?></label>
+            <input type="number" name="backfillweeks" id="backfillweeks" value="4" min="1" max="52" />
+            <button type="submit" name="backfill" value="1" class="btn btn-secondary"><?php echo get_string('backfill_from_events', 'local_homeworkdashboard'); ?></button>
+        </form>
+    </div>
+    <?php endif; ?>
     <div class="dashboard-filters">
         <form method="get" class="filter-form">
             <div class="filter-row">

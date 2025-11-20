@@ -25,3 +25,6 @@ $string['col_noattempt'] = 'No attempt';
 
 $string['noquizzes'] = 'No quizzes with close dates found for this course.';
 $string['task_computehomeworksnapshots'] = 'Compute homework snapshots';
+$string['backfill_from_events'] = 'Backfill snapshots from quiz events';
+$string['backfill_weeks'] = 'Weeks to backfill';
+$string['backfill_done'] = 'Backfilled {$a} snapshot records from quiz events.';
