@@ -31,6 +31,22 @@ $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
 
+function local_homeworkdashboard_sort_arrows(string $column, string $current_sort, string $current_dir): string {
+    $up_class = '';
+    $down_class = '';
+    if ($current_sort === $column) {
+        if (strtoupper($current_dir) === 'ASC') {
+            $up_class = ' active';
+        } else {
+            $down_class = ' active';
+        }
+    }
+    return '<span class="sort-arrows">'
+        . '<span class="arrow up' . $up_class . '">▲</span>'
+        . '<span class="arrow down' . $down_class . '">▼</span>'
+        . '</span>';
+}
+
 // Categories, default to "Category 1" if present.
 $categories = [];
 try {
@@ -289,6 +305,8 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     <button type="button" class="btn btn-secondary" onclick="window.location.href='<?php echo $baseurl->out(false); ?>';"><?php echo get_string('reset'); ?></button>
                 </div>
             </div>
+            <input type="hidden" name="sort" value="<?php echo s($sort); ?>">
+            <input type="hidden" name="dir" value="<?php echo s($dir); ?>">
         </form>
     </div>
 
@@ -303,18 +321,54 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <thead>
                 <tr>
                     <th></th>
-                    <th><?php echo get_string('fullname'); ?></th>
-                    <th><?php echo get_string('category'); ?></th>
-                    <th><?php echo get_string('course'); ?></th>
-                    <th><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></th>
-                    <th><?php echo get_string('attempt', 'quiz'); ?></th>
-                    <th><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></th>
-                    <th><?php echo get_string('quiztype', 'quiz'); ?></th>
-                    <th><?php echo get_string('status'); ?></th>
-                    <th>Closed</th>
-                    <th>Finished</th>
-                    <th>Duration</th>
-                    <th>Score</th>
+                    <th class="sortable-column" data-sort="studentname">
+                        <?php echo get_string('fullname'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="categoryname">
+                        <?php echo get_string('category'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="coursename">
+                        <?php echo get_string('course'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="quizname">
+                        <?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="attemptno">
+                        <?php echo get_string('attempt', 'quiz'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="classification">
+                        <?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="quiz_type">
+                        <?php echo get_string('quiztype', 'quiz'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="status">
+                        <?php echo get_string('status'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="timeclose">
+                        Closed
+                        <?php echo local_homeworkdashboard_sort_arrows('timeclose', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="timefinish">
+                        Finished
+                        <?php echo local_homeworkdashboard_sort_arrows('timefinish', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="time_taken">
+                        Duration
+                        <?php echo local_homeworkdashboard_sort_arrows('time_taken', $sort, $dir); ?>
+                    </th>
+                    <th class="sortable-column" data-sort="score">
+                        Score
+                        <?php echo local_homeworkdashboard_sort_arrows('score', $sort, $dir); ?>
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -333,29 +387,75 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             <td>
                                 <button type="button" class="hw-expand-toggle" data-target="<?php echo $childid; ?>">+</button>
                             </td>
-                            <td><?php echo format_string($row->studentname); ?></td>
-                            <td><?php echo format_string($row->categoryname); ?></td>
-                            <td><?php echo format_string($row->coursename); ?></td>
                             <td>
-                                <a href="<?php echo (new moodle_url('/mod/quiz/view.php', ['id' => $row->cmid]))->out(false); ?>" class="quiz-link" target="_blank">
+                                <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['userid' => (int)$row->userid]))->out(false); ?>">
+                                    <?php echo format_string($row->studentname); ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['categoryid' => (int)$row->categoryid]))->out(false); ?>">
+                                    <?php echo format_string($row->categoryname); ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['courseid' => (int)$row->courseid]))->out(false); ?>">
+                                    <?php echo format_string($row->coursename); ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['quizid' => (int)$row->quizid]))->out(false); ?>">
                                     <?php echo format_string($row->quizname); ?>
+                                </a>
+                                &nbsp;
+                                <a href="<?php echo (new moodle_url('/mod/quiz/view.php', ['id' => $row->cmid]))->out(false); ?>" class="quiz-link" target="_blank">
+                                    <?php echo get_string('view'); ?>
                                 </a>
                             </td>
                             <td><?php echo (int)$row->attemptno; ?></td>
-                            <td><?php echo s($row->classification); ?></td>
-                            <td><?php echo s($row->quiz_type); ?></td>
                             <td>
-                                <?php if ($row->status === 'Completed'): ?>
-                                    <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
-                                <?php elseif ($row->status === 'Low grade'): ?>
-                                    <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
+                                <?php if ($row->classification !== ''): ?>
+                                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['classification' => $row->classification]))->out(false); ?>">
+                                        <?php echo s($row->classification); ?>
+                                    </a>
                                 <?php else: ?>
-                                    <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
+                                    <?php echo s($row->classification); ?>
                                 <?php endif; ?>
                             </td>
                             <td>
+                                <?php if ($row->quiz_type !== ''): ?>
+                                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['quiztype' => $row->quiz_type]))->out(false); ?>">
+                                        <?php echo s($row->quiz_type); ?>
+                                    </a>
+                                <?php else: ?>
+                                    <?php echo s($row->quiz_type); ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php $statusurl = new moodle_url('/local/homeworkdashboard/index.php', ['status' => $row->status]); ?>
+                                <a href="<?php echo $statusurl->out(false); ?>">
+                                    <?php if ($row->status === 'Completed'): ?>
+                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
+                                    <?php elseif ($row->status === 'Low grade'): ?>
+                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
+                                    <?php else: ?>
+                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
+                                    <?php endif; ?>
+                                </a>
+                            </td>
+                            <td>
                                 <?php if (!empty($row->timeclose)): ?>
-                                    <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
+                                    <?php
+                                        $closedts = (int)$row->timeclose;
+                                        $closedSunday = strtotime('last Sunday', $closedts);
+                                        if ($closedSunday === false) {
+                                            $closedSunday = $closedts;
+                                        }
+                                        $weekvalueforclosed = date('Y-m-d', $closedSunday);
+                                        $weekurl = new moodle_url('/local/homeworkdashboard/index.php', ['week' => $weekvalueforclosed]);
+                                    ?>
+                                    <a href="<?php echo $weekurl->out(false); ?>">
+                                        <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
+                                    </a>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -434,6 +534,26 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
         </table>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.sortable-column').forEach(function(header) {
+        header.addEventListener('click', function() {
+            var sortField = this.getAttribute('data-sort');
+            var currentSort = '<?php echo $sort; ?>';
+            var currentDir  = '<?php echo $dir; ?>';
+            var newDir = 'ASC';
+            if (currentSort === sortField && currentDir === 'ASC') {
+                newDir = 'DESC';
+            }
+            var url = new URL(window.location.href);
+            url.searchParams.set('sort', sortField);
+            url.searchParams.set('dir', newDir);
+            window.location.href = url.toString();
+        });
+    });
+});
+</script>
 
 <?php
 echo $OUTPUT->footer();

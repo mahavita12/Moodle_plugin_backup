@@ -499,14 +499,19 @@ class homework_manager {
 
             usort($rows, function($a, $b) use ($sortkey, $direction) {
                 $map = [
-                    'userid'      => 'userid',
-                    'studentname' => 'studentname',
-                    'coursename'  => 'coursename',
-                    'quizname'    => 'quizname',
-                    'attemptno'   => 'attemptno',
-                    'status'      => 'status',
-                    'timefinish'  => 'timefinish',
-                    'score'       => 'score',
+                    'userid'       => 'userid',
+                    'studentname'  => 'studentname',
+                    'categoryname' => 'categoryname',
+                    'coursename'   => 'coursename',
+                    'quizname'     => 'quizname',
+                    'attemptno'    => 'attemptno',
+                    'classification'=> 'classification',
+                    'quiz_type'    => 'quiz_type',
+                    'status'       => 'status',
+                    'timeclose'    => 'timeclose',
+                    'timefinish'   => 'timefinish',
+                    'time_taken'   => 'time_taken',
+                    'score'        => 'percentage',
                 ];
                 $field = $map[$sortkey] ?? 'timefinish';
                 $va = $a->$field ?? null;
@@ -738,14 +743,19 @@ class homework_manager {
 
         usort($rows, function($a, $b) use ($sortkey, $direction) {
             $map = [
-                'userid'      => 'userid',
-                'studentname' => 'studentname',
-                'coursename'  => 'coursename',
-                'quizname'    => 'quizname',
-                'attemptno'   => 'attemptno',
-                'status'      => 'status',
-                'timefinish'  => 'timefinish',
-                'score'       => 'score',
+                'userid'       => 'userid',
+                'studentname'  => 'studentname',
+                'categoryname' => 'categoryname',
+                'coursename'   => 'coursename',
+                'quizname'     => 'quizname',
+                'attemptno'    => 'attemptno',
+                'classification'=> 'classification',
+                'quiz_type'    => 'quiz_type',
+                'status'       => 'status',
+                'timeclose'    => 'timeclose',
+                'timefinish'   => 'timefinish',
+                'time_taken'   => 'time_taken',
+                'score'        => 'percentage',
             ];
             $field = $map[$sortkey] ?? 'timefinish';
             $va = $a->$field ?? null;
@@ -823,7 +833,32 @@ class homework_manager {
                 continue;
             }
 
-            if ($DB->record_exists('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose])) {
+            $classification = $this->get_activity_classification($cmid);
+            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
+
+            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'id,classification,quiztype');
+            if (!empty($existing)) {
+                $needsclassupdate = ($classification !== null && $classification !== '');
+                $needstypeupdate = ($quiztype !== null && $quiztype !== '');
+
+                if ($needsclassupdate) {
+                    foreach ($existing as $ex) {
+                        if (empty($ex->classification)) {
+                            $DB->set_field('local_homework_status', 'classification', $classification, ['quizid' => $quizid, 'timeclose' => $timeclose]);
+                            break;
+                        }
+                    }
+                }
+
+                if ($needstypeupdate) {
+                    foreach ($existing as $ex) {
+                        if (empty($ex->quiztype)) {
+                            $DB->set_field('local_homework_status', 'quiztype', $quiztype, ['quizid' => $quizid, 'timeclose' => $timeclose]);
+                            break;
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -881,9 +916,6 @@ class homework_manager {
                     }
                 }
             }
-
-            $classification = $this->get_activity_classification($cmid);
-            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
 
             foreach ($roster as $uid) {
                 $uid = (int)$uid;
