@@ -283,6 +283,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     <th><?php echo get_string('category'); ?></th>
                     <th><?php echo get_string('course'); ?></th>
                     <th><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></th>
+                    <th><?php echo get_string('attempt', 'quiz'); ?></th>
                     <th><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></th>
                     <th><?php echo get_string('quiztype', 'quiz'); ?></th>
                     <th><?php echo get_string('status'); ?></th>
@@ -294,7 +295,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="11" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
+                        <td colspan="12" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
@@ -315,6 +316,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                     <?php echo format_string($row->quizname); ?>
                                 </a>
                             </td>
+                            <td><?php echo (int)$row->attemptno; ?></td>
                             <td><?php echo s($row->classification); ?></td>
                             <td><?php echo s($row->quiz_type); ?></td>
                             <td>
@@ -339,7 +341,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             </td>
                         </tr>
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="11">
+                            <td colspan="12">
                                 <?php if (empty($attempts)): ?>
                                     <div class="no-data"><?php echo get_string('none'); ?></div>
                                 <?php else: ?>
