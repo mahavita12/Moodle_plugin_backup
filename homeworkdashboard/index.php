@@ -80,10 +80,11 @@ if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
 
 $weekoptions = [];
 $now = time();
-$currsunday = ((int)date('w', $now) === 0) ? $now : strtotime('next Sunday', $now);
-if ($currsunday === false) {
-    $currsunday = $now;
+$basesunday = ((int)date('w', $now) === 0) ? $now : strtotime('next Sunday', $now);
+if ($basesunday === false) {
+    $basesunday = $now;
 }
+$currsunday = $basesunday + (7 * 24 * 60 * 60);
 for ($i = 0; $i < 12; $i++) {
     $sunday = $currsunday - ($i * 7 * 24 * 60 * 60);
     $value = date('Y-m-d', $sunday);
@@ -249,7 +250,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                 </div>
 
                 <div class="filter-group">
-                    <label for="quizid"><?php echo get_string('quiz', 'quiz'); ?></label>
+                    <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
                     <select name="quizid" id="quizid">
                         <option value="0"><?php echo get_string('all'); ?></option>
                         <?php foreach ($uniquequizzes as $q): ?>
@@ -334,11 +335,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="quizname">
-                        <?php echo get_string('quiz', 'quiz'); ?>
+                        <?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="attemptno">
-                        <?php echo get_string('attempt', 'quiz'); ?>
+                        <?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="classification">
@@ -499,7 +500,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                     <table class="dashboard-table hw-attempts-table">
                                         <thead>
                                             <tr>
-                                                <th><?php echo get_string('attempt', 'quiz'); ?></th>
+                                                <th><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?></th>
                                                 <th><?php echo get_string('status'); ?></th>
                                                 <th>Closed</th>
                                                 <th>Finished</th>

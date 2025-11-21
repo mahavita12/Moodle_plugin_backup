@@ -827,6 +827,88 @@ class homework_manager {
         return $rows;
     }
 
+    public function get_homework_status_for_user_quiz_event(int $userid, int $quizid, int $courseid, int $timeclose): ?string {
+        global $DB;
+
+        if ($userid <= 0 || $quizid <= 0 || $courseid <= 0 || $timeclose <= 0) {
+            return null;
+        }
+
+        $snap = $DB->get_record('local_homework_status', [
+            'userid' => $userid,
+            'quizid' => $quizid,
+            'timeclose' => $timeclose,
+        ], 'status', IGNORE_MISSING);
+
+        if ($snap && !empty($snap->status)) {
+            $code = (string)$snap->status;
+            if ($code === 'completed') {
+                return 'Completed';
+            } else if ($code === 'lowgrade') {
+                return 'Low grade';
+            } else if ($code === 'noattempt') {
+                return 'No attempt';
+            }
+        }
+
+        $windowdays = $this->get_course_window_days($courseid);
+        [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
+
+        $quiz = $DB->get_record('quiz', ['id' => $quizid], 'id, grade', IGNORE_MISSING);
+        if (!$quiz) {
+            return null;
+        }
+        $grade = ($quiz->grade > 0.0) ? (float)$quiz->grade : 0.0;
+
+        $sql = "SELECT qa.timestart, qa.timefinish, qa.sumgrades
+                  FROM {quiz_attempts} qa
+                 WHERE qa.quiz = :quizid
+                   AND qa.userid = :userid
+                   AND qa.state = 'finished'
+                   AND qa.timefinish BETWEEN :start AND :end";
+        $params = [
+            'quizid' => $quizid,
+            'userid' => $userid,
+            'start' => $windowstart,
+            'end' => $windowend,
+        ];
+
+        $attempts = $DB->get_records_sql($sql, $params);
+
+        $hasvalid = false;
+        $bestpercent = 0.0;
+
+        foreach ($attempts as $a) {
+            $timestart = (int)$a->timestart;
+            $timefinish = (int)$a->timefinish;
+            if ($timestart <= 0 || $timefinish <= $timestart) {
+                continue;
+            }
+            $duration = $timefinish - $timestart;
+            if ($duration < 180) {
+                continue;
+            }
+
+            $hasvalid = true;
+            if ($grade > 0.0 && $a->sumgrades !== null) {
+                $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                if ($pct > $bestpercent) {
+                    $bestpercent = $pct;
+                }
+            }
+        }
+
+        if (!$hasvalid) {
+            return 'No attempt';
+        }
+
+        if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
+            return 'Completed';
+        }
+
+        return 'Low grade';
+    }
+
     /**
      * Get all homework attempts for a single student + quiz within its homework window.
      *
@@ -1093,6 +1175,17 @@ class homework_manager {
 
             $peruser = [];
             foreach ($attempts as $a) {
+                $timestart = (int)$a->timestart;
+                $timefinish = (int)$a->timefinish;
+                if ($timestart <= 0 || $timefinish <= $timestart) {
+                    continue;
+                }
+                $duration = $timefinish - $timestart;
+                if ($duration < 180) {
+                    // Ignore attempts shorter than 3 minutes.
+                    continue;
+                }
+
                 $uid = (int)$a->userid;
                 if (!isset($peruser[$uid])) {
                     $peruser[$uid] = [
@@ -1105,13 +1198,12 @@ class homework_manager {
 
                 $peruser[$uid]['attempts']++;
 
-                $tf = (int)$a->timefinish;
-                if ($tf > 0) {
-                    if ($peruser[$uid]['firstfinish'] === 0 || $tf < $peruser[$uid]['firstfinish']) {
-                        $peruser[$uid]['firstfinish'] = $tf;
+                if ($timefinish > 0) {
+                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
+                        $peruser[$uid]['firstfinish'] = $timefinish;
                     }
-                    if ($tf > $peruser[$uid]['lastfinish']) {
-                        $peruser[$uid]['lastfinish'] = $tf;
+                    if ($timefinish > $peruser[$uid]['lastfinish']) {
+                        $peruser[$uid]['lastfinish'] = $timefinish;
                     }
                 }
 

@@ -28,6 +28,7 @@ $string['col_students'] = 'Students';
 $string['col_completed'] = 'Completed';
 $string['col_lowgrade'] = 'Low score';
 $string['col_noattempt'] = 'No attempt';
+ $string['col_attempt'] = 'Attempt (#)';
 
 $string['noquizzes'] = 'No quizzes with close dates found for this course.';
 $string['task_computehomeworksnapshots'] = 'Compute homework snapshots';
