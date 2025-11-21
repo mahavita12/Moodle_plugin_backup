@@ -13,16 +13,16 @@ $string['quiztype'] = 'Quiz type';
 $string['classification_new'] = 'New';
 $string['classification_revision'] = 'Revision';
 
-$string['badge_completed'] = 'Completed in homework window';
-$string['badge_lowgrade'] = 'Attempted, score below threshold';
-$string['badge_noattempt'] = 'No attempts in homework window';
+$string['badge_completed'] = 'Done';
+$string['badge_lowgrade'] = 'Retry';
+$string['badge_noattempt'] = 'To do';
 $string['attempt_status_short'] = 'Ignored (less than 3 minutes)';
 $string['attempt_status_completed'] = 'Completed';
 $string['attempt_status_below'] = 'Below threshold';
 $string['attempt_status_attempted'] = 'Attempted';
 
 $string['col_quiz'] = 'Quiz';
-$string['col_timeclose'] = 'Close time';
+$string['col_timeclose'] = 'Due date';
 $string['col_window'] = 'Window (days)';
 $string['col_students'] = 'Students';
 $string['col_completed'] = 'Completed';

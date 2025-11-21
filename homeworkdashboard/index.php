@@ -283,9 +283,9 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     <label for="status"><?php echo get_string('status'); ?></label>
                     <select name="status" id="status">
                         <option value=""><?php echo get_string('all'); ?></option>
-                        <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>>Completed</option>
-                        <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>>Low grade</option>
-                        <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>>No attempt</option>
+                        <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
+                        <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
+                        <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
                     </select>
                 </div>
 
@@ -309,12 +309,6 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <input type="hidden" name="sort" value="<?php echo s($sort); ?>">
             <input type="hidden" name="dir" value="<?php echo s($dir); ?>">
         </form>
-    </div>
-
-    <div class="hw-legend">
-        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
-        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
-        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
     </div>
 
     <div class="dashboard-table-container">
@@ -355,7 +349,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="timeclose">
-                        Closed
+                        Due date
                         <?php echo local_homeworkdashboard_sort_arrows('timeclose', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="timefinish">
@@ -446,11 +440,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php $statusurl = new moodle_url('/local/homeworkdashboard/index.php', ['status' => $row->status]); ?>
                                 <a href="<?php echo $statusurl->out(false); ?>">
                                     <?php if ($row->status === 'Completed'): ?>
-                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span></span>
+                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
                                     <?php elseif ($row->status === 'Low grade'): ?>
-                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span></span>
+                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
                                     <?php else: ?>
-                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#8855;</span></span>
+                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#10006;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
                                     <?php endif; ?>
                                 </a>
                             </td>
@@ -502,7 +496,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                             <tr>
                                                 <th><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?></th>
                                                 <th><?php echo get_string('status'); ?></th>
-                                                <th>Closed</th>
+                                                <th>Due date</th>
                                                 <th>Finished</th>
                                                 <th>Duration</th>
                                                 <th>Score</th>
