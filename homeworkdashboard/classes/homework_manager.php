@@ -1161,7 +1161,7 @@ class homework_manager {
                     'courseid'     => $courseid,
                     'cmid'         => $cmid,
                     'quizid'       => $quizid,
-                    'timeclose'    => $timeclose,
+                    'timeclose'    => $canonicalclose,
                     'windowdays'   => $windowdays,
                     'windowstart'  => $windowstart,
                     'attempts'     => $summary['attempts'],
@@ -1193,7 +1193,7 @@ class homework_manager {
 
         $sql = "SELECT e.id AS eventid, e.timestart AS timeclose,
                        q.id AS quizid, q.course AS courseid, q.grade,
-                       cm.id AS cmid
+                       cm.id AS cmid, q.timeclose AS quiztimeclose
                   FROM {event} e
                   JOIN {quiz} q ON q.id = e.instance AND e.modulename = 'quiz'
                   JOIN {course_modules} cm ON cm.instance = q.id
@@ -1212,18 +1212,47 @@ class homework_manager {
             $quizid = (int)$erec->quizid;
             $courseid = (int)$erec->courseid;
             $cmid = (int)$erec->cmid;
-            $timeclose = (int)$erec->timeclose;
 
-            if ($timeclose <= 0) {
+            $eventclose = (int)$erec->timeclose;
+            $quiztimeclose = isset($erec->quiztimeclose) ? (int)$erec->quiztimeclose : 0;
+
+            $canonicalclose = 0;
+
+            try {
+                if ($DB->get_manager()->table_exists('local_quiz_uploader_autoreset')) {
+                    $hist = $DB->get_record_sql(
+                        "SELECT originaltimeclose
+                           FROM {local_quiz_uploader_autoreset}
+                          WHERE quizid = :quizid
+                            AND originaltimeclose > 0
+                       ORDER BY ABS(originaltimeclose - :eventclose) ASC",
+                        ['quizid' => $quizid, 'eventclose' => $eventclose]
+                    );
+                    if ($hist && !empty($hist->originaltimeclose)) {
+                        $canonicalclose = (int)$hist->originaltimeclose;
+                    }
+                }
+            } catch (\Throwable $e) {
+            }
+
+            if ($canonicalclose <= 0 && $eventclose > 0) {
+                $canonicalclose = $eventclose;
+            }
+
+            if ($canonicalclose <= 0 && $quiztimeclose > 0) {
+                $canonicalclose = $quiztimeclose;
+            }
+
+            if ($canonicalclose <= 0) {
                 continue;
             }
 
-            if ($DB->record_exists('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose])) {
+            if ($DB->record_exists('local_homework_status', ['quizid' => $quizid, 'timeclose' => $canonicalclose])) {
                 continue;
             }
 
             $windowdays = $this->get_course_window_days($courseid);
-            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
+            [$windowstart, $windowend] = $this->build_window($canonicalclose, $windowdays);
 
             $roster = $this->get_course_roster($courseid);
             if (empty($roster)) {
