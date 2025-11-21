@@ -26,6 +26,13 @@ class settings_service {
                 $timelimitArg = $timelimit_minutes; // minutes or 0 to clear
                 preset_helper::apply_to_quiz($quizid, $effpreset, $timeclose, $timelimitArg, $mode, $applyTimelimit);
 
+                // Schedule or cancel autoreset depending on close-time settings.
+                if ($timeclose_enable && !empty($timeclose) && $timeclose > 0) {
+                    self::schedule_autoreset($quizid, $cm->id, $cm->course, 'default', $timeclose);
+                } else {
+                    self::cancel_autoreset($quizid);
+                }
+
                 // Activity classification: best-effort placeholder until field details are provided.
                 // If a custom field with shortname 'activityclassification' exists for mod_quiz, the code below attempts to store it.
                 try { self::maybe_set_activity_classification($cm->id, $activityclass); } catch (\Throwable $e) { /* ignore */ }
@@ -50,7 +57,7 @@ class settings_service {
         return $ts ?: null;
     }
 
-    private static function maybe_set_activity_classification(int $cmid, string $value): void {
+    public static function maybe_set_activity_classification(int $cmid, string $value): void {
         global $DB;
         if (!$DB->get_manager()->table_exists('customfield_field')) { return; }
         if (!$DB->get_manager()->table_exists('customfield_category')) { return; }
@@ -88,6 +95,52 @@ class settings_service {
             $rec->timemodified = $now;
             if ($contextid) { $rec->contextid = $contextid; }
             $DB->insert_record('customfield_data', $rec);
+        }
+    }
+
+    private static function schedule_autoreset(int $quizid, int $cmid, int $courseid, string $preset, int $timeclose): void {
+        global $DB;
+
+        if ($timeclose <= 0) {
+            return;
+        }
+
+        $resetat = $timeclose + 30 * 60;
+        $now = time();
+
+        $existing = $DB->get_record('local_quiz_uploader_autoreset', ['quizid' => $quizid]);
+        if ($existing) {
+            $existing->cmid = $cmid;
+            $existing->courseid = $courseid;
+            $existing->preset = $preset;
+            $existing->originaltimeclose = $timeclose;
+            $existing->resetat = $resetat;
+            $existing->status = 'pending';
+            $existing->timemodified = $now;
+            $DB->update_record('local_quiz_uploader_autoreset', $existing);
+        } else {
+            $rec = new \stdClass();
+            $rec->quizid = $quizid;
+            $rec->cmid = $cmid;
+            $rec->courseid = $courseid;
+            $rec->preset = $preset;
+            $rec->originaltimeclose = $timeclose;
+            $rec->resetat = $resetat;
+            $rec->status = 'pending';
+            $rec->timecreated = $now;
+            $rec->timemodified = $now;
+            $DB->insert_record('local_quiz_uploader_autoreset', $rec);
+        }
+    }
+
+    private static function cancel_autoreset(int $quizid): void {
+        global $DB;
+
+        $existing = $DB->get_record('local_quiz_uploader_autoreset', ['quizid' => $quizid]);
+        if ($existing && $existing->status !== 'done') {
+            $existing->status = 'cancelled';
+            $existing->timemodified = time();
+            $DB->update_record('local_quiz_uploader_autoreset', $existing);
         }
     }
 }

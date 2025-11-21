@@ -137,3 +137,28 @@ No other parts of the Timeline template were modified.
   - No attempt / `✖ To do`: `badge rounded-pill bg-danger text-white` (was `text-dark`)
 
 This affects both Calendar and Timeline, since they use the same `homeworkstatusclass` value supplied by the exporter.
+
+---
+
+## 6. `mod/quiz/lib.php` – keep quiz close events visible in Timeline
+
+**Path:**
+
+- `mod/quiz/lib.php`
+
+**Purpose of change:**
+
+- Prevent quiz **close** events from disappearing from the **Timeline** after a student has attempted/submitted the quiz, so that Homework Dashboard badges can continue to be shown against the original close event.
+
+### 6.1 Change in `mod_quiz_core_calendar_provide_event_action()`
+
+- Function: `mod_quiz_core_calendar_provide_event_action(calendar_event $event, \\core_calendar\\action_factory $factory)`.
+- Previously, once the quiz was no longer actionable for the user (e.g. all attempts used, quiz closed), the callback returned **`null`**, which caused the Timeline block to **drop** the close event.
+- The logic has been adjusted so that for quiz **close** events we now always return a calendar **action object** for the Timeline, but with:
+  - `actionable = false` when the quiz cannot be attempted any more.
+
+**Effect:**
+
+- The quiz close event **remains listed** in the Timeline even after attempts/submission/closure.
+- Homework badges supplied by `local_homeworkdashboard` (Done / Retry / To do) continue to be visible against that close event.
+- Users cannot click through to start a new attempt when the quiz is closed; the event is displayed as **non-actionable** rather than being hidden.

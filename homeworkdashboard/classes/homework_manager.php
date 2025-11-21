@@ -535,11 +535,80 @@ class homework_manager {
         global $DB;
 
         $rows = [];
+        $snapshotkeys = [];
 
         // Resolve optional week filter to quiz timeclose bounds.
         [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
 
         $now = time();
+
+        $snapparams = [];
+        $snapsql = "SELECT DISTINCT
+                        s.quizid,
+                        s.timeclose
+                    FROM {local_homework_status} s
+                    JOIN {course} c ON c.id = s.courseid
+                    JOIN {course_categories} cat ON cat.id = c.category
+                    JOIN {course_modules} cm ON cm.id = s.cmid
+                    JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                    JOIN {course_sections} cs ON cs.id = cm.section
+                    WHERE 1 = 1";
+
+        if ($categoryid > 0) {
+            $snapsql .= " AND c.category = :scategoryid";
+            $snapparams['scategoryid'] = $categoryid;
+        }
+        if ($courseid > 0) {
+            $snapsql .= " AND c.id = :scourseid";
+            $snapparams['scourseid'] = $courseid;
+        }
+        if ($sectionid > 0) {
+            $snapsql .= " AND cs.id = :ssectionid";
+            $snapparams['ssectionid'] = $sectionid;
+        }
+        if ($quizid > 0) {
+            $snapsql .= " AND s.quizid = :squizid";
+            $snapparams['squizid'] = $quizid;
+        }
+        if ($weekstart > 0 && $weekend > 0) {
+            $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
+            $snapparams['sweekstart'] = $weekstart;
+            $snapparams['sweekend'] = $weekend;
+        }
+
+        $snapsql .= " ORDER BY s.timeclose ASC";
+
+        $snapshotrecords = $DB->get_records_sql($snapsql, $snapparams);
+
+        if (!empty($snapshotrecords)) {
+            foreach ($snapshotrecords as $srec) {
+                $stimeclose = (int)$srec->timeclose;
+                if ($stimeclose <= 0) {
+                    continue;
+                }
+
+                $snaprows = $this->build_snapshot_rows_for_quiz(
+                    (int)$srec->quizid,
+                    $stimeclose,
+                    $categoryid,
+                    $courseid,
+                    $sectionid,
+                    $userid,
+                    $studentname,
+                    $statusfilter,
+                    $classificationfilter,
+                    $quiztypefilter
+                );
+
+                if (!empty($snaprows)) {
+                    $key = $srec->quizid . ':' . $stimeclose;
+                    $snapshotkeys[$key] = true;
+                    foreach ($snaprows as $sr) {
+                        $rows[] = $sr;
+                    }
+                }
+            }
+        }
 
         // Base query to locate quizzes included in the dashboard.
         $params = [];
@@ -619,8 +688,12 @@ class homework_manager {
             }
 
             $isclosed = ($qtimeclose <= $now);
+            $key = $qrec->quizid . ':' . $qtimeclose;
 
-            // For closed quizzes, try to use snapshots first.
+            if ($isclosed && isset($snapshotkeys[$key])) {
+                continue;
+            }
+
             if ($isclosed) {
                 $snaprows = $this->build_snapshot_rows_for_quiz(
                     (int)$qrec->quizid,
@@ -639,7 +712,6 @@ class homework_manager {
                     foreach ($snaprows as $sr) {
                         $rows[] = $sr;
                     }
-                    // Snapshot rows already built for this quiz; skip live computation.
                     continue;
                 }
             }

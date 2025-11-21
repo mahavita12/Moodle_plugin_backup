@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/quiz_uploader/db" VERSION="2025112100" COMMENT="XMLDB for local_quiz_uploader"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_quiz_uploader_autoreset" COMMENT="Auto-reset jobs for quizzes after close time">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz ID"/>
+        <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module ID"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course ID"/>
+        <FIELD NAME="preset" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false" COMMENT="Preset name to apply (e.g. default)"/>
+        <FIELD NAME="originaltimeclose" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Original quiz close time"/>
+        <FIELD NAME="resetat" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When to auto-reset (timeclose + 30min)"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="pending|done|cancelled"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Creation time"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Last update"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="quizid_idx" UNIQUE="false" FIELDS="quizid"/>
+        <INDEX NAME="status_resetat_idx" UNIQUE="false" FIELDS="status,resetat"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
