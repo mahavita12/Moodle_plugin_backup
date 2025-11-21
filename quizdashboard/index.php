@@ -258,8 +258,16 @@ try {
     error_log("Error fetching unique user IDs: " . $e->getMessage());
 }
 
+// Default to last 4 weeks of finished attempts when no specific month is selected.
+$now = time();
+$datefrom = '';
+$dateto = '';
+if (empty($month)) {
+    $datefrom = date('Y-m-d', $now - (28 * DAYSECS));
+}
+
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
+    $userid, $studentname, $coursename, $quizname, $datefrom, $dateto, $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
 );
 
 // Apply month filter if set

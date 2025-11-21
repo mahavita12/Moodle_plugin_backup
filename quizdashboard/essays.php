@@ -172,8 +172,16 @@ $unique_questions = $filterdata['questions'];
 $unique_userids = $filterdata['userids'];
 
 // FIXED: Pass status parameter to the quiz manager
+// Default to last 4 weeks of finished essay attempts when no specific month is selected.
+$now = time();
+$datefrom = '';
+$dateto = '';
+if (empty($month)) {
+    $datefrom = date('Y-m-d', $now - (28 * DAYSECS));
+}
+
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
+    $userid, $studentname, $coursename, $quizname, $datefrom, $dateto, 'Essay', $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
 );
 
 

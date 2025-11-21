@@ -541,6 +541,13 @@ class homework_manager {
         [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
 
         $now = time();
+        // If no explicit week is selected, default to the last 4 weeks window
+        // by requiring timeclose >= cutoff. When a specific week is chosen,
+        // we continue to use the Sunday-based week bounds.
+        $cutoffsince = 0;
+        if (empty($weekvalue)) {
+            $cutoffsince = $now - (28 * DAYSECS);
+        }
 
         $snapparams = [];
         $snapsql = "SELECT DISTINCT
@@ -574,6 +581,9 @@ class homework_manager {
             $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
             $snapparams['sweekstart'] = $weekstart;
             $snapparams['sweekend'] = $weekend;
+        } else if ($cutoffsince > 0) {
+            $snapsql .= " AND s.timeclose >= :scutoffsince";
+            $snapparams['scutoffsince'] = $cutoffsince;
         }
 
         $snapsql .= " ORDER BY s.timeclose ASC";
@@ -660,6 +670,9 @@ class homework_manager {
             $sql .= " AND COALESCE(q.timeclose, ev.eventclose) BETWEEN :weekstart AND :weekend";
             $params['weekstart'] = $weekstart;
             $params['weekend'] = $weekend;
+        } else if ($cutoffsince > 0) {
+            $sql .= " AND COALESCE(q.timeclose, ev.eventclose) >= :cutoffsince";
+            $params['cutoffsince'] = $cutoffsince;
         }
 
         $sql .= " ORDER BY c.fullname, q.name";

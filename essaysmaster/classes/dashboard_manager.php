@@ -120,6 +120,12 @@ class dashboard_manager {
                 $params['search'] = $search;
             }
             
+            $now = time();
+            $cutoffsince = 0;
+            if (empty($month)) {
+                $cutoffsince = $now - (28 * DAYSECS);
+            }
+
             // Month filter (matching Quiz Dashboard implementation)
             if (!empty($month) && preg_match('/^\d{4}-\d{2}$/', $month)) {
                 $start_time = strtotime($month . '-01 00:00:00');
@@ -127,6 +133,9 @@ class dashboard_manager {
                 $sql .= " AND s.timemodified >= :month_start AND s.timemodified <= :month_end";
                 $params['month_start'] = $start_time;
                 $params['month_end'] = $end_time;
+            } else if ($cutoffsince > 0) {
+                $sql .= " AND s.timemodified >= :cutoffsince";
+                $params['cutoffsince'] = $cutoffsince;
             }
             
             $sql .= " ORDER BY s.timemodified DESC";
