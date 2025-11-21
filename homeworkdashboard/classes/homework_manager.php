@@ -329,9 +329,11 @@ class homework_manager {
     private function get_latest_sunday_week(): array {
         $now = time();
         if ((int)date('w', $now) === 0) {
+            // If today is Sunday, use today as the week end.
             $sundaydate = date('Y-m-d', $now);
         } else {
-            $sundayts = strtotime('last sunday', $now);
+            // Otherwise, use the upcoming Sunday as the week end.
+            $sundayts = strtotime('next sunday', $now);
             if ($sundayts === false) {
                 return [0, 0];
             }
@@ -339,6 +341,172 @@ class homework_manager {
         }
 
         return $this->get_week_bounds($sundaydate);
+    }
+
+    /**
+     * Build snapshot-backed rows for a single quiz + close time, if any snapshots exist.
+     */
+    private function build_snapshot_rows_for_quiz(
+        int $quizid,
+        int $timeclose,
+        int $categoryid,
+        int $courseid,
+        int $sectionid,
+        int $userid,
+        string $studentname,
+        string $statusfilter,
+        string $classificationfilter,
+        string $quiztypefilter
+    ): array {
+        global $DB;
+
+        $params = [
+            'quizid'    => $quizid,
+            'timeclose' => $timeclose,
+        ];
+
+        $sql = "SELECT
+                    s.id,
+                    s.userid,
+                    s.courseid,
+                    s.cmid,
+                    s.quizid,
+                    s.timeclose,
+                    s.windowdays,
+                    s.windowstart,
+                    s.attempts,
+                    s.bestpercent,
+                    s.firstfinish,
+                    s.lastfinish,
+                    s.status,
+                    s.classification,
+                    s.quiztype,
+                    s.computedat,
+                    q.name      AS quizname,
+                    q.grade,
+                    c.fullname  AS coursename,
+                    cat.id      AS categoryid,
+                    cat.name    AS categoryname,
+                    cm.id       AS cmid_real,
+                    cs.id       AS sectionid,
+                    cs.name     AS sectionname,
+                    cs.section  AS sectionnumber
+                FROM {local_homework_status} s
+                JOIN {quiz} q ON q.id = s.quizid
+                JOIN {course} c ON c.id = s.courseid
+                JOIN {course_categories} cat ON cat.id = c.category
+                JOIN {course_modules} cm ON cm.id = s.cmid
+                JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                JOIN {course_sections} cs ON cs.id = cm.section
+               WHERE s.quizid = :quizid AND s.timeclose = :timeclose";
+
+        if ($categoryid > 0) {
+            $sql .= " AND c.category = :categoryid";
+            $params['categoryid'] = $categoryid;
+        }
+        if ($courseid > 0) {
+            $sql .= " AND c.id = :courseid";
+            $params['courseid'] = $courseid;
+        }
+        if ($sectionid > 0) {
+            $sql .= " AND cs.id = :sectionid";
+            $params['sectionid'] = $sectionid;
+        }
+        if ($userid > 0) {
+            $sql .= " AND s.userid = :userid";
+            $params['userid'] = $userid;
+        }
+        if ($classificationfilter !== '') {
+            $sql .= " AND s.classification = :classification";
+            $params['classification'] = $classificationfilter;
+        }
+        if ($quiztypefilter !== '') {
+            $sql .= " AND s.quiztype = :quiztype";
+            $params['quiztype'] = $quiztypefilter;
+        }
+
+        $sql .= " ORDER BY c.fullname, q.name";
+
+        $snapshots = $DB->get_records_sql($sql, $params);
+        if (empty($snapshots)) {
+            return [];
+        }
+
+        $userids = [];
+        foreach ($snapshots as $s) {
+            $userids[] = (int)$s->userid;
+        }
+        $userids = array_values(array_unique($userids));
+
+        if (!empty($userids)) {
+            list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
+            $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
+        } else {
+            $userrecs = [];
+        }
+
+        $rows = [];
+
+        foreach ($snapshots as $s) {
+            $uid = (int)$s->userid;
+            $userdata = $userrecs[$uid] ?? null;
+            $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
+
+            if ($studentname !== '' && $fullname !== $studentname) {
+                continue;
+            }
+
+            $snapstatus = (string)$s->status;
+            if ($snapstatus === 'completed') {
+                $hwstatus = 'Completed';
+            } else if ($snapstatus === 'lowgrade') {
+                $hwstatus = 'Low grade';
+            } else {
+                $hwstatus = 'No attempt';
+            }
+
+            if ($statusfilter !== '' && strcasecmp($statusfilter, $hwstatus) !== 0) {
+                continue;
+            }
+
+            $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
+
+            $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
+            $bestpercent = (float)$s->bestpercent;
+            $bestscore = 0.0;
+            if ($maxscore > 0.0 && $bestpercent > 0.0) {
+                $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
+            }
+
+            $rows[] = (object) [
+                'userid'       => $uid,
+                'studentname'  => $fullname,
+                'courseid'     => (int)$s->courseid,
+                'coursename'   => $s->coursename,
+                'categoryid'   => (int)$s->categoryid,
+                'categoryname' => $s->categoryname,
+                'sectionid'    => (int)$s->sectionid,
+                'sectionname'  => $s->sectionname,
+                'sectionnumber'=> $s->sectionnumber,
+                'quizid'       => (int)$s->quizid,
+                'quizname'     => $s->quizname,
+                'cmid'         => (int)$s->cmid_real,
+                'classification'=> $s->classification ?? '',
+                'lastattemptid'=> 0,
+                'attemptno'    => (int)$s->attempts,
+                'status'       => $hwstatus,
+                'timestart'    => 0,
+                'timefinish'   => $timefinish,
+                'time_taken'   => '',
+                'score'        => $bestscore,
+                'maxscore'     => $maxscore,
+                'percentage'   => $bestpercent,
+                'quiz_type'    => $s->quiztype ?? '',
+                'timeclose'    => (int)$s->timeclose,
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -372,358 +540,6 @@ class homework_manager {
         [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
 
         $now = time();
-        $usesnapshots = ($weekstart > 0 && $weekend > 0 && $weekend < $now);
-
-        if (empty($weekvalue)) {
-            [$latestweekstart, $latestweekend] = $this->get_latest_sunday_week();
-            if ($latestweekstart > 0 && $latestweekend > 0) {
-                $params = [
-                    'lateststart' => $latestweekstart,
-                ];
-
-                $sql = "SELECT
-                            s.id,
-                            s.userid,
-                            s.courseid,
-                            s.cmid,
-                            s.quizid,
-                            s.timeclose,
-                            s.windowdays,
-                            s.windowstart,
-                            s.attempts,
-                            s.bestpercent,
-                            s.firstfinish,
-                            s.lastfinish,
-                            s.status,
-                            s.classification,
-                            s.quiztype,
-                            s.computedat,
-                            q.name      AS quizname,
-                            q.grade,
-                            c.fullname  AS coursename,
-                            cat.id      AS categoryid,
-                            cat.name    AS categoryname,
-                            cm.id       AS cmid_real,
-                            cs.id       AS sectionid,
-                            cs.name     AS sectionname,
-                            cs.section  AS sectionnumber
-                        FROM {local_homework_status} s
-                        JOIN {quiz} q ON q.id = s.quizid
-                        JOIN {course} c ON c.id = s.courseid
-                        JOIN {course_categories} cat ON cat.id = c.category
-                        JOIN {course_modules} cm ON cm.id = s.cmid
-                        JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                        JOIN {course_sections} cs ON cs.id = cm.section
-                       WHERE s.timeclose > 0 AND s.timeclose < :lateststart";
-
-                if ($categoryid > 0) {
-                    $sql .= " AND c.category = :categoryid";
-                    $params['categoryid'] = $categoryid;
-                }
-                if ($courseid > 0) {
-                    $sql .= " AND c.id = :courseid";
-                    $params['courseid'] = $courseid;
-                }
-                if ($sectionid > 0) {
-                    $sql .= " AND cs.id = :sectionid";
-                    $params['sectionid'] = $sectionid;
-                }
-                if ($quizid > 0) {
-                    $sql .= " AND q.id = :quizid";
-                    $params['quizid'] = $quizid;
-                }
-                if ($userid > 0) {
-                    $sql .= " AND s.userid = :userid";
-                    $params['userid'] = $userid;
-                }
-                if ($classificationfilter !== '') {
-                    $sql .= " AND s.classification = :classification";
-                    $params['classification'] = $classificationfilter;
-                }
-                if ($quiztypefilter !== '') {
-                    $sql .= " AND s.quiztype = :quiztype";
-                    $params['quiztype'] = $quiztypefilter;
-                }
-
-                $sql .= " ORDER BY c.fullname, q.name";
-
-                $snapshots = $DB->get_records_sql($sql, $params);
-
-                if (!empty($snapshots)) {
-                    $userids = [];
-                    foreach ($snapshots as $s) {
-                        $userids[] = (int)$s->userid;
-                    }
-                    $userids = array_values(array_unique($userids));
-
-                    if (!empty($userids)) {
-                        list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
-                        $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
-                    } else {
-                        $userrecs = [];
-                    }
-
-                    foreach ($snapshots as $s) {
-                        $uid = (int)$s->userid;
-                        $userdata = $userrecs[$uid] ?? null;
-                        $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
-
-                        if ($studentname !== '' && $fullname !== $studentname) {
-                            continue;
-                        }
-
-                        $snapstatus = (string)$s->status;
-                        if ($snapstatus === 'completed') {
-                            $hwstatus = 'Completed';
-                        } else if ($snapstatus === 'lowgrade') {
-                            $hwstatus = 'Low grade';
-                        } else {
-                            $hwstatus = 'No attempt';
-                        }
-
-                        if ($statusfilter !== '' && strcasecmp($statusfilter, $hwstatus) !== 0) {
-                            continue;
-                        }
-
-                        $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
-
-                        $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
-                        $bestpercent = (float)$s->bestpercent;
-                        $bestscore = 0.0;
-                        if ($maxscore > 0.0 && $bestpercent > 0.0) {
-                            $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
-                        }
-
-                        $rows[] = (object) [
-                            'userid'       => $uid,
-                            'studentname'  => $fullname,
-                            'courseid'     => (int)$s->courseid,
-                            'coursename'   => $s->coursename,
-                            'categoryid'   => (int)$s->categoryid,
-                            'categoryname' => $s->categoryname,
-                            'sectionid'    => (int)$s->sectionid,
-                            'sectionname'  => $s->sectionname,
-                            'sectionnumber'=> $s->sectionnumber,
-                            'quizid'       => (int)$s->quizid,
-                            'quizname'     => $s->quizname,
-                            'cmid'         => (int)$s->cmid_real,
-                            'classification'=> $s->classification ?? '',
-                            'lastattemptid'=> 0,
-                            'attemptno'    => (int)$s->attempts,
-                            'status'       => $hwstatus,
-                            'timestart'    => 0,
-                            'timefinish'   => $timefinish,
-                            'time_taken'   => '',
-                            'score'        => $bestscore,
-                            'maxscore'     => $maxscore,
-                            'percentage'   => $bestpercent,
-                            'quiz_type'    => $s->quiztype ?? '',
-                            'timeclose'    => (int)$s->timeclose,
-                        ];
-                    }
-                }
-
-                $weekstart = $latestweekstart;
-                $weekend = $latestweekend;
-            }
-        }
-
-        if ($usesnapshots) {
-            $params = [
-                'weekstart' => $weekstart,
-                'weekend'   => $weekend,
-            ];
-
-            $sql = "SELECT
-                        s.id,
-                        s.userid,
-                        s.courseid,
-                        s.cmid,
-                        s.quizid,
-                        s.timeclose,
-                        s.windowdays,
-                        s.windowstart,
-                        s.attempts,
-                        s.bestpercent,
-                        s.firstfinish,
-                        s.lastfinish,
-                        s.status,
-                        s.classification,
-                        s.quiztype,
-                        s.computedat,
-                        q.name      AS quizname,
-                        q.grade,
-                        c.fullname  AS coursename,
-                        cat.id      AS categoryid,
-                        cat.name    AS categoryname,
-                        cm.id       AS cmid_real,
-                        cs.id       AS sectionid,
-                        cs.name     AS sectionname,
-                        cs.section  AS sectionnumber
-                    FROM {local_homework_status} s
-                    JOIN {quiz} q ON q.id = s.quizid
-                    JOIN {course} c ON c.id = s.courseid
-                    JOIN {course_categories} cat ON cat.id = c.category
-                    JOIN {course_modules} cm ON cm.id = s.cmid
-                    JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                    JOIN {course_sections} cs ON cs.id = cm.section
-                   WHERE s.timeclose BETWEEN :weekstart AND :weekend";
-
-            if ($categoryid > 0) {
-                $sql .= " AND c.category = :categoryid";
-                $params['categoryid'] = $categoryid;
-            }
-            if ($courseid > 0) {
-                $sql .= " AND c.id = :courseid";
-                $params['courseid'] = $courseid;
-            }
-            if ($sectionid > 0) {
-                $sql .= " AND cs.id = :sectionid";
-                $params['sectionid'] = $sectionid;
-            }
-            if ($quizid > 0) {
-                $sql .= " AND q.id = :quizid";
-                $params['quizid'] = $quizid;
-            }
-            if ($userid > 0) {
-                $sql .= " AND s.userid = :userid";
-                $params['userid'] = $userid;
-            }
-            if ($classificationfilter !== '') {
-                $sql .= " AND s.classification = :classification";
-                $params['classification'] = $classificationfilter;
-            }
-            if ($quiztypefilter !== '') {
-                $sql .= " AND s.quiztype = :quiztype";
-                $params['quiztype'] = $quiztypefilter;
-            }
-
-            $sql .= " ORDER BY c.fullname, q.name";
-
-            $snapshots = $DB->get_records_sql($sql, $params);
-            if (empty($snapshots)) {
-                return [];
-            }
-
-            $userids = [];
-            foreach ($snapshots as $s) {
-                $userids[] = (int)$s->userid;
-            }
-            $userids = array_values(array_unique($userids));
-
-            if (!empty($userids)) {
-                list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
-                $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
-            } else {
-                $userrecs = [];
-            }
-
-            foreach ($snapshots as $s) {
-                $uid = (int)$s->userid;
-                $userdata = $userrecs[$uid] ?? null;
-                $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
-
-                if ($studentname !== '' && $fullname !== $studentname) {
-                    continue;
-                }
-
-                $snapstatus = (string)$s->status;
-                if ($snapstatus === 'completed') {
-                    $hwstatus = 'Completed';
-                } else if ($snapstatus === 'lowgrade') {
-                    $hwstatus = 'Low grade';
-                } else {
-                    $hwstatus = 'No attempt';
-                }
-
-                if ($statusfilter !== '' && strcasecmp($statusfilter, $hwstatus) !== 0) {
-                    continue;
-                }
-
-                $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
-
-                $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
-                $bestpercent = (float)$s->bestpercent;
-                $bestscore = 0.0;
-                if ($maxscore > 0.0 && $bestpercent > 0.0) {
-                    $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
-                }
-
-                $rows[] = (object) [
-                    'userid'       => $uid,
-                    'studentname'  => $fullname,
-                    'courseid'     => (int)$s->courseid,
-                    'coursename'   => $s->coursename,
-                    'categoryid'   => (int)$s->categoryid,
-                    'categoryname' => $s->categoryname,
-                    'sectionid'    => (int)$s->sectionid,
-                    'sectionname'  => $s->sectionname,
-                    'sectionnumber'=> $s->sectionnumber,
-                    'quizid'       => (int)$s->quizid,
-                    'quizname'     => $s->quizname,
-                    'cmid'         => (int)$s->cmid_real,
-                    'classification'=> $s->classification ?? '',
-                    'lastattemptid'=> 0,
-                    'attemptno'    => (int)$s->attempts,
-                    'status'       => $hwstatus,
-                    'timestart'    => 0,
-                    'timefinish'   => $timefinish,
-                    'time_taken'   => '',
-                    'score'        => $bestscore,
-                    'maxscore'     => $maxscore,
-                    'percentage'   => $bestpercent,
-                    'quiz_type'    => $s->quiztype ?? '',
-                    'timeclose'    => (int)$s->timeclose,
-                ];
-            }
-
-            if (empty($rows)) {
-                return [];
-            }
-
-            $sortkey = $sort ?: 'timeclose';
-            $direction = (strtoupper($dir) === 'ASC') ? 1 : -1;
-
-            usort($rows, function($a, $b) use ($sortkey, $direction) {
-                if ($sortkey === 'timeclose') {
-                    $coursecmp = strcmp((string)$a->coursename, (string)$b->coursename);
-                    if ($coursecmp !== 0) {
-                        return $coursecmp;
-                    }
-                    $va = $a->timeclose ?? 0;
-                    $vb = $b->timeclose ?? 0;
-                    if ($va == $vb) {
-                        return 0;
-                    }
-                    return ($va < $vb ? -1 : 1) * $direction;
-                }
-
-                $map = [
-                    'userid'       => 'userid',
-                    'studentname'  => 'studentname',
-                    'categoryname' => 'categoryname',
-                    'coursename'   => 'coursename',
-                    'quizname'     => 'quizname',
-                    'attemptno'    => 'attemptno',
-                    'classification'=> 'classification',
-                    'quiz_type'    => 'quiz_type',
-                    'status'       => 'status',
-                    'timeclose'    => 'timeclose',
-                    'timefinish'   => 'timefinish',
-                    'time_taken'   => 'time_taken',
-                    'score'        => 'percentage',
-                ];
-                $field = $map[$sortkey] ?? 'timeclose';
-                $va = $a->$field ?? null;
-                $vb = $b->$field ?? null;
-                if ($va == $vb) {
-                    return 0;
-                }
-                return ($va < $vb ? -1 : 1) * $direction;
-            });
-
-            return $rows;
-        }
 
         // Base query to locate quizzes included in the dashboard.
         $params = [];
@@ -802,6 +618,33 @@ class homework_manager {
                 continue;
             }
 
+            $isclosed = ($qtimeclose <= $now);
+
+            // For closed quizzes, try to use snapshots first.
+            if ($isclosed) {
+                $snaprows = $this->build_snapshot_rows_for_quiz(
+                    (int)$qrec->quizid,
+                    $qtimeclose,
+                    $categoryid,
+                    (int)$qrec->courseid,
+                    $sectionid,
+                    $userid,
+                    $studentname,
+                    $statusfilter,
+                    $classificationfilter,
+                    $quiztypefilter
+                );
+
+                if (!empty($snaprows)) {
+                    foreach ($snaprows as $sr) {
+                        $rows[] = $sr;
+                    }
+                    // Snapshot rows already built for this quiz; skip live computation.
+                    continue;
+                }
+            }
+
+            // Fallback to live window (or always live for open quizzes).
             $windowdays = $this->get_course_window_days((int)$qrec->courseid);
             [$windowstart, $windowend] = $this->build_window($qtimeclose, $windowdays);
 

@@ -80,7 +80,7 @@ if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
 
 $weekoptions = [];
 $now = time();
-$currsunday = strtotime('last Sunday', $now);
+$currsunday = ((int)date('w', $now) === 0) ? $now : strtotime('next Sunday', $now);
 if ($currsunday === false) {
     $currsunday = $now;
 }
