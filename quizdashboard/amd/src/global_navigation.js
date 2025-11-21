@@ -6,9 +6,8 @@
 define(['jquery'], function($) {
     
     var GlobalNavigation = {
-        
+
         init: function() {
-            console.log('Initializing Quiz Dashboard global navigation');
             try {
                 var params = new URLSearchParams(window.location.search);
                 if (params.get('clean') === '1' || params.get('print') === '1') {
@@ -162,7 +161,7 @@ define(['jquery'], function($) {
         
         injectNavigation: function() {
             // Check if navigation already exists
-            if $('.quiz-dashboard-global-nav').length > 0) {
+            if ($('.quiz-dashboard-global-nav').length > 0) {
                 return;
             }
             
@@ -189,8 +188,6 @@ define(['jquery'], function($) {
             
             // Inject navigation into page
             $('body').append(navHTML);
-            
-            console.log('Quiz Dashboard global navigation injected successfully');
         }
     };
     
