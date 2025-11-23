@@ -88,7 +88,7 @@ class homework_injector {
             'questiontextformat' => 1,
             'generalfeedback' => '',
             'generalfeedbackformat' => 1,
-            'defaultmark' => 10.0,
+            'defaultmark' => max(1.0, (float)$count),
             'penalty' => 0.0,
             'qtype' => 'essay',
             'length' => 1,
@@ -118,6 +118,11 @@ class homework_injector {
         ];
         $DB->insert_record('qtype_essay_options', $opts);
         $qb->add_questions($quizid, [(int)$qid]);
+        $quiz = $DB->get_record('quiz', ['id' => (int)$quizid], 'id,sumgrades,grade', \IGNORE_MISSING);
+        if ($quiz && $quiz->sumgrades !== null) {
+            $quiz->grade = (float)$quiz->sumgrades;
+            $DB->update_record('quiz', $quiz);
+        }
         $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
         return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questionid' => (int)$qid];
     }
@@ -393,13 +398,17 @@ class homework_injector {
 
         $xml .= '</quiz>';
 
-        // Import XML and add questions
         $category = (object)['id' => (int)$qcat->id, 'contextid' => (int)$qcat->contextid];
         $import = \local_quiz_uploader\question_importer::import_from_xml($xml, $category, $courseid);
         if (empty($import->success) || empty($import->questionids)) {
             throw new \moodle_exception('Failed to import generated questions');
         }
         $qb->add_questions($quizid, array_map('intval', $import->questionids));
+        $quiz = $DB->get_record('quiz', ['id' => (int)$quizid], 'id,sumgrades,grade', \IGNORE_MISSING);
+        if ($quiz && $quiz->sumgrades !== null) {
+            $quiz->grade = (float)$quiz->sumgrades;
+            $DB->update_record('quiz', $quiz);
+        }
         $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
         return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questioncount' => count($import->questionids)];
     }
