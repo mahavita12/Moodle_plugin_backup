@@ -616,7 +616,7 @@ class homework_manager {
                     q.id       AS quizid,
                     q.name     AS quizname,
                     q.course   AS courseid,
-                    COALESCE(q.timeclose, ev.eventclose) AS timeclose,
+                    COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) AS timeclose,
                     q.grade,
                     c.fullname AS coursename,
                     cat.id     AS categoryid,
@@ -657,7 +657,7 @@ class homework_manager {
             $params['quizid'] = $quizid;
         }
         if ($weekstart > 0 && $weekend > 0) {
-            $sql .= " AND COALESCE(q.timeclose, ev.eventclose) BETWEEN :weekstart AND :weekend";
+            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) BETWEEN :weekstart AND :weekend";
             $params['weekstart'] = $weekstart;
             $params['weekend'] = $weekend;
         }
@@ -1048,8 +1048,13 @@ class homework_manager {
             $classification = $this->get_activity_classification($cmid);
             $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
 
-            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'id,classification,quiztype');
+            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'id,userid,classification,quiztype');
+            $existinguserids = [];
             if (!empty($existing)) {
+                foreach ($existing as $ex) {
+                    $existinguserids[] = (int)$ex->userid;
+                }
+
                 $needsclassupdate = ($classification !== null && $classification !== '');
                 $needstypeupdate = ($quiztype !== null && $quiztype !== '');
 
@@ -1070,17 +1075,20 @@ class homework_manager {
                         }
                     }
                 }
-
-                continue;
             }
 
             $windowdays = $this->get_course_window_days($courseid);
             [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
 
             $roster = $this->get_course_roster($courseid);
+            if (!empty($existinguserids)) {
+                $roster = array_diff($roster, $existinguserids);
+            }
+
             if (empty($roster)) {
                 continue;
             }
+            $roster = array_values($roster);
 
             list($insql, $params) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
             $params['quizid'] = $quizid;
@@ -1161,7 +1169,7 @@ class homework_manager {
                     'courseid'     => $courseid,
                     'cmid'         => $cmid,
                     'quizid'       => $quizid,
-                    'timeclose'    => $canonicalclose,
+                    'timeclose'    => $timeclose,
                     'windowdays'   => $windowdays,
                     'windowstart'  => $windowstart,
                     'attempts'     => $summary['attempts'],
@@ -1247,17 +1255,21 @@ class homework_manager {
                 continue;
             }
 
-            if ($DB->record_exists('local_homework_status', ['quizid' => $quizid, 'timeclose' => $canonicalclose])) {
-                continue;
-            }
+            $existinguserids = $DB->get_fieldset_select('local_homework_status', 'userid', 'quizid = :quizid AND timeclose = :timeclose', ['quizid' => $quizid, 'timeclose' => $canonicalclose]);
+            $existinguserids = array_map('intval', $existinguserids);
 
             $windowdays = $this->get_course_window_days($courseid);
             [$windowstart, $windowend] = $this->build_window($canonicalclose, $windowdays);
 
             $roster = $this->get_course_roster($courseid);
+            if (!empty($existinguserids)) {
+                $roster = array_diff($roster, $existinguserids);
+            }
+
             if (empty($roster)) {
                 continue;
             }
+            $roster = array_values($roster);
 
             list($insql, $apparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
             $apparams['quizid'] = $quizid;

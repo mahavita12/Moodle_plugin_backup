@@ -380,7 +380,7 @@ class homework_injector {
             $index++;
             $orig = $it['original'];
             $impr = $it['improved'];
-            $minlen = 10; // cap pattern length
+            $minlen = 0; // cap pattern length
             $pattern = str_repeat('?', $minlen) . '*';
             $qname = htmlspecialchars('SI '.$index, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
             $qtext = '<p style="color:#0066cc;">Rewrite the following sentence clearly and correctly:</p><p><em>Original: '.htmlspecialchars($orig, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</em></p>';
