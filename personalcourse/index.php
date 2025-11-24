@@ -49,48 +49,266 @@ echo $OUTPUT->heading($title);
 // New default view: show attempts like Quiz Dashboard and allow admin actions.
 $mode = optional_param('mode', 'attempts', PARAM_ALPHA);
 if ($mode === 'attempts') {
+    // Add CSS from Quiz Dashboard to ensure matching style
+    $PAGE->requires->css('/local/quizdashboard/styles.css');
+
     require_once($CFG->dirroot . '/local/quizdashboard/classes/quiz_manager.php');
     $qm = new \local_quizdashboard\quiz_manager();
 
-    // Basic filters (optional): user id and course filter.
-    $filteruserid = optional_param('userid', 0, PARAM_INT);
+    // --- Filter Parameters (matching Quiz Dashboard) ---
+    $userid      = optional_param('userid', '', PARAM_INT);
+    $categoryid  = optional_param('categoryid', 0, PARAM_INT);
+    $filter_userid = optional_param('filter_userid', '', PARAM_INT);
     $studentname = optional_param('studentname', '', PARAM_TEXT);
-    $coursename = optional_param('coursename', '', PARAM_TEXT);
-    $quizname = optional_param('quizname', '', PARAM_TEXT);
-    $sectionid = optional_param('sectionid', 0, PARAM_INT);
-    $status = optional_param('status', '', PARAM_TEXT);
-    $quiztype = optional_param('quiztype', '', PARAM_TEXT); // '' = all.
-    $sort = optional_param('sort', 'timefinish', PARAM_ALPHA);
-    $dir = optional_param('dir', 'DESC', PARAM_ALPHA);
+    $coursename  = optional_param('coursename', '', PARAM_TEXT);
+    $filter_coursename = optional_param('filter_coursename', '', PARAM_TEXT);
+    $quizname    = optional_param('quizname', '', PARAM_TEXT);
+    $sectionid   = optional_param('sectionid', '', PARAM_INT);
+    $month       = optional_param('month', '', PARAM_TEXT);
+    $status      = optional_param('status', '', PARAM_ALPHA);
+    $quiztype    = optional_param('quiztype', 'Non-Essay', PARAM_TEXT); // Default to Non-Essay as per Quiz Dashboard
+    $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
+    $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
     $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 
+    // Filter by clicked user or course
+    $filter_by_user   = optional_param('filter_user', '', PARAM_TEXT);
+    $filter_by_course = optional_param('filter_course', '', PARAM_TEXT);
+
+    if (!empty($filter_userid)) { $userid = $filter_userid; }
+    if (!empty($filter_coursename)) { $coursename = $filter_coursename; }
+    if (!empty($filter_by_user)) { $studentname = $filter_by_user; }
+    if (!empty($filter_by_course)) { $coursename = $filter_by_course; }
+
+    // --- Fetch Filter Options ---
+    $unique_users    = $qm->get_unique_users();
+    $unique_courses  = $qm->get_unique_course_names((int)$categoryid);
+    $unique_quizzes  = $qm->get_unique_quiz_names();
+    
+    // Determine selected courseid for section filtering
+    $selected_courseid = 0;
+    if (!empty($coursename) && !empty($unique_courses)) {
+        foreach ($unique_courses as $cobj) {
+            if (isset($cobj->fullname) && $cobj->fullname === $coursename) { $selected_courseid = (int)$cobj->id; break; }
+        }
+    }
+    $unique_sections = $qm->get_unique_sections((int)$categoryid, (int)$selected_courseid);
+
+    // Get unique user IDs for dropdown
+    $unique_userids = [];
+    try {
+        $sql = "SELECT DISTINCT u.id, u.id AS userid
+                  FROM {user} u
+                  JOIN {quiz_attempts} qa ON qa.userid = u.id
+                  JOIN {quiz} q ON qa.quiz = q.id
+                  JOIN {course} c ON q.course = c.id
+                 WHERE u.deleted = 0 
+                   AND c.visible = 1
+                   AND qa.state IN ('finished', 'inprogress')
+              ORDER BY u.id";
+        $unique_userids = $DB->get_records_sql($sql);
+    } catch (\Exception $e) { }
+
+    // Categories
+    $categories = [];
+    try {
+        $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+        if (empty($categoryid)) {
+            $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
+            if ($catrow) { $categoryid = (int)$catrow->id; }
+        }
+    } catch (\Throwable $e) { }
+
+
+    // --- Fetch Data ---
     $records = $qm->get_filtered_quiz_attempts(
-        $filteruserid ?: '', $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, 0, $excludestaff
+        $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid, $excludestaff
     );
 
-    // Filter Form
-    echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out(false), 'class' => 'mb-3']);
-    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'mode', 'value' => 'attempts']);
-    echo html_writer::start_div('form-check');
-    echo html_writer::checkbox('excludestaff', 1, $excludestaff, get_string('excludestaff', 'local_quizdashboard') ?: 'Exclude staff', ['class' => 'form-check-input', 'id' => 'id_excludestaff']);
-    echo ' '; // Spacer
-    echo html_writer::tag('label', 'Exclude staff', ['class' => 'form-check-label', 'for' => 'id_excludestaff']);
-    echo html_writer::end_div();
-    echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('filter'), 'class' => 'btn btn-secondary btn-sm mt-1']);
-    echo html_writer::end_tag('form');
+    // Apply month filter (PHP side)
+    if (!empty($month)) {
+        $records = array_filter($records, function($r) use ($month) {
+            if (!empty($r->timefinish)) {
+                return date('Y-m', $r->timefinish) === $month;
+            }
+            return false;
+        });
+    }
+    // Apply status filter (PHP side if not fully handled by SQL)
+    if (!empty($status)) {
+        $records = array_filter($records, function($r) use ($status){ 
+            return strtolower($r->status) === strtolower($status); 
+        });
+    }
 
-    // Build table similar to quiz dashboard.
+    // --- Render Filter Form ---
+    ?>
+    <div class="dashboard-filters-container">
+        <form method="get" action="<?php echo $PAGE->url->out(false); ?>" class="dashboard-filter-form">
+            <input type="hidden" name="mode" value="attempts">
+            
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label><?php echo get_string('category'); ?></label>
+                    <select name="categoryid" class="form-control" onchange="this.form.submit()">
+                        <option value="0">All Categories</option>
+                        <?php foreach ($categories as $cat): ?>
+                            <option value="<?php echo $cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                <?php echo format_string($cat->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label><?php echo get_string('course'); ?></label>
+                    <select name="coursename" class="form-control" onchange="this.form.submit()">
+                        <option value="">All Courses</option>
+                        <?php foreach ($unique_courses as $c): ?>
+                            <?php if(!empty($c->fullname)): ?>
+                            <option value="<?php echo s($c->fullname); ?>" <?php echo ($coursename === $c->fullname) ? 'selected' : ''; ?>>
+                                <?php echo format_string($c->fullname); ?>
+                            </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label><?php echo get_string('section'); ?></label>
+                    <select name="sectionid" class="form-control" onchange="this.form.submit()">
+                        <option value="">All Sections</option>
+                        <?php foreach ($unique_sections as $sec): ?>
+                            <option value="<?php echo $sec->id; ?>" <?php echo ((int)$sectionid === (int)$sec->id) ? 'selected' : ''; ?>>
+                                <?php echo format_string($sec->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label><?php echo get_string('modulename', 'quiz'); ?></label>
+                    <select name="quizname" class="form-control" onchange="this.form.submit()">
+                        <option value="">All Quizzes</option>
+                        <?php foreach ($unique_quizzes as $q): ?>
+                            <?php if(!empty($q->quizname)): ?>
+                            <option value="<?php echo s($q->quizname); ?>" <?php echo ($quizname === $q->quizname) ? 'selected' : ''; ?>>
+                                <?php echo format_string($q->quizname); ?>
+                            </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
+                    <select name="quiztype" class="form-control" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        <option value="Essay" <?php echo ($quiztype === 'Essay') ? 'selected' : ''; ?>>Essay</option>
+                        <option value="Non-Essay" <?php echo ($quiztype === 'Non-Essay') ? 'selected' : ''; ?>>Non-Essay</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label><?php echo get_string('user'); ?></label>
+                    <select name="studentname" class="form-control" onchange="this.form.submit()">
+                        <option value="">All Users</option>
+                        <?php foreach ($unique_users as $u): ?>
+                            <?php if(!empty($u->fullname)): ?>
+                            <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? 'selected' : ''; ?>>
+                                <?php echo format_string($u->fullname); ?>
+                            </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>User ID</label>
+                    <select name="userid" class="form-control" onchange="this.form.submit()">
+                        <option value="">All User IDs</option>
+                        <?php foreach ($unique_userids as $u): ?>
+                            <option value="<?php echo $u->id; ?>" <?php echo ((int)$userid === (int)$u->id) ? 'selected' : ''; ?>>
+                                <?php echo $u->id; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label><?php echo get_string('status'); ?></label>
+                    <select name="status" class="form-control" onchange="this.form.submit()">
+                        <option value="">All</option>
+                        <option value="Completed" <?php echo ($status === 'Completed') ? 'selected' : ''; ?>>Completed</option>
+                        <option value="In Progress" <?php echo ($status === 'In Progress') ? 'selected' : ''; ?>>In Progress</option>
+                        <option value="Overdue" <?php echo ($status === 'Overdue') ? 'selected' : ''; ?>>Overdue</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>Month</label>
+                    <select name="month" class="form-control" onchange="this.form.submit()">
+                        <option value="">All Months</option>
+                        <?php
+                        // Generate last 12 months dynamic options or similar
+                        for ($i = 0; $i < 12; $i++) {
+                            $m = date('Y-m', strtotime("-$i months"));
+                            $l = date('F Y', strtotime("-$i months"));
+                            $sel = ($month === $m) ? 'selected' : '';
+                            echo "<option value='$m' $sel>$l</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div class="filter-group checkbox-group">
+                    <div class="form-check" style="padding-top: 30px;">
+                        <input type="checkbox" name="excludestaff" value="1" id="id_excludestaff" class="form-check-input" <?php echo $excludestaff ? 'checked' : ''; ?> onchange="this.form.submit()">
+                        <label class="form-check-label" for="id_excludestaff">Exclude staff</label>
+                    </div>
+                </div>
+
+                <div class="filter-actions" style="padding-top: 24px;">
+                    <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
+                    <a href="<?php echo $PAGE->url->out(false, ['mode'=>'attempts']); ?>" class="btn btn-secondary"><?php echo get_string('reset'); ?></a>
+                </div>
+            </div>
+        </form>
+    </div>
+    <?php
+
+    // --- Render Table ---
+    // Helper for sorting headers
+    $sort_link = function($colname, $label) use ($PAGE, $sort, $dir) {
+        $newdir = ($sort == $colname && $dir == 'ASC') ? 'DESC' : 'ASC';
+        $icon = '';
+        if ($sort == $colname) {
+            $icon = ($dir == 'ASC') ? ' ▲' : ' ▼';
+        }
+        $url = new moodle_url($PAGE->url, $_GET); // preserve current filters
+        $url->param('sort', $colname);
+        $url->param('dir', $newdir);
+        return html_writer::link($url, $label . $icon);
+    };
+
     $table = new html_table();
+    $table->attributes['class'] = 'dashboard-table table table-striped table-hover';
     $table->head = [
-        get_string('id', 'moodle'),
-        get_string('fullnameuser'),
-        get_string('course'),
-        get_string('modulename', 'quiz'),
-        get_string('attempt', 'quiz'),
-        get_string('status'),
-        get_string('finished', 'quiz'),
-        get_string('duration', 'quiz'),
-        get_string('score', 'quiz'),
+        '<input type="checkbox" id="select-all-attempts">', // Bulk action checkbox
+        $sort_link('attemptid', 'ID'),
+        $sort_link('studentname', get_string('fullnameuser')),
+        $sort_link('categoryname', get_string('category')),
+        $sort_link('coursename', get_string('course')),
+        $sort_link('sectionname', get_string('section')),
+        $sort_link('quizname', get_string('modulename', 'quiz')),
+        $sort_link('attemptnumber', get_string('attempt', 'quiz')),
+        $sort_link('quiztype', 'Quiz Type'),
+        $sort_link('status', get_string('status')),
+        $sort_link('timefinish', get_string('finished', 'quiz')),
+        $sort_link('duration', get_string('duration', 'quiz')),
+        $sort_link('score', get_string('score', 'quiz')),
         get_string('col_actions', 'local_personalcourse'),
     ];
     $table->data = [];
@@ -109,7 +327,7 @@ if ($mode === 'attempts') {
             $courselink = new moodle_url('/course/view.php', ['id' => (int)$r->courseid]);
             $userprofile = new moodle_url('/user/profile.php', ['id' => $useridrow]);
 
-            // Duration display.
+            // Duration
             $time_taken = '-';
             if (!empty($r->timestart) && !empty($r->timefinish)) {
                 $seconds = max(0, (int)$r->timefinish - (int)$r->timestart);
@@ -117,15 +335,25 @@ if ($mode === 'attempts') {
                 $time_taken = $h > 0 ? sprintf('%dh %dm %ds', $h, $m, $s) : ($m > 0 ? sprintf('%dm %ds', $m, $s) : sprintf('%ds', $s));
             }
 
-            // Score.
+            // Score
             $scorecell = '-';
             if (isset($r->score) && isset($r->maxscore)) {
                 $scorecell = round((float)$r->score) . ' / ' . round((float)$r->maxscore);
             }
 
-            // Actions: create personal course (if missing) and create personal quiz from this attempt.
-            $haspc = $DB->record_exists('local_personalcourse_courses', ['userid' => $useridrow]);
+            // Status Badge
+            $status_class = 'badge ';
+            switch(strtolower($r->status)) {
+                case 'completed': $status_class .= 'badge-success'; break;
+                case 'in progress': $status_class .= 'badge-info'; break;
+                case 'overdue': $status_class .= 'badge-danger'; break;
+                default: $status_class .= 'badge-secondary';
+            }
+            $statusbadge = html_writer::span($r->status, $status_class);
+
+            // Actions: Create Personal Quiz
             $actions = [];
+            $haspc = $DB->record_exists('local_personalcourse_courses', ['userid' => $useridrow]);
             if (!$haspc) {
                 $forceurl = new moodle_url($PAGE->url, ['action' => 'forcecreate', 'userid' => $useridrow, 'sesskey' => sesskey()]);
                 $actions[] = html_writer::link($forceurl, get_string('action_forcecreate', 'local_personalcourse'));
@@ -140,15 +368,19 @@ if ($mode === 'attempts') {
                 ]);
                 $actions[] = html_writer::link($createquizurl, get_string('action_createquiz', 'local_personalcourse'));
             }
-            $actionscell = $actions ? implode(' | ', $actions) : '';
+            $actionscell = implode(' | ', $actions);
 
             $table->data[] = [
-                (string)$useridrow,
-                html_writer::link($userprofile, s((string)$r->studentname)),
-                html_writer::link($courselink, s((string)$r->coursename)),
-                html_writer::link($reviewurl, s((string)$r->quizname)),
+                '<input type="checkbox" class="attempt-select" name="attempt_ids[]" value="'.$attemptid.'">',
+                $attemptid,
+                html_writer::link($userprofile, s($r->studentname)),
+                s($r->categoryname ?? '-'),
+                html_writer::link($courselink, s($r->coursename)),
+                s($r->sectionname ?? '-'),
+                html_writer::link($reviewurl, s($r->quizname)),
                 html_writer::link($reviewurl, (string)$r->attemptnumber),
-                s((string)$r->status),
+                s($r->quiztype ?? '-'),
+                $statusbadge,
                 !empty($r->timefinish) ? userdate($r->timefinish, '%Y-%m-%d %H:%M') : '-',
                 $time_taken,
                 $scorecell,
@@ -156,7 +388,9 @@ if ($mode === 'attempts') {
             ];
         }
     } else {
-        $table->data[] = [html_writer::span(get_string('no_records', 'local_personalcourse'), 'text-muted')];
+        $table->data[] = [
+            ['data' => get_string('no_records', 'local_personalcourse'), 'colspan' => 14, 'class' => 'text-center text-muted']
+        ];
     }
 
     echo html_writer::table($table);
