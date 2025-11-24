@@ -23,6 +23,7 @@ $courseid = optional_param('course', 0, PARAM_INT);
 $quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
+$excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
 
 // Initialize manager
 $dashboard = new \local_essaysmaster\dashboard_manager();
