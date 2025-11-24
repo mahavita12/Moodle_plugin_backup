@@ -54,12 +54,7 @@ if ($action === 'rename' && $userid > 0) {
 echo $OUTPUT->header();
 echo $OUTPUT->heading($title);
 
-// New default view: show attempts like Quiz Dashboard and allow admin actions.
-$mode = optional_param('mode', 'attempts', PARAM_ALPHA);
 if ($mode === 'attempts') {
-    // Add CSS from Quiz Dashboard to ensure matching style
-    $PAGE->requires->css('/local/quizdashboard/styles.css');
-
     require_once($CFG->dirroot . '/local/quizdashboard/classes/quiz_manager.php');
     $qm = new \local_quizdashboard\quiz_manager();
 
@@ -151,142 +146,141 @@ if ($mode === 'attempts') {
 
     // --- Render Filter Form ---
     ?>
-    <div class="dashboard-filters-container">
-        <form method="get" action="<?php echo $PAGE->url->out(false); ?>" class="dashboard-filter-form">
-            <input type="hidden" name="mode" value="attempts">
-            
-            <div class="filter-row">
-                <div class="filter-group">
-                    <label><?php echo get_string('category'); ?></label>
-                    <select name="categoryid" class="form-control" onchange="this.form.submit()">
-                        <option value="0">All Categories</option>
-                        <?php foreach ($categories as $cat): ?>
-                            <option value="<?php echo $cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($cat->name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+    <div class="essay-dashboard-container">
+        <div class="dashboard-filters">
+            <form method="get" action="<?php echo $PAGE->url->out(false); ?>" class="filter-form">
+                <input type="hidden" name="mode" value="attempts">
+                
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label><?php echo get_string('category'); ?></label>
+                        <select name="categoryid" class="form-control" onchange="this.form.submit()">
+                            <option value="0">All Categories</option>
+                            <?php foreach ($categories as $cat): ?>
+                                <option value="<?php echo $cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($cat->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label><?php echo get_string('course'); ?></label>
-                    <select name="coursename" class="form-control" onchange="this.form.submit()">
-                        <option value="">All Courses</option>
-                        <?php foreach ($unique_courses as $c): ?>
-                            <?php if(!empty($c->fullname)): ?>
-                            <option value="<?php echo s($c->fullname); ?>" <?php echo ($coursename === $c->fullname) ? 'selected' : ''; ?>>
-                                <?php echo format_string($c->fullname); ?>
-                            </option>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label><?php echo get_string('course'); ?></label>
+                        <select name="coursename" class="form-control" onchange="this.form.submit()">
+                            <option value="">All Courses</option>
+                            <?php foreach ($unique_courses as $c): ?>
+                                <?php if(!empty($c->fullname)): ?>
+                                <option value="<?php echo s($c->fullname); ?>" <?php echo ($coursename === $c->fullname) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($c->fullname); ?>
+                                </option>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label><?php echo get_string('section'); ?></label>
-                    <select name="sectionid" class="form-control" onchange="this.form.submit()">
-                        <option value="">All Sections</option>
-                        <?php foreach ($unique_sections as $sec): ?>
-                            <option value="<?php echo $sec->id; ?>" <?php echo ((int)$sectionid === (int)$sec->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($sec->name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label><?php echo get_string('section'); ?></label>
+                        <select name="sectionid" class="form-control" onchange="this.form.submit()">
+                            <option value="">All Sections</option>
+                            <?php foreach ($unique_sections as $sec): ?>
+                                <option value="<?php echo $sec->id; ?>" <?php echo ((int)$sectionid === (int)$sec->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($sec->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label><?php echo get_string('modulename', 'quiz'); ?></label>
-                    <select name="quizname" class="form-control" onchange="this.form.submit()">
-                        <option value="">All Quizzes</option>
-                        <?php foreach ($unique_quizzes as $q): ?>
-                            <?php if(!empty($q->quizname)): ?>
-                            <option value="<?php echo s($q->quizname); ?>" <?php echo ($quizname === $q->quizname) ? 'selected' : ''; ?>>
-                                <?php echo format_string($q->quizname); ?>
-                            </option>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
+                    <div class="filter-group">
+                        <label><?php echo get_string('modulename', 'quiz'); ?></label>
+                        <select name="quizname" class="form-control" onchange="this.form.submit()">
+                            <option value="">All Quizzes</option>
+                            <?php foreach ($unique_quizzes as $q): ?>
+                                <?php if(!empty($q->quizname)): ?>
+                                <option value="<?php echo s($q->quizname); ?>" <?php echo ($quizname === $q->quizname) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($q->quizname); ?>
+                                </option>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                
+                    <div class="filter-group">
+                        <label><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
+                        <select name="quiztype" class="form-control" onchange="this.form.submit()">
+                            <option value="">All</option>
+                            <option value="Essay" <?php echo ($quiztype === 'Essay') ? 'selected' : ''; ?>>Essay</option>
+                            <option value="Non-Essay" <?php echo ($quiztype === 'Non-Essay') ? 'selected' : ''; ?>>Non-Essay</option>
+                        </select>
+                    </div>
 
-            <div class="filter-row">
-                <div class="filter-group">
-                    <label><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
-                    <select name="quiztype" class="form-control" onchange="this.form.submit()">
-                        <option value="">All</option>
-                        <option value="Essay" <?php echo ($quiztype === 'Essay') ? 'selected' : ''; ?>>Essay</option>
-                        <option value="Non-Essay" <?php echo ($quiztype === 'Non-Essay') ? 'selected' : ''; ?>>Non-Essay</option>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label><?php echo get_string('user'); ?></label>
+                        <select name="studentname" class="form-control" onchange="this.form.submit()">
+                            <option value="">All Users</option>
+                            <?php foreach ($unique_users as $u): ?>
+                                <?php if(!empty($u->fullname)): ?>
+                                <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($u->fullname); ?>
+                                </option>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label><?php echo get_string('user'); ?></label>
-                    <select name="studentname" class="form-control" onchange="this.form.submit()">
-                        <option value="">All Users</option>
-                        <?php foreach ($unique_users as $u): ?>
-                            <?php if(!empty($u->fullname)): ?>
-                            <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? 'selected' : ''; ?>>
-                                <?php echo format_string($u->fullname); ?>
-                            </option>
-                            <?php endif; ?>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label>User ID</label>
+                        <select name="userid" class="form-control" onchange="this.form.submit()">
+                            <option value="">All User IDs</option>
+                            <?php foreach ($unique_userids as $u): ?>
+                                <option value="<?php echo $u->id; ?>" <?php echo ((int)$userid === (int)$u->id) ? 'selected' : ''; ?>>
+                                    <?php echo $u->id; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label>User ID</label>
-                    <select name="userid" class="form-control" onchange="this.form.submit()">
-                        <option value="">All User IDs</option>
-                        <?php foreach ($unique_userids as $u): ?>
-                            <option value="<?php echo $u->id; ?>" <?php echo ((int)$userid === (int)$u->id) ? 'selected' : ''; ?>>
-                                <?php echo $u->id; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label><?php echo get_string('status'); ?></label>
+                        <select name="status" class="form-control" onchange="this.form.submit()">
+                            <option value="">All</option>
+                            <option value="Completed" <?php echo ($status === 'Completed') ? 'selected' : ''; ?>>Completed</option>
+                            <option value="In Progress" <?php echo ($status === 'In Progress') ? 'selected' : ''; ?>>In Progress</option>
+                            <option value="Overdue" <?php echo ($status === 'Overdue') ? 'selected' : ''; ?>>Overdue</option>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label><?php echo get_string('status'); ?></label>
-                    <select name="status" class="form-control" onchange="this.form.submit()">
-                        <option value="">All</option>
-                        <option value="Completed" <?php echo ($status === 'Completed') ? 'selected' : ''; ?>>Completed</option>
-                        <option value="In Progress" <?php echo ($status === 'In Progress') ? 'selected' : ''; ?>>In Progress</option>
-                        <option value="Overdue" <?php echo ($status === 'Overdue') ? 'selected' : ''; ?>>Overdue</option>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label>Month</label>
+                        <select name="month" class="form-control" onchange="this.form.submit()">
+                            <option value="">All Months</option>
+                            <?php
+                            // Generate last 12 months dynamic options or similar
+                            for ($i = 0; $i < 12; $i++) {
+                                $m = date('Y-m', strtotime("-$i months"));
+                                $l = date('F Y', strtotime("-$i months"));
+                                $sel = ($month === $m) ? 'selected' : '';
+                                echo "<option value='$m' $sel>$l</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label>Month</label>
-                    <select name="month" class="form-control" onchange="this.form.submit()">
-                        <option value="">All Months</option>
-                        <?php
-                        // Generate last 12 months dynamic options or similar
-                        for ($i = 0; $i < 12; $i++) {
-                            $m = date('Y-m', strtotime("-$i months"));
-                            $l = date('F Y', strtotime("-$i months"));
-                            $sel = ($month === $m) ? 'selected' : '';
-                            echo "<option value='$m' $sel>$l</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
+                    <div class="filter-group checkbox-group">
+                        <div class="form-check" style="padding-top: 30px;">
+                            <input type="checkbox" name="excludestaff" value="1" id="id_excludestaff" class="form-check-input" <?php echo $excludestaff ? 'checked' : ''; ?> onchange="this.form.submit()">
+                            <label class="form-check-label" for="id_excludestaff">Exclude staff</label>
+                        </div>
+                    </div>
 
-                <div class="filter-group checkbox-group">
-                    <div class="form-check" style="padding-top: 30px;">
-                        <input type="checkbox" name="excludestaff" value="1" id="id_excludestaff" class="form-check-input" <?php echo $excludestaff ? 'checked' : ''; ?> onchange="this.form.submit()">
-                        <label class="form-check-label" for="id_excludestaff">Exclude staff</label>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
+                        <a href="<?php echo $PAGE->url->out(false, ['mode'=>'attempts']); ?>" class="btn btn-secondary"><?php echo get_string('reset'); ?></a>
                     </div>
                 </div>
+            </form>
+        </div>
 
-                <div class="filter-actions" style="padding-top: 24px;">
-                    <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
-                    <a href="<?php echo $PAGE->url->out(false, ['mode'=>'attempts']); ?>" class="btn btn-secondary"><?php echo get_string('reset'); ?></a>
-                </div>
-            </div>
-        </form>
-    </div>
     <?php
-
     // --- Render Table ---
     // Helper for sorting headers
     $sort_link = function($colname, $label) use ($PAGE, $sort, $dir) {
@@ -402,6 +396,9 @@ if ($mode === 'attempts') {
     }
 
     echo html_writer::table($table);
+    
+    echo '</div>'; // Close essay-dashboard-container
+
     echo $OUTPUT->footer();
     exit;
 }
