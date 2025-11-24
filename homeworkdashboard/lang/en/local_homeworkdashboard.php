@@ -9,6 +9,7 @@ $string['filtercourse'] = 'Course';
 $string['filterclassification'] = 'Activity classification';
 $string['allcourses'] = 'All courses';
 $string['quiztype'] = 'Quiz type';
+$string['duedate'] = 'Due date';
 
 $string['classification_new'] = 'New';
 $string['classification_revision'] = 'Revision';

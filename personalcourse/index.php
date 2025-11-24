@@ -72,7 +72,7 @@ if ($mode === 'attempts') {
     $quiztype    = optional_param('quiztype', 'Non-Essay', PARAM_TEXT); // Default to Non-Essay as per Quiz Dashboard
     $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
     $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
-    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+    $excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
 
     // Filter by clicked user or course
     $filter_by_user   = optional_param('filter_user', '', PARAM_TEXT);

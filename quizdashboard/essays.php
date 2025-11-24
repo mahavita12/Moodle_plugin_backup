@@ -149,7 +149,7 @@ $month       = optional_param('month', '', PARAM_TEXT);
 $status      = optional_param('status', '', PARAM_ALPHA);
 $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+$excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
 
 
 // ---------------- Data ----------------
