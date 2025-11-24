@@ -16,6 +16,14 @@ $title = get_string('dashboard', 'local_personalcourse');
 $PAGE->set_title($title);
 $PAGE->set_heading($title);
 
+// New default view: show attempts like Quiz Dashboard and allow admin actions.
+$mode = optional_param('mode', 'attempts', PARAM_ALPHA);
+
+if ($mode === 'attempts') {
+    // Add CSS from Quiz Dashboard to ensure matching style
+    $PAGE->requires->css('/local/quizdashboard/styles.css');
+}
+
 // Handle actions.
 $action = optional_param('action', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
