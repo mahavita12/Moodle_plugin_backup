@@ -388,6 +388,7 @@ $includeflagged = isset($_GET['includeflagged']) ? 1 : 0;
 $month          = optional_param('month', '', PARAM_TEXT);
 $sort           = optional_param('sort', 'timecreated', PARAM_ALPHA);
 $dir            = optional_param('dir', 'DESC', PARAM_ALPHA);
+$excludestaff   = optional_param('excludestaff', 1, PARAM_BOOL);
 
 // Handle both userid and user_id parameters
 if (!empty($user_id) && empty($userid)) {
@@ -453,7 +454,7 @@ if ($quizid) {
     // Get question-level data in matrix format
     try {
         $data = $questionsmanager->get_question_results_matrix(
-            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir, (int)$categoryid, (int)$minscore
+            $courseid, $quizid, $quiztype, $userid, $status, $month, $sort, $dir, (int)$categoryid, (int)$minscore, $excludestaff
         );
         
         $user_attempts = $data['user_attempts'] ?? [];
@@ -689,6 +690,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                         }
                         ?>
                     </select>
+                </div>
+
+                <div class="filter-group" style="display:flex;align-items:center;gap:6px;margin-top:22px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> />
+                    <label for="excludestaff" style="margin:0;">Exclude staff</label>
                 </div>
 
                 <div class="filter-group" style="display:flex;align-items:center;gap:6px;margin-top:22px;">

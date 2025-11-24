@@ -338,7 +338,7 @@ class questions_manager {
      */
     public function get_question_results_matrix($courseid = 0, $quizid = 0, $quiztype = '', 
                                               $userid = 0, $status = '', $month = '', 
-                                              $sort = 'timecreated', $dir = 'DESC', $categoryid = 0, $minpercent = 0) {
+                                              $sort = 'timecreated', $dir = 'DESC', $categoryid = 0, $minpercent = 0, $excludestaff = false) {
         global $DB;
         
         if (!$quizid) {
@@ -438,6 +438,28 @@ class questions_manager {
             $where_conditions[] = "qa.timefinish >= :starttime AND qa.timefinish <= :endtime";
             $params['starttime'] = (int)$start_time;
             $params['endtime'] = (int)$end_time;
+        }
+
+        if ($excludestaff) {
+            global $CFG;
+            // Exclude site admins
+            $siteadmins = explode(',', $CFG->siteadmins);
+            if (!empty($siteadmins)) {
+                list($adminsql, $adminparams) = $DB->get_in_or_equal($siteadmins, \SQL_PARAMS_NAMED, 'admin', false);
+                $where_conditions[] = "u.id $adminsql";
+                $params = array_merge($params, $adminparams);
+            }
+
+            // Exclude users with staff roles in the course context
+            $where_conditions[] = "NOT EXISTS (
+                SELECT 1
+                FROM {role_assignments} ra
+                JOIN {context} ctx ON ra.contextid = ctx.id
+                WHERE ra.userid = u.id
+                AND ctx.contextlevel = 50 
+                AND ctx.instanceid = c.id
+                AND ra.roleid IN (1, 2, 3, 4)
+            )";
         }
         
         $where_clause = !empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "";
