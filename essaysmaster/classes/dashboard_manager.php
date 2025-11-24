@@ -113,6 +113,29 @@ class dashboard_manager {
                 $sql .= " AND q.id = :quizid";
                 $params['quizid'] = $quizid;
             }
+
+            // Exclude Staff Filter
+            if ($excludestaff) {
+                global $CFG;
+                // Exclude site admins
+                $siteadmins = explode(',', $CFG->siteadmins);
+                if (!empty($siteadmins)) {
+                    list($adminsql, $adminparams) = $DB->get_in_or_equal($siteadmins, SQL_PARAMS_NAMED, 'admin', false);
+                    $sql .= " AND u.id $adminsql";
+                    $params = array_merge($params, $adminparams);
+                }
+
+                // Exclude users with staff roles in the course context
+                $sql .= " AND NOT EXISTS (
+                    SELECT 1
+                    FROM {role_assignments} ra
+                    JOIN {context} ctx ON ra.contextid = ctx.id
+                    WHERE ra.userid = u.id
+                    AND ctx.contextlevel = 50 
+                    AND ctx.instanceid = c.id
+                    AND ra.roleid IN (1, 2, 3, 4)
+                )";
+            }
             
             // Search filter - handles exact student name match from dropdown
             if (!empty($search)) {

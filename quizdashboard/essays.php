@@ -149,6 +149,7 @@ $month       = optional_param('month', '', PARAM_TEXT);
 $status      = optional_param('status', '', PARAM_ALPHA);
 $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
+$excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 
 
 // ---------------- Data ----------------
@@ -173,7 +174,7 @@ $unique_userids = $filterdata['userids'];
 
 // FIXED: Pass status parameter to the quiz manager
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
+    $userid, $studentname, $coursename, $quizname, '', '', 'Essay', $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid, $excludestaff
 );
 
 
@@ -345,6 +346,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <select name="quizname" id="quizname">
                         <option value="">All Quizzes</option>
                     </select>
+                </div>
+
+                <div class="filter-group" style="display: flex; align-items: center; padding-top: 24px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                    <label for="excludestaff" style="margin-bottom: 0;">Exclude staff</label>
                 </div>
 
                 <div class="filter-group">

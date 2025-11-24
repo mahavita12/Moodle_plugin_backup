@@ -127,6 +127,31 @@ class quiz_manager {
         if (!empty($sectionid))   { $sql .= " AND cs.id = :sectionid";             $params['sectionid']   = $sectionid; }
         if (!empty($categoryid))  { $sql .= " AND c.category = :categoryid";       $params['categoryid']  = $categoryid; }
 
+        // --- Exclude Staff Filter ---
+        if ($excludestaff) {
+            // Exclude site admins
+            global $CFG;
+            $siteadmins = explode(',', $CFG->siteadmins);
+            if (!empty($siteadmins)) {
+                list($adminsql, $adminparams) = $DB->get_in_or_equal($siteadmins, SQL_PARAMS_NAMED, 'admin', false);
+                $sql .= " AND u.id $adminsql";
+                $params = array_merge($params, $adminparams);
+            }
+
+            // Exclude users with staff roles in the course context
+            // Roles: manager (1), coursecreator (2), editingteacher (3), teacher (4)
+            // We check for role assignments in the course context
+            $sql .= " AND NOT EXISTS (
+                SELECT 1
+                FROM {role_assignments} ra
+                JOIN {context} ctx ON ra.contextid = ctx.id
+                WHERE ra.userid = u.id
+                AND ctx.contextlevel = 50 
+                AND ctx.instanceid = c.id
+                AND ra.roleid IN (1, 2, 3, 4)
+            )";
+        }
+
         if (!empty($datefrom)) { $ts = strtotime($datefrom); if ($ts !== false) { $sql .= " AND qa.timefinish >= :datefrom"; $params['datefrom'] = $ts; } }
         if (!empty($dateto))   { $ts = strtotime($dateto.' 23:59:59'); if ($ts !== false) { $sql .= " AND qa.timefinish <= :dateto";   $params['dateto']   = $ts; } }
 

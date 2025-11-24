@@ -1,0 +1,3 @@
+[2025-11-23 18:39:21] normalize_items; attemptid=965; before=30; after=30; si_candidates=0
+[2025-11-23 18:39:21] SI_GENERATION; total_si_items=10; accepted=10; dropped=0; attemptid=965
+[2025-11-23 18:39:22] SI_FILTER; total=10; accepted=10; dropped=0
