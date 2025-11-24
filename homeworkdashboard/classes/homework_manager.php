@@ -31,7 +31,7 @@ class homework_manager {
 
         // Course custom field override if available.
         try {
-            $field = $DB->get_record('customfield_field', ['shortname' => 'homework_window_days'], 'id', IGNORE_MISSING);
+            $field = $DB->get_record('customfield_field', ['shortname' => 'homework_window_days'], 'id', \IGNORE_MISSING);
             if (!$field) {
                 return $days;
             }
@@ -132,6 +132,44 @@ class homework_manager {
     }
 
     /**
+     * Get list of user IDs who have staff roles in the course context or are site admins.
+     * Staff roles: manager, editingteacher, teacher.
+     */
+    private function get_staff_users_for_course(int $courseid): array {
+        global $DB;
+
+        // 1. Site admins.
+        $admins = \get_admins();
+        $staffids = array_map(function($u) { return (int)$u->id; }, $admins);
+
+        // 2. Course context roles.
+        $context = \context_course::instance($courseid, \IGNORE_MISSING);
+        if (!$context) {
+            return $staffids;
+        }
+
+        $staffroles = $DB->get_records_sql("SELECT id FROM {role} WHERE shortname IN ('manager', 'editingteacher', 'teacher')");
+        if (empty($staffroles)) {
+            return $staffids;
+        }
+        $roleids = array_keys($staffroles);
+
+        // Get users with these roles in this context.
+        list($rsql, $rparams) = $DB->get_in_or_equal($roleids, \SQL_PARAMS_NAMED, 'r');
+        $sql = "SELECT DISTINCT ra.userid
+                  FROM {role_assignments} ra
+                 WHERE ra.contextid = :contextid
+                   AND ra.roleid $rsql";
+        $rparams['contextid'] = $context->id;
+        
+        $course_staff = $DB->get_fieldset_sql($sql, $rparams);
+        $course_staff = array_map('intval', $course_staff);
+
+        $allstaff = array_merge($staffids, $course_staff);
+        return array_unique($allstaff);
+    }
+
+    /**
      * Build [start, end] timestamps for the homework window.
      */
     private function build_window(int $timeclose, int $windowdays): array {
@@ -154,7 +192,7 @@ class homework_manager {
             return null;
         }
 
-        list($insql, $params) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
+        list($insql, $params) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'uid');
         $params['quizid'] = $quizid;
         $params['start'] = $windowstart;
         $params['end'] = $windowend;
@@ -356,7 +394,8 @@ class homework_manager {
         string $studentname,
         string $statusfilter,
         string $classificationfilter,
-        string $quiztypefilter
+        string $quiztypefilter,
+        array $excludeduserids = []
     ): array {
         global $DB;
 
@@ -434,12 +473,16 @@ class homework_manager {
 
         $userids = [];
         foreach ($snapshots as $s) {
-            $userids[] = (int)$s->userid;
+            $uid = (int)$s->userid;
+            if (!empty($excludeduserids) && in_array($uid, $excludeduserids)) {
+                continue;
+            }
+            $userids[] = $uid;
         }
         $userids = array_values(array_unique($userids));
 
         if (!empty($userids)) {
-            list($userinsql, $userparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
+            list($userinsql, $userparams) = $DB->get_in_or_equal($userids, \SQL_PARAMS_NAMED, 'u');
             $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
         } else {
             $userrecs = [];
@@ -449,6 +492,9 @@ class homework_manager {
 
         foreach ($snapshots as $s) {
             $uid = (int)$s->userid;
+            if (!empty($excludeduserids) && in_array($uid, $excludeduserids)) {
+                continue;
+            }
             $userdata = $userrecs[$uid] ?? null;
             $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
 
@@ -530,7 +576,8 @@ class homework_manager {
         string $classificationfilter,
         ?string $weekvalue,
         string $sort,
-        string $dir
+        string $dir,
+        bool $excludestaff = false
     ): array {
         global $DB;
 
@@ -694,6 +741,12 @@ class homework_manager {
                 continue;
             }
 
+            // Determine excluded staff if requested.
+            $excludeduserids = [];
+            if ($excludestaff) {
+                $excludeduserids = $this->get_staff_users_for_course((int)$qrec->courseid);
+            }
+
             if ($isclosed) {
                 $snaprows = $this->build_snapshot_rows_for_quiz(
                     (int)$qrec->quizid,
@@ -705,7 +758,8 @@ class homework_manager {
                     $studentname,
                     $statusfilter,
                     $classificationfilter,
-                    $quiztypefilter
+                    $quiztypefilter,
+                    $excludeduserids
                 );
 
                 if (!empty($snaprows)) {
@@ -725,6 +779,14 @@ class homework_manager {
                 continue;
             }
 
+            if (!empty($excludeduserids)) {
+                $roster = array_diff($roster, $excludeduserids);
+                if (empty($roster)) {
+                    continue;
+                }
+                $roster = array_values($roster);
+            }
+
             // Optionally restrict roster by userid filter.
             if ($userid > 0) {
                 $roster = array_values(array_intersect($roster, [$userid]));
@@ -733,7 +795,7 @@ class homework_manager {
                 }
             }
 
-            list($insql, $inparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
+            list($insql, $inparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'uid');
             $apparams = $inparams;
             $apparams['quizid'] = (int)$qrec->quizid;
             $apparams['start'] = $windowstart;
@@ -783,7 +845,7 @@ class homework_manager {
             }
 
             // Pre-fetch user names for roster once per quiz.
-            list($userinsql, $userparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'u');
+            list($userinsql, $userparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'u');
             $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
 
             foreach ($roster as $uid) {

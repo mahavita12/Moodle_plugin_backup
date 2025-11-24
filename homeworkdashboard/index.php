@@ -30,6 +30,7 @@ $classfilter   = optional_param('classification', '', PARAM_ALPHA);
 $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
+$excludestaff  = optional_param('excludestaff', 0, PARAM_BOOL);
 
 function local_homeworkdashboard_sort_arrows(string $column, string $current_sort, string $current_dir): string {
     $up_class = '';
@@ -104,7 +105,8 @@ $allrows = $manager->get_homework_rows(
     $classfilter,
     $weekvalue,
     $sort,
-    $dir
+    $dir,
+    $excludestaff
 );
 
 $uniqueusers = [];
@@ -174,7 +176,8 @@ $rows = $manager->get_homework_rows(
     $classfilter,
     $weekvalue,
     $sort,
-    $dir
+    $dir,
+    $excludestaff
 );
 
 $PAGE->requires->js_init_code("document.addEventListener('DOMContentLoaded', function() {var toggles = document.querySelectorAll('.hw-expand-toggle');for (var i = 0; i < toggles.length; i++) {toggles[i].addEventListener('click', function(e) {var targetId = this.getAttribute('data-target');var row = document.getElementById(targetId);if (!row) {return;}if (row.style.display === 'none' || row.style.display === '') {row.style.display = 'table-row';this.innerHTML = '-';} else {row.style.display = 'none';this.innerHTML = '+';}e.preventDefault();e.stopPropagation();});}});");
@@ -299,6 +302,11 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                    <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
                 </div>
 
                 <div class="filter-actions">
