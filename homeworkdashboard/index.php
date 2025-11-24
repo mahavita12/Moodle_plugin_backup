@@ -31,6 +31,12 @@ $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
 $excludestaff  = optional_param('excludestaff', 0, PARAM_BOOL);
+$duedate       = optional_param('duedate', 0, PARAM_INT);
+
+// If a specific due date is selected, clear the week filter to avoid confusion/conflicts in UI state.
+if ($duedate > 0) {
+    $weekvalue = '';
+}
 
 function local_homeworkdashboard_sort_arrows(string $column, string $current_sort, string $current_dir): string {
     $up_class = '';
@@ -106,7 +112,8 @@ $allrows = $manager->get_homework_rows(
     $weekvalue,
     $sort,
     $dir,
-    $excludestaff
+    $excludestaff,
+    $duedate
 );
 
 $uniqueusers = [];
@@ -177,7 +184,8 @@ $rows = $manager->get_homework_rows(
     $weekvalue,
     $sort,
     $dir,
-    $excludestaff
+    $excludestaff,
+    $duedate
 );
 
 $PAGE->requires->js_init_code("document.addEventListener('DOMContentLoaded', function() {var toggles = document.querySelectorAll('.hw-expand-toggle');for (var i = 0; i < toggles.length; i++) {toggles[i].addEventListener('click', function(e) {var targetId = this.getAttribute('data-target');var row = document.getElementById(targetId);if (!row) {return;}if (row.style.display === 'none' || row.style.display === '') {row.style.display = 'table-row';this.innerHTML = '-';} else {row.style.display = 'none';this.innerHTML = '+';}e.preventDefault();e.stopPropagation();});}});");
@@ -460,14 +468,9 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php if (!empty($row->timeclose)): ?>
                                     <?php
                                         $closedts = (int)$row->timeclose;
-                                        $closedSunday = strtotime('last Sunday', $closedts);
-                                        if ($closedSunday === false) {
-                                            $closedSunday = $closedts;
-                                        }
-                                        $weekvalueforclosed = date('Y-m-d', $closedSunday);
-                                        $weekurl = new moodle_url('/local/homeworkdashboard/index.php', ['week' => $weekvalueforclosed]);
+                                        $dueurl = new moodle_url('/local/homeworkdashboard/index.php', ['duedate' => $closedts]);
                                     ?>
-                                    <a href="<?php echo $weekurl->out(false); ?>">
+                                    <a href="<?php echo $dueurl->out(false); ?>">
                                         <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
                                     </a>
                                 <?php endif; ?>

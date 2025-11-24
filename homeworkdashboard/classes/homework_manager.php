@@ -577,7 +577,8 @@ class homework_manager {
         ?string $weekvalue,
         string $sort,
         string $dir,
-        bool $excludestaff = false
+        bool $excludestaff = false,
+        int $duedate = 0
     ): array {
         global $DB;
 
@@ -585,7 +586,12 @@ class homework_manager {
         $snapshotkeys = [];
 
         // Resolve optional week filter to quiz timeclose bounds.
-        [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+        // If duedate is provided, we ignore the week filter.
+        $weekstart = 0;
+        $weekend = 0;
+        if ($duedate <= 0) {
+            [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+        }
 
         $now = time();
 
@@ -617,7 +623,10 @@ class homework_manager {
             $snapsql .= " AND s.quizid = :squizid";
             $snapparams['squizid'] = $quizid;
         }
-        if ($weekstart > 0 && $weekend > 0) {
+        if ($duedate > 0) {
+            $snapsql .= " AND s.timeclose = :sduedate";
+            $snapparams['sduedate'] = $duedate;
+        } else if ($weekstart > 0 && $weekend > 0) {
             $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
             $snapparams['sweekstart'] = $weekstart;
             $snapparams['sweekend'] = $weekend;
@@ -703,7 +712,10 @@ class homework_manager {
             $sql .= " AND q.id = :quizid";
             $params['quizid'] = $quizid;
         }
-        if ($weekstart > 0 && $weekend > 0) {
+        if ($duedate > 0) {
+            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) = :duedate";
+            $params['duedate'] = $duedate;
+        } else if ($weekstart > 0 && $weekend > 0) {
             $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) BETWEEN :weekstart AND :weekend";
             $params['weekstart'] = $weekstart;
             $params['weekend'] = $weekend;
@@ -1261,67 +1273,37 @@ class homework_manager {
             'end'   => $now,
         ];
 
-        $sql = "SELECT e.id AS eventid, e.timestart AS timeclose,
-                       q.id AS quizid, q.course AS courseid, q.grade,
-                       cm.id AS cmid, q.timeclose AS quiztimeclose
-                  FROM {event} e
-                  JOIN {quiz} q ON q.id = e.instance AND e.modulename = 'quiz'
+        // Select quizzes that closed within the specified window.
+        $sql = "SELECT q.id AS quizid, q.timeclose, q.course AS courseid, q.grade, cm.id AS cmid
+                  FROM {quiz} q
                   JOIN {course_modules} cm ON cm.instance = q.id
                   JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                 WHERE e.eventtype = 'close'
-                   AND e.timestart BETWEEN :start AND :end";
+                 WHERE q.timeclose > 0
+                   AND q.timeclose BETWEEN :start AND :end
+              ORDER BY q.timeclose ASC";
 
-        $events = $DB->get_records_sql($sql, $params);
-        if (empty($events)) {
+        $quizzes = $DB->get_records_sql($sql, $params);
+        if (empty($quizzes)) {
             return 0;
         }
 
         $inserted = 0;
 
-        foreach ($events as $erec) {
-            $quizid = (int)$erec->quizid;
-            $courseid = (int)$erec->courseid;
-            $cmid = (int)$erec->cmid;
+        foreach ($quizzes as $qrec) {
+            $quizid = (int)$qrec->quizid;
+            $courseid = (int)$qrec->courseid;
+            $cmid = (int)$qrec->cmid;
+            $timeclose = (int)$qrec->timeclose;
 
-            $eventclose = (int)$erec->timeclose;
-            $quiztimeclose = isset($erec->quiztimeclose) ? (int)$erec->quiztimeclose : 0;
-
-            $canonicalclose = 0;
-
-            try {
-                if ($DB->get_manager()->table_exists('local_quiz_uploader_autoreset')) {
-                    $hist = $DB->get_record_sql(
-                        "SELECT originaltimeclose
-                           FROM {local_quiz_uploader_autoreset}
-                          WHERE quizid = :quizid
-                            AND originaltimeclose > 0
-                       ORDER BY ABS(originaltimeclose - :eventclose) ASC",
-                        ['quizid' => $quizid, 'eventclose' => $eventclose]
-                    );
-                    if ($hist && !empty($hist->originaltimeclose)) {
-                        $canonicalclose = (int)$hist->originaltimeclose;
-                    }
-                }
-            } catch (\Throwable $e) {
-            }
-
-            if ($canonicalclose <= 0 && $eventclose > 0) {
-                $canonicalclose = $eventclose;
-            }
-
-            if ($canonicalclose <= 0 && $quiztimeclose > 0) {
-                $canonicalclose = $quiztimeclose;
-            }
-
-            if ($canonicalclose <= 0) {
+            if ($timeclose <= 0) {
                 continue;
             }
 
-            $existinguserids = $DB->get_fieldset_select('local_homework_status', 'userid', 'quizid = :quizid AND timeclose = :timeclose', ['quizid' => $quizid, 'timeclose' => $canonicalclose]);
+            $existinguserids = $DB->get_fieldset_select('local_homework_status', 'userid', 'quizid = :quizid AND timeclose = :timeclose', ['quizid' => $quizid, 'timeclose' => $timeclose]);
             $existinguserids = array_map('intval', $existinguserids);
 
             $windowdays = $this->get_course_window_days($courseid);
-            [$windowstart, $windowend] = $this->build_window($canonicalclose, $windowdays);
+            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
 
             $roster = $this->get_course_roster($courseid);
             if (!empty($existinguserids)) {
@@ -1346,7 +1328,7 @@ class homework_manager {
                               AND qa.timefinish BETWEEN :start AND :end";
             $attempts = $DB->get_records_sql($attemptsql, $apparams);
 
-            $grade = ($erec->grade > 0.0) ? (float)$erec->grade : 0.0;
+            $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
 
             $peruser = [];
             foreach ($attempts as $a) {
@@ -1415,7 +1397,7 @@ class homework_manager {
                     'courseid'     => $courseid,
                     'cmid'         => $cmid,
                     'quizid'       => $quizid,
-                    'timeclose'    => $canonicalclose,
+                    'timeclose'    => $timeclose,
                     'windowdays'   => $windowdays,
                     'windowstart'  => $windowstart,
                     'attempts'     => $summary['attempts'],
