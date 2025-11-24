@@ -61,10 +61,10 @@ $renderer = $PAGE->get_renderer('core');
 echo $OUTPUT->header();
 
 $tabs = [];
-$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
-$tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
-$tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
 $tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
+$tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+$tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
 print_tabs([$tabs], $tab);
 
 if ($tab === 'copy') {

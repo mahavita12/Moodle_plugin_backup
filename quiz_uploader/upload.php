@@ -42,13 +42,14 @@ if ($mform->is_cancelled()) {
     echo $OUTPUT->header();
     // Render tabs so navigation is visible when landing directly on upload.php.
     $tabs = [];
-    $tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
     // Only show advanced tabs to managers/admins.
     $showadvanced = has_capability('moodle/category:manage', context_system::instance());
     if ($showadvanced) {
-        $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+        $tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
         $tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+        $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
     }
+    $tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
     print_tabs([$tabs], 'upload');
 
     if ($result['success']) {
@@ -73,13 +74,14 @@ echo $OUTPUT->header();
 
 // Render tabs so navigation is visible when landing directly on upload.php.
 $tabs = [];
-$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
 // Only show advanced tabs to managers/admins.
 $showadvanced = has_capability('moodle/category:manage', context_system::instance());
 if ($showadvanced) {
-    $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+    $tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
     $tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+    $tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
 }
+$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
 print_tabs([$tabs], 'upload');
 
 // Add JavaScript for section loading

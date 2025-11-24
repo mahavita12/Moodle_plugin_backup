@@ -27,9 +27,10 @@ if (!$defaultcatid) { $defaultcatid = 1; }
 echo $OUTPUT->header();
 
 $tabs = [];
-$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
-$tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
 $tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
+$tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+$tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
 print_tabs([$tabs], 'multisettings');
 
 echo html_writer::tag('h3', 'Bulk change quiz settings');
@@ -75,11 +76,11 @@ for ($i = 1; $i <= $columns; $i++) {
 echo html_writer::start_tag('form', ['method' => 'post']);
 echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
 
-$gridstyle = 'display:grid;grid-template-columns:520px 520px repeat(3, minmax(320px,1fr));gap:12px;align-items:start;overflow-x:auto';
+$gridstyle = 'display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;align-items:start;overflow-x:auto';
 echo html_writer::start_tag('div', ['style' => $gridstyle]);
 for ($i = 1; $i <= $columns; $i++) {
     $cd = $coldata[$i];
-    $colstyle = 'border:1px solid #eee;padding:8px;border-radius:6px;box-sizing:border-box;' . (($i <= 2) ? 'min-width:520px;' : 'min-width:320px;');
+    $colstyle = 'border:1px solid #eee;padding:8px;border-radius:6px;box-sizing:border-box;min-width:250px;';
     echo html_writer::start_div('col-' . $i, ['style' => $colstyle]);
     echo html_writer::tag('h4', 'Column ' . $i, ['style' => 'margin-top:0;font-size:15px']);
 
@@ -129,11 +130,11 @@ if ($module) {
 
 // Quizzes list
 echo html_writer::tag('h4', 'Select quizzes to update');
-$gridstyle2 = 'display:grid;grid-template-columns:400px 400px repeat(3, minmax(300px,1fr));gap:12px;align-items:start;';
+$gridstyle2 = 'display:grid;grid-template-columns:repeat(5, 1fr);gap:12px;align-items:start;';
 echo html_writer::start_tag('div', ['style' => $gridstyle2]);
 for ($i = 1; $i <= $columns; $i++) {
     $cd = $coldata[$i];
-    echo html_writer::start_div('cmids-container', ['style' => 'border:1px solid #ddd;padding:8px;border-radius:6px;max-height:320px;overflow:auto;']);
+    echo html_writer::start_div('cmids-container', ['style' => 'border:1px solid #ddd;padding:8px;border-radius:6px;max-height:320px;overflow:auto;min-width:250px;']);
     if (!empty($cd->quizrows)) {
         echo html_writer::start_div('');
         echo html_writer::tag('button', 'Select all', ['type' => 'button', 'class' => 'btn btn-link select-all-cmids']);

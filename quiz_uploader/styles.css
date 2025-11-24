@@ -85,6 +85,36 @@
     color: #fff;
 }
 
+/* Multi settings columns - equal width and alignment */
+.path-local-quiz_uploader .column-wrapper {
+    flex: 1;
+    min-width: 0;
+    max-width: 20%;
+}
+
+.path-local-quiz_uploader .column-wrapper h4 {
+    text-align: center;
+}
+
+.path-local-quiz_uploader .column-wrapper .form-group {
+    margin-bottom: 12px;
+}
+
+.path-local-quiz_uploader .column-wrapper label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.path-local-quiz_uploader .column-wrapper select {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+.path-local-quiz_uploader .column-wrapper button {
+    width: 100%;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .quiz-upload-success,
@@ -96,5 +126,9 @@
         display: block;
         width: 100%;
         margin-bottom: 10px;
+    }
+    
+    .path-local-quiz_uploader .column-wrapper {
+        max-width: 100%;
     }
 }
