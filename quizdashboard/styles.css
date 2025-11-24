@@ -81,6 +81,18 @@
     text-decoration: underline !important;
 }
 
+/* Ensure table header links in essay dashboard container are white */
+.essay-dashboard-container .dashboard-table th a,
+.essay-dashboard-container .dashboard-table th {
+    color: white !important;
+    text-decoration: none;
+}
+
+.essay-dashboard-container .dashboard-table th a:hover {
+    color: #e9ecef !important;
+    text-decoration: underline;
+}
+
 .quiz-dashboard .badge-success {
     background-color: #28a745;
 }

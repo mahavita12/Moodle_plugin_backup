@@ -194,7 +194,7 @@ foreach ($records as $r) {
         }
     }
     $gradeurl  = $cmid ? new moodle_url('/mod/quiz/report.php', ['id' => $cmid, 'mode' => 'grading']) : null;
-    $comment_count = $quizmanager->get_attempt_comment_count($attemptid);
+
 
     $time_taken = '';
     if (!empty($r->timestart) && !empty($r->timefinish)) {
@@ -245,7 +245,7 @@ foreach ($records as $r) {
         'score_mechanics' => $r->score_mechanics ?? null,
         'score'         => $r->score,
         'maxscore'      => $r->maxscore,
-        'comment_count' => $comment_count,
+
         'grade'         => isset($r->sumgrades) ? round($r->sumgrades, 2) : (isset($r->grade) ? round($r->grade, 2) : 'N/A'), // FIXED: Check if sumgrades exists
         'reviewurl'     => $reviewurl->out(false),
         'gradeurl'      => $gradeurl ? $gradeurl->out(false) : '',
@@ -464,7 +464,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)" style="width: 4%;">Creativity</th>
                     <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)" style="width: 4%;">Mechanics</th>
                     <th class="sortable-column" data-sort="score">Score</th>
-                    <th>Comment</th>
+
                     <!-- Grade column removed - keeping only Score column -->
                     <th>AI %</th>
                     <th>Similarity</th>
@@ -528,7 +528,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             <td><?php echo $row->score_creativity_originality !== null ? ((int)$row->score_creativity_originality) . ' / 20' : '-'; ?></td>
                             <td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
                             <td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
-                            <td class="comment-cell-count"><a href="<?php echo $row->reviewurl; ?>" class="comment-link" title="View/Add comments"><span class="comment-icon">💬</span><span class="comment-count"><?php echo $row->comment_count; ?></span></a></td>
+
                             <!-- Grade cell removed - keeping only Score column -->
                             <td class="ai-likelihood-cell" style="text-align: center;">
                                 <?php if ($row->ai_likelihood): ?>

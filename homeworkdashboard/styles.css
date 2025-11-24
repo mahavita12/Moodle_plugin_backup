@@ -83,3 +83,17 @@
     background-color: #f8f9fa;
     font-style: italic;
 }
+
+/* Alternating column backgrounds for better readability */
+.hw-table tbody tr td:nth-child(even),
+.hw-table thead tr th:nth-child(even) {
+    background: linear-gradient(to bottom, #f8f9fa 0%, #f1f3f5 100%);
+}
+
+.hw-table tbody tr:hover td:nth-child(even) {
+    background: linear-gradient(to bottom, #e9ecef 0%, #dee2e6 100%);
+}
+
+.hw-table tbody tr:hover td:nth-child(odd) {
+    background-color: #f8f9fa;
+}

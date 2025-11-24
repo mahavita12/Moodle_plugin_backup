@@ -348,6 +348,10 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?>
                     </th>
+                    <th class="sortable-column" data-sort="status">
+                        <?php echo get_string('status'); ?>
+                        <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?>
+                    </th>
                     <th class="sortable-column" data-sort="attemptno">
                         <?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?>
@@ -359,10 +363,6 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     <th class="sortable-column" data-sort="quiz_type">
                         <?php echo get_string('quiztype', 'local_homeworkdashboard'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?>
-                    </th>
-                    <th class="sortable-column" data-sort="status">
-                        <?php echo get_string('status'); ?>
-                        <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?>
                     </th>
                     <th class="sortable-column" data-sort="timeclose">
                         Due date
@@ -426,6 +426,18 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 </a>
                             </td>
                             <td>
+                                <?php $statusurl = new moodle_url('/local/homeworkdashboard/index.php', ['status' => $row->status]); ?>
+                                <a href="<?php echo $statusurl->out(false); ?>">
+                                    <?php if ($row->status === 'Completed'): ?>
+                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
+                                    <?php elseif ($row->status === 'Low grade'): ?>
+                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
+                                    <?php else: ?>
+                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#10006;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
+                                    <?php endif; ?>
+                                </a>
+                            </td>
+                            <td>
                                 <?php if (!empty($row->lastattemptid)): ?>
                                     <a href="<?php echo (new moodle_url('/mod/quiz/review.php', ['attempt' => (int)$row->lastattemptid]))->out(false); ?>" target="_blank">
                                         <?php echo (int)$row->attemptno; ?>
@@ -451,18 +463,6 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                                 <?php else: ?>
                                     <?php echo s($row->quiz_type); ?>
                                 <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php $statusurl = new moodle_url('/local/homeworkdashboard/index.php', ['status' => $row->status]); ?>
-                                <a href="<?php echo $statusurl->out(false); ?>">
-                                    <?php if ($row->status === 'Completed'): ?>
-                                        <span class="hw-badge hw-badge-completed"><span class="hw-badge-icon">&#10003;</span><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></span>
-                                    <?php elseif ($row->status === 'Low grade'): ?>
-                                        <span class="hw-badge hw-badge-lowgrade"><span class="hw-badge-icon">?</span><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></span>
-                                    <?php else: ?>
-                                        <span class="hw-badge hw-badge-noattempt"><span class="hw-badge-icon">&#10006;</span><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></span>
-                                    <?php endif; ?>
-                                </a>
                             </td>
                             <td>
                                 <?php if (!empty($row->timeclose)): ?>

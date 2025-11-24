@@ -293,9 +293,7 @@ foreach ($records as $r) {
     $reviewurl = new moodle_url('/mod/quiz/review.php', ['attempt' => $attemptid]);
     $gradeurl  = $cmid ? new moodle_url('/mod/quiz/report.php', ['id' => $cmid, 'mode' => 'grading']) : null;
 
-    // Get comment count
-    $comment_manager = new \local_quizdashboard\quiz_manager();
-    $comment_count = $comment_manager->get_attempt_comment_count($attemptid);
+
 
     // Calculate time taken
     $time_taken = '';
@@ -352,7 +350,7 @@ foreach ($records as $r) {
         'maxscore'      => $r->maxscore,
         'percentage'    => $r->percentage,
         'quiz_type'     => $r->quiz_type ?? '',
-        'comment_count' => $comment_count,
+
         'reviewurl'     => $reviewurl->out(false),
         'gradeurl'      => $gradeurl ? $gradeurl->out(false) : '',
     ];
@@ -596,7 +594,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                         <?php echo getSortArrows('score', $sort, $dir); ?>
                     </th>
                     <th>
-                        Comment
+                        Actions
                     </th>
                 </tr>
             </thead>
@@ -673,11 +671,8 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 }
                                 ?>
                             </td>
-                            <td class="comment-cell-count">
-                                <a href="<?php echo $row->reviewurl; ?>" class="comment-link" title="View/Add comments">
-                                    <span class="comment-icon">💬</span>
-                                    <span class="comment-count"><?php echo $row->comment_count; ?></span>
-                                </a>
+                            <td>
+                                <a href="<?php echo $row->reviewurl; ?>" target="_blank"><?php echo get_string('review', 'quiz'); ?></a>
                             </td>
                         </tr>
                     <?php endforeach; ?>
