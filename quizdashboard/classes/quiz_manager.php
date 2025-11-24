@@ -14,7 +14,7 @@ class quiz_manager {
 
     public function get_filtered_quiz_attempts($userid = '', $studentname = '', $coursename = '', $quizname = '',
                                               $datefrom = '', $dateto = '', $quiztype = '', $sort = 'coursename', $dir = 'ASC',
-                                              $limit = 0, $offset = 0, $status = '', $sectionid = '', $categoryid = 0) {
+                                              $limit = 0, $offset = 0, $status = '', $sectionid = '', $categoryid = 0, $excludestaff = false) {
         global $DB;
 
         // MODIFICATION: Updated subquery to get question name and ID for linking

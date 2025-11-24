@@ -28,6 +28,7 @@ $categoryid = optional_param('categoryid', 0, PARAM_INT);
 $per_page = optional_param('per_page', 25, PARAM_INT);
 $page = optional_param('page', 1, PARAM_INT);
 $action = optional_param('action', '', PARAM_ALPHA);
+$excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 
 // Initialize dashboard manager
 $dashboard = new \local_essaysmaster\dashboard_manager();
@@ -82,7 +83,7 @@ if (empty($categoryid)) {
 // Get dashboard data
 $courses = $dashboard->get_accessible_courses();
 $students = $dashboard->get_unique_students($courseid);
-$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid, 25, 1, $quizid, $categoryid);
+$student_progress = $dashboard->get_student_progress($courseid, $status, $search, $month, $userid, 25, 1, $quizid, $categoryid, $excludestaff);
 $quiz_configs = $dashboard->get_quiz_configurations($courseid, $categoryid);
 $statistics = $dashboard->get_dashboard_statistics($courseid);
 
@@ -197,6 +198,11 @@ switch ($currenttab) {
             ['id' => 'month']);
         $filter_form .= html_writer::end_div();
         
+        // Exclude staff checkbox
+        $filter_form .= html_writer::start_div('filter-group checkbox-group', ['style' => 'display: flex; align-items: flex-end; padding-bottom: 5px;']);
+        $filter_form .= html_writer::checkbox('excludestaff', 1, $excludestaff, 'Exclude staff', ['id' => 'excludestaff', 'style' => 'margin-right: 5px;']);
+        $filter_form .= html_writer::end_div();
+
         // Filter actions
         $filter_form .= html_writer::start_div('filter-actions');
         $filter_form .= html_writer::tag('button', 'Filter', [

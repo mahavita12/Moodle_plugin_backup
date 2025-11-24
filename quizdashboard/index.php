@@ -198,6 +198,7 @@ $status      = optional_param('status', '', PARAM_ALPHA);
 $quiztype    = optional_param('quiztype', 'Non-Essay', PARAM_TEXT); // Default to Non-Essay
 $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
+$excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 
 // Filter by clicked user or course
 $filter_by_user   = optional_param('filter_user', '', PARAM_TEXT);
@@ -259,7 +260,7 @@ try {
 }
 
 $records = $quizmanager->get_filtered_quiz_attempts(
-    $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid
+    $userid, $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, (int)$categoryid, $excludestaff
 );
 
 // Apply month filter if set
@@ -509,6 +510,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                    <label for="excludestaff" style="margin-bottom: 0;">Exclude staff</label>
                 </div>
 
                 <div class="filter-actions">

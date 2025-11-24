@@ -62,10 +62,22 @@ if ($mode === 'attempts') {
     $quiztype = optional_param('quiztype', '', PARAM_TEXT); // '' = all.
     $sort = optional_param('sort', 'timefinish', PARAM_ALPHA);
     $dir = optional_param('dir', 'DESC', PARAM_ALPHA);
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 
     $records = $qm->get_filtered_quiz_attempts(
-        $filteruserid ?: '', $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid
+        $filteruserid ?: '', $studentname, $coursename, $quizname, '', '', $quiztype, $sort, $dir, 0, 0, $status, $sectionid, 0, $excludestaff
     );
+
+    // Filter Form
+    echo html_writer::start_tag('form', ['method' => 'get', 'action' => $PAGE->url->out(false), 'class' => 'mb-3']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'mode', 'value' => 'attempts']);
+    echo html_writer::start_div('form-check');
+    echo html_writer::checkbox('excludestaff', 1, $excludestaff, get_string('excludestaff', 'local_quizdashboard') ?: 'Exclude staff', ['class' => 'form-check-input', 'id' => 'id_excludestaff']);
+    echo ' '; // Spacer
+    echo html_writer::tag('label', 'Exclude staff', ['class' => 'form-check-label', 'for' => 'id_excludestaff']);
+    echo html_writer::end_div();
+    echo html_writer::empty_tag('input', ['type' => 'submit', 'value' => get_string('filter'), 'class' => 'btn btn-secondary btn-sm mt-1']);
+    echo html_writer::end_tag('form');
 
     // Build table similar to quiz dashboard.
     $table = new html_table();

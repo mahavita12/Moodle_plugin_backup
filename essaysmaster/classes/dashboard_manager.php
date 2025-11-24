@@ -42,7 +42,7 @@ class dashboard_manager {
         }
     }
 
-    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1, $quizid = 0, $categoryid = 0) {
+    public function get_student_progress($courseid = 0, $status = '', $search = '', $month = '', $userid = 0, $per_page = 25, $page = 1, $quizid = 0, $categoryid = 0, $excludestaff = false) {
         global $DB;
         
         try {

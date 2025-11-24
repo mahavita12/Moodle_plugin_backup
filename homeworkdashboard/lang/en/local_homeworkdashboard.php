@@ -35,4 +35,4 @@ $string['task_computehomeworksnapshots'] = 'Compute homework snapshots';
 $string['backfill_from_events'] = 'Backfill snapshots from quiz events';
 $string['backfill_weeks'] = 'Weeks to backfill';
 $string['backfill_done'] = 'Backfilled {$a} snapshot records from quiz events.';
-$string['excludestaff'] = 'Exclude staff (Admin, Manager, Teacher)';
+$string['excludestaff'] = 'Exclude staff';
