@@ -97,3 +97,24 @@
 .hw-table tbody tr:hover td:nth-child(odd) {
     background-color: #f8f9fa;
 }
+
+/* Classification badges matching timeline styling */
+.hw-classification-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.hw-classification-new {
+    background-color: #17a2b8;
+    color: #ffffff;
+}
+
+.hw-classification-revision {
+    background-color: #ffc107;
+    color: #000000;
+}

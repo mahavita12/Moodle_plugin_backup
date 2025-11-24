@@ -30,7 +30,7 @@ $classfilter   = optional_param('classification', '', PARAM_ALPHA);
 $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff  = optional_param('excludestaff', 0, PARAM_BOOL);
+$excludestaff  = optional_param('excludestaff', 1, PARAM_BOOL);
 $duedate       = optional_param('duedate', 0, PARAM_INT);
 
 // If a specific due date is selected, clear the week filter to avoid confusion/conflicts in UI state.
@@ -120,6 +120,7 @@ $uniqueusers = [];
 $uniqueuserids = [];
 $uniquesections = [];
 $uniquequizzes = [];
+$uniqueduedates = [];
 
 foreach ($allrows as $r) {
     if (!isset($uniqueusers[$r->userid])) {
@@ -150,6 +151,16 @@ foreach ($allrows as $r) {
             'name' => $r->quizname,
         ];
     }
+    // Collect unique due dates
+    if (!empty($r->timeclose)) {
+        $duedatekey = (int)$r->timeclose;
+        if (!isset($uniqueduedates[$duedatekey])) {
+            $uniqueduedates[$duedatekey] = (object) [
+                'timestamp' => $duedatekey,
+                'formatted' => userdate($r->timeclose, get_string('strftimedatetime', 'langconfig')),
+            ];
+        }
+    }
 }
 
 if (!empty($uniqueusers)) {
@@ -169,6 +180,9 @@ if (!empty($uniquequizzes)) {
 }
 if (!empty($uniqueuserids)) {
     ksort($uniqueuserids);
+}
+if (!empty($uniqueduedates)) {
+    krsort($uniqueduedates); // Sort in reverse chronological order (newest first)
 }
 
 $rows = $manager->get_homework_rows(
@@ -297,6 +311,18 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
                         <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
                         <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="duedate"><?php echo get_string('duedate', 'local_homeworkdashboard'); ?></label>
+                    <select name="duedate" id="duedate">
+                        <option value="0"><?php echo get_string('all'); ?></option>
+                        <?php foreach ($uniqueduedates as $dd): ?>
+                            <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo ($duedate === (int)$dd->timestamp) ? 'selected' : ''; ?>>
+                                <?php echo $dd->formatted; ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -448,8 +474,16 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                             </td>
                             <td>
                                 <?php if ($row->classification !== ''): ?>
+                                    <?php 
+                                    $class_badge = 'hw-classification-badge';
+                                    if ($row->classification === 'New') {
+                                        $class_badge .= ' hw-classification-new';
+                                    } else if ($row->classification === 'Revision') {
+                                        $class_badge .= ' hw-classification-revision';
+                                    }
+                                    ?>
                                     <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['classification' => $row->classification]))->out(false); ?>">
-                                        <?php echo s($row->classification); ?>
+                                        <span class="<?php echo $class_badge; ?>"><?php echo s($row->classification); ?></span>
                                     </a>
                                 <?php else: ?>
                                     <?php echo s($row->classification); ?>

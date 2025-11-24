@@ -22,18 +22,6 @@ $courseid = optional_param('course', 0, PARAM_INT);
 $quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
-$search = optional_param('search', '', PARAM_TEXT);
-$month = optional_param('month', '', PARAM_TEXT);
-$categoryid = optional_param('categoryid', 0, PARAM_INT);
-$per_page = optional_param('per_page', 25, PARAM_INT);
-$page = optional_param('page', 1, PARAM_INT);
-$action = optional_param('action', '', PARAM_ALPHA);
-$excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
-
-// Initialize dashboard manager
-$dashboard = new \local_essaysmaster\dashboard_manager();
-
-// Handle AJAX requests
 if ($action) {
     require_sesskey();
     
