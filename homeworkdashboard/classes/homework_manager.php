@@ -1415,7 +1415,7 @@ class homework_manager {
                     'courseid'     => $courseid,
                     'cmid'         => $cmid,
                     'quizid'       => $quizid,
-                    'timeclose'    => $timeclose,
+                    'timeclose'    => $canonicalclose,
                     'windowdays'   => $windowdays,
                     'windowstart'  => $windowstart,
                     'attempts'     => $summary['attempts'],
