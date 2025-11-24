@@ -18,10 +18,15 @@ $PAGE->set_pagelayout('admin');
 $PAGE->requires->css('/local/essaysmaster/styles.css');
 
 // Parameters
+$action = optional_param('action', '', PARAM_ALPHA);
 $courseid = optional_param('course', 0, PARAM_INT);
 $quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
+
+// Initialize manager
+$dashboard = new \local_essaysmaster\dashboard_manager();
+
 if ($action) {
     require_sesskey();
     

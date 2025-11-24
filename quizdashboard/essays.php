@@ -348,10 +348,6 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     </select>
                 </div>
 
-                <div class="filter-group" style="display: flex; align-items: center; padding-top: 24px;">
-                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
-                    <label for="excludestaff" style="margin-bottom: 0;">Exclude staff</label>
-                </div>
 
                 <div class="filter-group">
                     <label for="questionname">Question:</label>
@@ -388,6 +384,11 @@ require_once(__DIR__ . '/navigation_fallback.php');
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="filter-group" style="display: flex; align-items: center; padding-top: 24px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                    <label for="excludestaff" style="margin-bottom: 0;">Exclude staff</label>
                 </div>
 
                 <div class="filter-actions">
