@@ -82,10 +82,13 @@ $canmanage = has_capability('local/homeworkdashboard:manage', $context);
 $backfillmessage = '';
 if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
     require_sesskey();
-    $backfillweeks = optional_param('backfillweeks', 4, PARAM_INT);
-    $backfillweeks = max(1, min(52, $backfillweeks));
-    $created = $manager->backfill_snapshots_from_events($backfillweeks);
-    $backfillmessage = get_string('backfill_done', 'local_homeworkdashboard', $created);
+    $backfilldates = optional_param_array('backfilldates', [], PARAM_INT);
+    if (!empty($backfilldates)) {
+        $created = $manager->backfill_snapshots_from_dates($backfilldates);
+        $backfillmessage = get_string('backfill_done', 'local_homeworkdashboard', $created);
+    } else {
+        $backfillmessage = "No dates selected.";
+    }
 }
 
 $weekoptions = [];
@@ -186,6 +189,7 @@ if (!empty($uniqueuserids)) {
 }
 if (!empty($uniqueduedates)) {
     krsort($uniqueduedates); // Sort in reverse chronological order (newest first)
+    $uniqueduedates = array_slice($uniqueduedates, 0, 50, true); // Limit to 50 most recent
 }
 
 $rows = $manager->get_homework_rows(
@@ -220,9 +224,15 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
     <div class="hw-backfill">
         <form method="post" action="<?php echo $baseurl->out(false); ?>" class="filter-form">
             <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>" />
-            <label for="backfillweeks"><?php echo get_string('backfill_weeks', 'local_homeworkdashboard'); ?></label>
-            <input type="number" name="backfillweeks" id="backfillweeks" value="4" min="1" max="52" />
-            <button type="submit" name="backfill" value="1" class="btn btn-secondary"><?php echo get_string('backfill_from_events', 'local_homeworkdashboard'); ?></button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+            <label for="backfilldates" style="margin-bottom: 0;">Due dates to backfill:</label>
+            <select name="backfilldates[]" id="backfilldates" class="custom-select" style="width: auto; max-width: 250px;">
+                <?php foreach ($uniqueduedates as $ts => $dateobj): ?>
+                    <option value="<?php echo $ts; ?>"><?php echo $dateobj->formatted; ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" name="backfill" value="1" class="btn btn-secondary">Backfill snapshot from Due dates</button>
+        </div>
         </form>
     </div>
     <?php endif; ?>

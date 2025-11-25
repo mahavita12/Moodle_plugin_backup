@@ -1417,4 +1417,162 @@ class homework_manager {
 
         return $inserted;
     }
+
+    /**
+     * Backfill snapshots for specific due dates (quiz close times).
+     * Overwrites existing snapshots for these dates.
+     *
+     * @param array $timestamps Array of timestamps (due dates)
+     * @return int Number of records inserted
+     */
+    public function backfill_snapshots_from_dates(array $timestamps): int {
+        global $DB;
+
+        if (empty($timestamps)) {
+            return 0;
+        }
+
+        $inserted = 0;
+        $now = time();
+
+        // Sanitize timestamps
+        $timestamps = array_map('intval', $timestamps);
+        $timestamps = array_unique($timestamps);
+
+        // Find quizzes that close on these dates
+        list($insql, $inparams) = $DB->get_in_or_equal($timestamps, SQL_PARAMS_NAMED, 'ts');
+        
+        $sql = "SELECT q.id AS quizid, q.timeclose, q.course AS courseid, q.grade, cm.id AS cmid
+                  FROM {quiz} q
+                  JOIN {course_modules} cm ON cm.instance = q.id
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                 WHERE q.timeclose $insql
+              ORDER BY q.timeclose ASC";
+
+        $quizzes = $DB->get_records_sql($sql, $inparams);
+
+        if (empty($quizzes)) {
+            return 0;
+        }
+
+        foreach ($quizzes as $qrec) {
+            $quizid = (int)$qrec->quizid;
+            $courseid = (int)$qrec->courseid;
+            $cmid = (int)$qrec->cmid;
+            $timeclose = (int)$qrec->timeclose;
+
+            // OVERWRITE LOGIC: Delete existing records for this quiz and timeclose
+            $DB->delete_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose]);
+
+            $windowdays = $this->get_course_window_days($courseid);
+            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
+
+            $roster = $this->get_course_roster($courseid);
+            if (empty($roster)) {
+                continue;
+            }
+
+            // Exclude staff if needed (defaulting to true/standard logic here, or we could pass it as param)
+            // The original backfill function didn't seem to explicitly exclude staff unless I missed it?
+            // Ah, looking at the original function in the sed output, it didn't seem to call get_staff_users_for_course.
+            // But get_homework_rows does.
+            // Let's stick to the logic in backfill_snapshots_from_events which seems to just use the roster.
+            // Wait, backfill_snapshots_from_events DOES NOT exclude staff in the snippet I saw.
+            // I will follow the same pattern as backfill_snapshots_from_events.
+
+            list($insql, $params) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
+            $params['quizid'] = $quizid;
+            $params['start'] = $windowstart;
+            $params['end'] = $windowend;
+
+            // Fetch attempts in window
+            $sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                      FROM {quiz_attempts} qa
+                     WHERE qa.quiz = :quizid
+                       AND qa.userid $insql
+                       AND qa.state = 'finished'
+                       AND qa.timefinish BETWEEN :start AND :end
+                  ORDER BY qa.timefinish ASC";
+
+            $attempts = $DB->get_records_sql($sql, $params);
+
+            // Group by user
+            $peruser = [];
+            foreach ($attempts as $a) {
+                $uid = (int)$a->userid;
+                if (!isset($peruser[$uid])) {
+                    $peruser[$uid] = [
+                        'attempts' => 0,
+                        'bestpercent' => 0.0,
+                        'firstfinish' => 0,
+                        'lastfinish' => 0,
+                    ];
+                }
+
+                $peruser[$uid]['attempts']++;
+                $timefinish = (int)$a->timefinish;
+                $grade = (float)$qrec->grade;
+
+                if ($timefinish > 0) {
+                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
+                        $peruser[$uid]['firstfinish'] = $timefinish;
+                    }
+                    if ($timefinish > $peruser[$uid]['lastfinish']) {
+                        $peruser[$uid]['lastfinish'] = $timefinish;
+                    }
+                }
+
+                if ($grade > 0.0 && $a->sumgrades !== null) {
+                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                    if ($pct > $peruser[$uid]['bestpercent']) {
+                        $peruser[$uid]['bestpercent'] = $pct;
+                    }
+                }
+            }
+
+            $classification = $this->get_activity_classification($cmid);
+            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
+
+            foreach ($roster as $uid) {
+                $uid = (int)$uid;
+                $summary = $peruser[$uid] ?? [
+                    'attempts' => 0,
+                    'bestpercent' => 0.0,
+                    'firstfinish' => 0,
+                    'lastfinish' => 0,
+                ];
+
+                if ($summary['attempts'] === 0) {
+                    $status = 'noattempt';
+                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
+                    $status = 'completed';
+                } else {
+                    $status = 'lowgrade';
+                }
+
+                $record = (object) [
+                    'userid'       => $uid,
+                    'courseid'     => $courseid,
+                    'cmid'         => $cmid,
+                    'quizid'       => $quizid,
+                    'timeclose'    => $timeclose,
+                    'windowdays'   => $windowdays,
+                    'windowstart'  => $windowstart,
+                    'attempts'     => $summary['attempts'],
+                    'bestpercent'  => (int)round($summary['bestpercent']),
+                    'firstfinish'  => $summary['firstfinish'] ?: null,
+                    'lastfinish'   => $summary['lastfinish'] ?: null,
+                    'status'       => $status,
+                    'classification' => $classification ?: null,
+                    'quiztype'       => $quiztype ?: null,
+                    'computedat'   => $now,
+                ];
+
+                $DB->insert_record('local_homework_status', $record);
+                $inserted++;
+            }
+        }
+
+        return $inserted;
+    }
 }
