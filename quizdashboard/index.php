@@ -198,7 +198,12 @@ $status      = optional_param('status', '', PARAM_ALPHA);
 $quiztype    = optional_param('quiztype', 'Non-Essay', PARAM_TEXT); // Default to Non-Essay
 $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
+$filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+} else {
+    $excludestaff = 1;
+}
 
 // Filter by clicked user or course
 $filter_by_user   = optional_param('filter_user', '', PARAM_TEXT);
@@ -223,9 +228,9 @@ if (!empty($filter_by_course)) {
 $categories = [];
 try {
     $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+    // Default to All Categories (0) if not specified
     if (empty($categoryid)) {
-        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
-        if ($catrow) { $categoryid = (int)$catrow->id; }
+        $categoryid = 0;
     }
 } catch (\Throwable $e) { /* ignore */ }
 
@@ -397,6 +402,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
     <!-- Filters Section -->
     <div class="dashboard-filters">
         <form method="GET" class="filter-form">
+            <input type="hidden" name="filtersubmitted" value="1" />
             <div class="filter-row">
                 <div class="filter-group">
                     <label for="categoryid">Category:</label>

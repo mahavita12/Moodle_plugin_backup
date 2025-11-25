@@ -388,7 +388,12 @@ $includeflagged = isset($_GET['includeflagged']) ? 1 : 0;
 $month          = optional_param('month', '', PARAM_TEXT);
 $sort           = optional_param('sort', 'timecreated', PARAM_ALPHA);
 $dir            = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff   = optional_param('excludestaff', 1, PARAM_BOOL);
+$filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = isset($_GET['excludestaff']) ? 1 : 0;
+} else {
+    $excludestaff = 1;
+}
 
 // Handle both userid and user_id parameters
 if (!empty($user_id) && empty($userid)) {
@@ -708,6 +713,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                 </div>
             </div>
 
+            <input type="hidden" name="filtersubmitted" value="1" />
             <!-- Hidden fields for maintaining other filters -->
             <input type="hidden" name="sort" value="<?php echo $sort; ?>">
             <input type="hidden" name="dir" value="<?php echo $dir; ?>">

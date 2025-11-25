@@ -30,7 +30,12 @@ $classfilter   = optional_param('classification', '', PARAM_ALPHA);
 $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff  = optional_param('excludestaff', 1, PARAM_BOOL);
+$filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+} else {
+    $excludestaff = 1;
+}
 $duedate       = optional_param('duedate', 0, PARAM_INT);
 
 // If a specific due date is selected, clear the week filter to avoid confusion/conflicts in UI state.
@@ -58,11 +63,9 @@ function local_homeworkdashboard_sort_arrows(string $column, string $current_sor
 $categories = [];
 try {
     $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+    // Default to All Categories (0) if not specified
     if (empty($categoryid)) {
-        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id', IGNORE_MISSING);
-        if ($catrow) {
-            $categoryid = (int)$catrow->id;
-        }
+        $categoryid = 0;
     }
 } catch (Throwable $e) {
     // Ignore; page will just show empty filters.
@@ -225,6 +228,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
     <?php endif; ?>
     <div class="dashboard-filters">
         <form method="get" class="filter-form">
+        <input type="hidden" name="filtersubmitted" value="1" />
             <div class="filter-row">
                 <div class="filter-group">
                     <label for="categoryid"><?php echo get_string('filtercategory', 'local_homeworkdashboard'); ?></label>
@@ -250,17 +254,7 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                     </select>
                 </div>
 
-                <div class="filter-group">
-                    <label for="userid"><?php echo get_string('user'); ?></label>
-                    <select name="userid" id="userid">
-                        <option value="0"><?php echo get_string('all'); ?></option>
-                        <?php foreach ($uniqueusers as $u): ?>
-                            <option value="<?php echo (int)$u->id; ?>" <?php echo ((int)$userid === (int)$u->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($u->fullname); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                
 
                 <div class="filter-group">
                     <label for="sectionid"><?php echo get_string('section'); ?></label>
@@ -301,6 +295,29 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <option value=""><?php echo get_string('all'); ?></option>
                         <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
                         <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
+                    </select>
+                </div>
+
+<div class="filter-group">
+                    <label for="studentname"><?php echo get_string('user'); ?></label>
+                    <select name="studentname" id="studentname">
+                        <option value="0"><?php echo get_string('all'); ?></option>
+                        <?php foreach ($uniqueusers as $u): ?>
+                            <option value="<?php echo htmlspecialchars($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? 'selected' : ''; ?>>
+                                <?php echo format_string($u->fullname); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="userid">ID:</label>
+                    <select name="userid" id="userid">
+                        <option value="0"><?php echo get_string('all'); ?></option>
+                        <?php foreach ($uniqueuserids as $uid => $dummy): ?>
+                            <option value="<?php echo (int)$uid; ?>" <?php echo ((int)$userid === (int)$uid) ? 'selected' : ''; ?>>
+                                <?php echo (int)$uid; ?>
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -358,6 +375,10 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
             <thead>
                 <tr>
                     <th></th>
+                    <th class="sortable-column" data-sort="userid">
+                        ID
+                        <?php echo local_homeworkdashboard_sort_arrows('userid', $sort, $dir); ?>
+                    </th>
                     <th class="sortable-column" data-sort="studentname">
                         <?php echo get_string('fullname'); ?>
                         <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?>
@@ -426,6 +447,9 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php');
                         <tr class="hw-parent-row" id="<?php echo $parentid; ?>">
                             <td>
                                 <button type="button" class="hw-expand-toggle" data-target="<?php echo $childid; ?>">+</button>
+                            </td>
+                            <td>
+                                <?php echo $row->userid; ?>
                             </td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['userid' => (int)$row->userid]))->out(false); ?>">

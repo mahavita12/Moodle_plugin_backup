@@ -72,7 +72,12 @@ if ($mode === 'attempts') {
     $quiztype    = optional_param('quiztype', 'Non-Essay', PARAM_TEXT); // Default to Non-Essay as per Quiz Dashboard
     $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
     $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
-    $excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
+    $filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+} else {
+    $excludestaff = 1;
+}
 
     // Filter by clicked user or course
     $filter_by_user   = optional_param('filter_user', '', PARAM_TEXT);
@@ -149,6 +154,7 @@ if ($mode === 'attempts') {
     <div class="essay-dashboard-container">
         <div class="dashboard-filters">
             <form method="get" action="<?php echo $PAGE->url->out(false); ?>" class="filter-form">
+            <input type="hidden" name="filtersubmitted" value="1" />
                 <input type="hidden" name="mode" value="attempts">
                 
                 <div class="filter-row">

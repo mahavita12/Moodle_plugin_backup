@@ -23,7 +23,12 @@ $courseid = optional_param('course', 0, PARAM_INT);
 $quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
-$excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
+$filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+} else {
+    $excludestaff = 1;
+}
 
 // Initialize manager
 $dashboard = new \local_essaysmaster\dashboard_manager();
@@ -112,6 +117,7 @@ switch ($currenttab) {
         // Filters Section - matching Quiz Dashboard layout
         echo html_writer::start_div('dashboard-filters');
         $filter_form = html_writer::start_tag('form', ['method' => 'GET', 'class' => 'filter-form']);
+        $filter_form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'filtersubmitted', 'value' => '1']);
         $filter_form .= html_writer::start_div('filter-row');
         
         // Course category filter

@@ -149,7 +149,12 @@ $month       = optional_param('month', '', PARAM_TEXT);
 $status      = optional_param('status', '', PARAM_ALPHA);
 $sort        = optional_param('sort', 'timefinish', PARAM_ALPHA);
 $dir         = optional_param('dir', 'DESC', PARAM_ALPHA);
-$excludestaff = optional_param('excludestaff', 1, PARAM_BOOL);
+$filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+if ($filtersubmitted) {
+    $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
+} else {
+    $excludestaff = 1;
+}
 
 
 // ---------------- Data ----------------
@@ -288,35 +293,8 @@ require_once(__DIR__ . '/navigation_fallback.php');
 
     <div class="dashboard-filters<?php echo $status === 'abandoned' ? ' trash-mode' : ''; ?>">
         <form method="GET" class="filter-form">
-            <div class="filter-row">
-
-				<div class="filter-group">
-					<label for="studentname">User:</label>
-					<select name="studentname" id="studentname">
-						<option value="">All Users</option>
-						<?php foreach ($unique_users as $user): ?>
-							<option value="<?php echo htmlspecialchars($user->fullname); ?>" 
-								<?php echo $studentname === $user->fullname ? 'selected' : ''; ?>>
-								<?php echo htmlspecialchars($user->fullname); ?>
-							</option>
-						<?php endforeach; ?>
-					</select>
-				</div>
-
-                <div class="filter-group">
-                    <label for="userid">User ID:</label>
-                    <select name="userid" id="userid">
-                        <option value="">All User IDs</option>
-                        <?php foreach ($unique_userids as $user): ?>
-                            <option value="<?php echo $user->userid; ?>" 
-                                <?php echo $userid == $user->userid ? 'selected' : ''; ?>>
-                                <?php echo $user->userid; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-				<div class="filter-group">
+            <input type="hidden" name="filtersubmitted" value="1" />
+<div class="filter-group">
 					<label for="categoryid">Category:</label>
 					<select name="categoryid" id="categoryid">
 						<option value="">All Categories</option>
@@ -328,7 +306,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
 					</select>
 				</div>
 
-				<div class="filter-group">
+<div class="filter-group">
 					<label for="coursename">Course:</label>
 					<select name="coursename" id="coursename">
 						<option value="">All Courses</option>
@@ -341,29 +319,40 @@ require_once(__DIR__ . '/navigation_fallback.php');
 					</select>
 				</div>
 
-                <div class="filter-group">
+<div class="filter-group">
                     <label for="quizname">Quiz:</label>
                     <select name="quizname" id="quizname">
                         <option value="">All Quizzes</option>
                     </select>
                 </div>
 
+<div class="filter-group">
+					<label for="studentname">User:</label>
+					<select name="studentname" id="studentname">
+						<option value="">All Users</option>
+						<?php foreach ($unique_users as $user): ?>
+							<option value="<?php echo htmlspecialchars($user->fullname); ?>" 
+								<?php echo $studentname === $user->fullname ? 'selected' : ''; ?>>
+								<?php echo htmlspecialchars($user->fullname); ?>
+							</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
 
-                <div class="filter-group">
-                    <label for="questionname">Question:</label>
-                    <select name="questionname" id="questionname">
-                        <option value="">All Questions</option>
-                        <?php foreach ($unique_questions as $question): ?>
-                            <option value="<?php echo htmlspecialchars($question->name); ?>" 
-                                <?php echo optional_param('questionname', '', PARAM_TEXT) === $question->name ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($question->name); ?>
+<div class="filter-group">
+                    <label for="userid">User ID:</label>
+                    <select name="userid" id="userid">
+                        <option value="">All User IDs</option>
+                        <?php foreach ($unique_userids as $user): ?>
+                            <option value="<?php echo $user->userid; ?>" 
+                                <?php echo $userid == $user->userid ? 'selected' : ''; ?>>
+                                <?php echo $user->userid; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
-                <!-- FIXED: Single Status Filter with Trashed option -->
-                <div class="filter-group">
+<div class="filter-group">
                     <label for="status">Status:</label>
                     <select name="status" id="status">
                         <option value="">All</option>
@@ -374,7 +363,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     </select>
                 </div>
 
-                <div class="filter-group">
+<div class="filter-group">
                     <label for="month">Month:</label>
                     <select name="month" id="month">
                         <option value="">All Months</option>
@@ -386,16 +375,14 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     </select>
                 </div>
 
-                <div class="filter-group" style="display: flex; align-items: center; padding-top: 24px;">
+<div class="filter-group">
                     <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
                     <label for="excludestaff" style="margin-bottom: 0;">Exclude staff</label>
                 </div>
-
-                <div class="filter-actions">
+<div class="filter-actions">
                     <button type="submit" class="btn btn-primary">Filter</button>
                     <button type="button" class="btn btn-secondary" onclick="resetFilters()">Reset</button>
                 </div>
-            </div>
             <input type="hidden" name="sort" value="<?php echo $sort; ?>">
             <input type="hidden" name="dir" value="<?php echo $dir; ?>">
         </form>
@@ -449,14 +436,14 @@ require_once(__DIR__ . '/navigation_fallback.php');
             <thead>
                 <tr>
                     <th class="bulk-select-header"><input type="checkbox" id="select-all" onchange="toggleAllCheckboxes(this)"></th>
-                    <th class="sortable-column" data-sort="quizname" style="width: 22%;">Quiz</th>
-                    <th class="sortable-column" data-sort="questionname" style="width: 30%;">Question</th>
-                    <th class="sortable-column" data-sort="attemptno" style="width: 7%;">Attempt #</th>
-                    <th class="sortable-column" data-sort="status">Status</th>
                     <th class="sortable-column" data-sort="userid">ID</th>
                     <th class="sortable-column" data-sort="studentname">Name</th>
                     <th>Category</th>
                     <th class="sortable-column" data-sort="coursename">Course</th>
+                    <th class="sortable-column" data-sort="sectionname">Section</th>
+                    <th class="sortable-column" data-sort="quizname" style="width: 22%;">Quiz</th>
+                    <th class="sortable-column" data-sort="attemptno" style="width: 7%;">Attempt #</th>
+                    <th class="sortable-column" data-sort="status">Status</th>
                     <th class="sortable-column" data-sort="timefinish">Finished</th>
                     <th class="sortable-column" data-sort="time_taken">Duration</th>
                     <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)" style="width: 4%;">C&I</th>
@@ -486,27 +473,10 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <?php foreach ($rows as $row): ?>
                         <!-- FIXED: Add trashed-row class for abandoned items -->
                         <tr<?php echo $row->status === 'Abandoned' ? ' class="trashed-row"' : ''; ?>>
-                            <td class="bulk-select-cell"><input type="checkbox" class="row-checkbox" value="<?php echo $row->attemptid; ?>" data-userid="<?php echo $row->userid; ?>" data-label="<?php echo htmlspecialchars($row->quizname . ' – Attempt ' . $row->attemptno, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" onchange="updateSelectedCount()"></td>
-                            <td>
-                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
-                                    <?php echo htmlspecialchars($row->quizname); ?>
-                                </a>
-                                <a href="<?php echo $row->reviewurl; ?>" class="quiz-link" title="Open review" target="_blank" style="margin-left:6px;">↗</a>
-                            </td>
-                            <td>
-                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['questionname' => $row->questionname]))->out(false); ?>" class="question-link">
-                                    <?php echo htmlspecialchars($row->questionname); ?>
-                                </a>
-                                <?php if (!empty($row->question_edit_url)): ?>
-                                    <a href="<?php echo $row->question_edit_url; ?>" class="question-link" target="_blank" title="Edit question" style="margin-left:6px;">✎</a>
-                                <?php endif; ?>
-                            </td>
-                            <td><a href="<?php echo $row->reviewurl; ?>" class="attempt-link" target="_blank"><?php echo $row->attemptno; ?></a></td>
-                            <!-- Removed Sub # column to widen key columns -->
-                            <td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
-                            <td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
-                            <td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
-                            <td>
+<td class="bulk-select-cell"><input type="checkbox" class="row-checkbox" value="<?php echo $row->attemptid; ?>" data-userid="<?php echo $row->userid; ?>" data-label="<?php echo htmlspecialchars($row->quizname . ' – Attempt ' . $row->attemptno, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" onchange="updateSelectedCount()"></td>
+<td><a href="<?php echo $row->user_profile_url; ?>" class="user-id-link" target="_blank"><?php echo $row->userid; ?></a></td>
+<td><a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['studentname' => $row->studentname]))->out(false); ?>" class="user-name-link"><?php echo htmlspecialchars($row->studentname); ?></a></td>
+<td>
                                 <?php if (!empty($row->categoryid)): ?>
                                     <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['categoryid' => (int)$row->categoryid]))->out(false); ?>">
                                         <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
@@ -515,23 +485,30 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <?php echo htmlspecialchars($row->categoryname ?? ''); ?>
                                 <?php endif; ?>
                             </td>
-                            <td>
+<td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>
                                 </a>
                                 <a href="<?php echo $row->course_url; ?>" class="course-link" title="Open course" target="_blank" style="margin-left:6px;">↗</a>
                             </td>
-                            <td><?php echo !empty($row->timefinish) ? date('Y-m-d H:i', $row->timefinish) : '-'; ?></td>
-                            <td><?php echo $row->time_taken ?: '-'; ?></td>
-                            <td><?php echo $row->score_content_ideas !== null ? ((int)$row->score_content_ideas) . ' / 25' : '-'; ?></td>
-                            <td><?php echo $row->score_structure_organization !== null ? ((int)$row->score_structure_organization) . ' / 25' : '-'; ?></td>
-                            <td><?php echo $row->score_language_use !== null ? ((int)$row->score_language_use) . ' / 20' : '-'; ?></td>
-                            <td><?php echo $row->score_creativity_originality !== null ? ((int)$row->score_creativity_originality) . ' / 20' : '-'; ?></td>
-                            <td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
-                            <td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
-
-                            <!-- Grade cell removed - keeping only Score column -->
-                            <td class="ai-likelihood-cell" style="text-align: center;">
+                            <td><?php echo htmlspecialchars(!empty($row->sectionname) ? $row->sectionname : 'Section ' . $row->sectionnumber); ?></td>
+<td>
+                                <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
+                                    <?php echo htmlspecialchars($row->quizname); ?>
+                                </a>
+                                <a href="<?php echo $row->reviewurl; ?>" class="quiz-link" title="Open review" target="_blank" style="margin-left:6px;">↗</a>
+                            </td>
+<td><a href="<?php echo $row->reviewurl; ?>" class="attempt-link" target="_blank"><?php echo $row->attemptno; ?></a></td>
+<td><span class="status-badge status-<?php echo strtolower(str_replace(' ', '-', $row->status)); ?>"><?php echo htmlspecialchars($row->status); ?></span></td>
+<td><?php echo !empty($row->timefinish) ? date('Y-m-d H:i', $row->timefinish) : '-'; ?></td>
+<td><?php echo $row->time_taken ?: '-'; ?></td>
+<td><?php echo $row->score_content_ideas !== null ? ((int)$row->score_content_ideas) . ' / 25' : '-'; ?></td>
+<td><?php echo $row->score_structure_organization !== null ? ((int)$row->score_structure_organization) . ' / 25' : '-'; ?></td>
+<td><?php echo $row->score_language_use !== null ? ((int)$row->score_language_use) . ' / 20' : '-'; ?></td>
+<td><?php echo $row->score_creativity_originality !== null ? ((int)$row->score_creativity_originality) . ' / 20' : '-'; ?></td>
+<td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
+<td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
+<td class="ai-likelihood-cell" style="text-align: center;">
                                 <?php if ($row->ai_likelihood): ?>
                                     <span class="ai-likelihood-display"><?php echo htmlspecialchars($row->ai_likelihood); ?></span>
                                 <?php elseif ($row->is_graded): ?>
@@ -542,7 +519,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <button type="button" class="btn btn-sm btn-info check-ai-btn" onclick="checkAILikelihood(<?php echo $row->attemptid; ?>, this)">Check</button>
                                 <?php endif; ?>
                             </td>
-                            <td class="similarity-cell" style="text-align: center;">
+<td class="similarity-cell" style="text-align: center;">
                                 <?php if ($row->similarity_percent !== null): ?>
                                     <?php if ($row->similarity_flag): ?>
                                         <span class="badge bg-danger" title="Similarity violation - penalty applied">
@@ -557,7 +534,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <span class="text-muted">-</span>
                                 <?php endif; ?>
                             </td>
-                            <td class="auto-grade-cell" style="text-align: center;">
+<td class="auto-grade-cell" style="text-align: center;">
                                 <?php if ($row->is_graded): ?>
                                     <div class="btn-group" role="group">
                                         <button type="button" class="btn btn-sm btn-primary" onclick="viewFeedback(<?php echo $row->attemptid; ?>)">View</button>
@@ -567,7 +544,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <span class="status-badge status-secondary">Not Graded</span>
                                 <?php endif; ?>
                             </td>
-                            <td class="homework-cell" style="text-align: center;">
+<td class="homework-cell" style="text-align: center;">
                                 <?php 
                                 // Be compatible with sites where homework_json may not exist yet
                                 $grading_result = null;
@@ -616,7 +593,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 }
                                 ?>
                             </td>
-                        </tr>
+</tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </tbody>
