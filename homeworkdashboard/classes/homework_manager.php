@@ -556,15 +556,9 @@ class homework_manager {
     }
 
     /**
-     * Build homework dashboard rows (one row per student + quiz).
-     *
-     * The returned objects mirror the quizdashboard row structure where possible:
-     *  - userid, studentname, courseid, coursename, categoryid, categoryname
-     *  - quizid, quizname, cmid, attemptno
-     *  - status (homework status: Completed/Low grade/No attempt)
-     *  - timestart, timefinish, time_taken (string), score, maxscore, percentage, quiz_type
+     * Get LIVE homework rows (quizzes with future close dates), calculated on-the-fly.
      */
-    public function get_homework_rows(
+    public function get_live_homework_rows(
         int $categoryid,
         int $courseid,
         int $sectionid,
@@ -583,90 +577,9 @@ class homework_manager {
         global $DB;
 
         $rows = [];
-        $snapshotkeys = [];
-
-        // Resolve optional week filter to quiz timeclose bounds.
-        // If duedate is provided, we ignore the week filter.
-        $weekstart = 0;
-        $weekend = 0;
-        if ($duedate <= 0) {
-            [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
-        }
-
         $now = time();
 
-        $snapparams = [];
-        $snapsql = "SELECT DISTINCT
-                        s.quizid,
-                        s.timeclose
-                    FROM {local_homework_status} s
-                    JOIN {course} c ON c.id = s.courseid
-                    JOIN {course_categories} cat ON cat.id = c.category
-                    JOIN {course_modules} cm ON cm.id = s.cmid
-                    JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                    JOIN {course_sections} cs ON cs.id = cm.section
-                    WHERE 1 = 1";
-
-        if ($categoryid > 0) {
-            $snapsql .= " AND c.category = :scategoryid";
-            $snapparams['scategoryid'] = $categoryid;
-        }
-        if ($courseid > 0) {
-            $snapsql .= " AND c.id = :scourseid";
-            $snapparams['scourseid'] = $courseid;
-        }
-        if ($sectionid > 0) {
-            $snapsql .= " AND cs.id = :ssectionid";
-            $snapparams['ssectionid'] = $sectionid;
-        }
-        if ($quizid > 0) {
-            $snapsql .= " AND s.quizid = :squizid";
-            $snapparams['squizid'] = $quizid;
-        }
-        if ($duedate > 0) {
-            $snapsql .= " AND s.timeclose = :sduedate";
-            $snapparams['sduedate'] = $duedate;
-        } else if ($weekstart > 0 && $weekend > 0) {
-            $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
-            $snapparams['sweekstart'] = $weekstart;
-            $snapparams['sweekend'] = $weekend;
-        }
-
-        $snapsql .= " ORDER BY s.timeclose ASC";
-
-        $snapshotrecords = $DB->get_records_sql($snapsql, $snapparams);
-
-        if (!empty($snapshotrecords)) {
-            foreach ($snapshotrecords as $srec) {
-                $stimeclose = (int)$srec->timeclose;
-                if ($stimeclose <= 0) {
-                    continue;
-                }
-
-                $snaprows = $this->build_snapshot_rows_for_quiz(
-                    (int)$srec->quizid,
-                    $stimeclose,
-                    $categoryid,
-                    $courseid,
-                    $sectionid,
-                    $userid,
-                    $studentname,
-                    $statusfilter,
-                    $classificationfilter,
-                    $quiztypefilter
-                );
-
-                if (!empty($snaprows)) {
-                    $key = $srec->quizid . ':' . $stimeclose;
-                    $snapshotkeys[$key] = true;
-                    foreach ($snaprows as $sr) {
-                        $rows[] = $sr;
-                    }
-                }
-            }
-        }
-
-        // Base query to locate quizzes included in the dashboard.
+        // Resolve filters to SQL
         $params = [];
         $sql = "SELECT
                     q.id       AS quizid,
@@ -695,6 +608,10 @@ class homework_manager {
                 ) ev ON ev.quizid = q.id
                 WHERE ((q.timeclose IS NOT NULL AND q.timeclose > 0)
                    OR ((q.timeclose IS NULL OR q.timeclose = 0) AND ev.eventclose IS NOT NULL))";
+        
+        // Filter for LIVE quizzes (close time > now)
+        $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) > :now";
+        $params['now'] = $now;
 
         if ($categoryid > 0) {
             $sql .= " AND c.category = :categoryid";
@@ -715,10 +632,13 @@ class homework_manager {
         if ($duedate > 0) {
             $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) = :duedate";
             $params['duedate'] = $duedate;
-        } else if ($weekstart > 0 && $weekend > 0) {
-            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) BETWEEN :weekstart AND :weekend";
-            $params['weekstart'] = $weekstart;
-            $params['weekend'] = $weekend;
+        } else {
+            [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+            if ($weekstart > 0 && $weekend > 0) {
+                $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) BETWEEN :weekstart AND :weekend";
+                $params['weekstart'] = $weekstart;
+                $params['weekend'] = $weekend;
+            }
         }
 
         $sql .= " ORDER BY c.fullname, q.name";
@@ -734,55 +654,25 @@ class homework_manager {
                 continue;
             }
 
-            // Activity classification is per course module.
+            // Activity classification
             $classification = $this->get_activity_classification((int)$qrec->cmid);
             if ($classificationfilter !== '' && strcasecmp($classificationfilter, $classification) !== 0) {
                 continue;
             }
 
-            // Quiz type filter (Essay / Non-Essay).
+            // Quiz type
             $quiztype = $this->quiz_has_essay((int)$qrec->quizid) ? 'Essay' : 'Non-Essay';
             if ($quiztypefilter !== '' && strcasecmp($quiztypefilter, $quiztype) !== 0) {
                 continue;
             }
 
-            $isclosed = ($qtimeclose <= $now);
-            $key = $qrec->quizid . ':' . $qtimeclose;
-
-            if ($isclosed && isset($snapshotkeys[$key])) {
-                continue;
-            }
-
-            // Determine excluded staff if requested.
+            // Determine excluded staff
             $excludeduserids = [];
             if ($excludestaff) {
                 $excludeduserids = $this->get_staff_users_for_course((int)$qrec->courseid);
             }
 
-            if ($isclosed) {
-                $snaprows = $this->build_snapshot_rows_for_quiz(
-                    (int)$qrec->quizid,
-                    $qtimeclose,
-                    $categoryid,
-                    (int)$qrec->courseid,
-                    $sectionid,
-                    $userid,
-                    $studentname,
-                    $statusfilter,
-                    $classificationfilter,
-                    $quiztypefilter,
-                    $excludeduserids
-                );
-
-                if (!empty($snaprows)) {
-                    foreach ($snaprows as $sr) {
-                        $rows[] = $sr;
-                    }
-                    continue;
-                }
-            }
-
-            // Fallback to live window (or always live for open quizzes).
+            // Calculate Live Window
             $windowdays = $this->get_course_window_days((int)$qrec->courseid);
             [$windowstart, $windowend] = $this->build_window($qtimeclose, $windowdays);
 
@@ -799,7 +689,6 @@ class homework_manager {
                 $roster = array_values($roster);
             }
 
-            // Optionally restrict roster by userid filter.
             if ($userid > 0) {
                 $roster = array_values(array_intersect($roster, [$userid]));
                 if (empty($roster)) {
@@ -821,7 +710,6 @@ class homework_manager {
                               AND qa.timefinish BETWEEN :start AND :end";
             $attempts = $DB->get_records_sql($attemptsql, $apparams);
 
-            // Index attempts per user (filtering out very short attempts).
             $peruser = [];
             $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
 
@@ -833,7 +721,6 @@ class homework_manager {
                 }
                 $duration = $timefinish - $timestart;
                 if ($duration < 180) {
-                    // Attempts shorter than 3 minutes are ignored for homework status.
                     continue;
                 }
 
@@ -856,17 +743,15 @@ class homework_manager {
                 }
             }
 
-            // Pre-fetch user names for roster once per quiz.
+            // Roster names
             list($userinsql, $userparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'u');
             $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
 
             foreach ($roster as $uid) {
                 $uid = (int)$uid;
-
                 $userdata = $userrecs[$uid] ?? null;
                 $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
 
-                // Student name filter by full name (if provided).
                 if ($studentname !== '' && $fullname !== $studentname) {
                     continue;
                 }
@@ -875,7 +760,6 @@ class homework_manager {
                 $best = $summary['bestpercent'];
                 $bestattempt = $summary['best'];
 
-                // Determine homework status.
                 if (empty($summary['attempts'])) {
                     $hwstatus = 'No attempt';
                 } else if ($best >= self::COMPLETION_PERCENT_THRESHOLD) {
@@ -884,7 +768,6 @@ class homework_manager {
                     $hwstatus = 'Low grade';
                 }
 
-                // Status filter (homework status).
                 if ($statusfilter !== '' && strcasecmp($statusfilter, $hwstatus) !== 0) {
                     continue;
                 }
@@ -937,11 +820,211 @@ class homework_manager {
             }
         }
 
-        if (empty($rows)) {
-            return [];
+        return $this->sort_rows($rows, $sort, $dir);
+    }
+
+    /**
+     * Get SNAPSHOT homework rows (historical data from local_homework_status).
+     */
+    public function get_snapshot_homework_rows(
+        int $categoryid,
+        int $courseid,
+        int $sectionid,
+        int $quizid,
+        int $userid,
+        string $studentname,
+        string $quiztypefilter,
+        string $statusfilter,
+        string $classificationfilter,
+        ?string $weekvalue,
+        string $sort,
+        string $dir,
+        bool $excludestaff = false,
+        int $duedate = 0
+    ): array {
+        global $DB;
+
+        $rows = [];
+        $now = time();
+
+        $snapparams = [];
+        $snapsql = "SELECT DISTINCT s.quizid, s.timeclose
+                      FROM {local_homework_status} s
+                      JOIN {course} c ON c.id = s.courseid
+                      JOIN {course_categories} cat ON cat.id = c.category
+                      JOIN {course_modules} cm ON cm.id = s.cmid
+                      JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                      JOIN {course_sections} cs ON cs.id = cm.section
+                     WHERE 1 = 1"; // Historical implies timeclose <= now, but we show all stored snapshots.
+
+        if ($categoryid > 0) {
+            $snapsql .= " AND c.category = :scategoryid";
+            $snapparams['scategoryid'] = $categoryid;
+        }
+        if ($courseid > 0) {
+            $snapsql .= " AND c.id = :scourseid";
+            $snapparams['scourseid'] = $courseid;
+        }
+        if ($sectionid > 0) {
+            $snapsql .= " AND cs.id = :ssectionid";
+            $snapparams['ssectionid'] = $sectionid;
+        }
+        if ($quizid > 0) {
+            $snapsql .= " AND s.quizid = :squizid";
+            $snapparams['squizid'] = $quizid;
+        }
+        if ($duedate > 0) {
+            $snapsql .= " AND s.timeclose = :sduedate";
+            $snapparams['sduedate'] = $duedate;
+        } else {
+             [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+             if ($weekstart > 0 && $weekend > 0) {
+                $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
+                $snapparams['sweekstart'] = $weekstart;
+                $snapparams['sweekend'] = $weekend;
+            }
         }
 
-        // Sorting in PHP to keep behaviour close to quizdashboard.
+        $snapsql .= " ORDER BY s.timeclose ASC";
+
+        $snapshotrecords = $DB->get_records_sql($snapsql, $snapparams);
+
+        if (!empty($snapshotrecords)) {
+            // Fetch excluded staff if needed.
+            $staff_cache = [];
+
+            foreach ($snapshotrecords as $srec) {
+                $stimeclose = (int)$srec->timeclose;
+                if ($stimeclose <= 0) {
+                    continue;
+                }
+
+                // Find courseid from snapshot record (need to query or assume from join).
+                // The query above selects DISTINCT quizid, timeclose. It doesn't select courseid.
+                // I need courseid to get staff.
+                $cid = $DB->get_field('quiz', 'course', ['id' => $srec->quizid], IGNORE_MISSING);
+                if (!$cid) {
+                     // Try local_homework_status
+                     $cid = $DB->get_field('local_homework_status', 'courseid', ['quizid' => $srec->quizid, 'timeclose' => $stimeclose], IGNORE_MULTIPLE);
+                }
+                if (!$cid) continue;
+
+                $excludeduserids = [];
+                if ($excludestaff) {
+                    if (!isset($staff_cache[$cid])) {
+                        $staff_cache[$cid] = $this->get_staff_users_for_course((int)$cid);
+                    }
+                    $excludeduserids = $staff_cache[$cid];
+                }
+
+                $snaprows = $this->build_snapshot_rows_for_quiz(
+                    (int)$srec->quizid,
+                    $stimeclose,
+                    $categoryid,
+                    (int)$cid,
+                    $sectionid,
+                    $userid,
+                    $studentname,
+                    $statusfilter,
+                    $classificationfilter,
+                    $quiztypefilter,
+                    $excludeduserids
+                );
+
+                foreach ($snaprows as $sr) {
+                    $rows[] = $sr;
+                }
+            }
+        }
+
+        return $this->sort_rows($rows, $sort, $dir);
+    }
+
+    /**
+     * Get homework status string (Completed, Low grade, No attempt) for a specific user/quiz event.
+     * Used by external blocks/plugins.
+     */
+    public function get_homework_status_for_user_quiz_event(int $userid, int $quizid, int $courseid, int $timeclose): ?string {
+        global $DB;
+
+        if ($userid <= 0 || $quizid <= 0 || $courseid <= 0 || $timeclose <= 0) {
+            return null;
+        }
+
+        // 1. Check snapshot first
+        $snap = $DB->get_record('local_homework_status', [
+            'userid' => $userid,
+            'quizid' => $quizid,
+            'timeclose' => $timeclose,
+        ], 'status', IGNORE_MISSING);
+
+        if ($snap && !empty($snap->status)) {
+            $code = (string)$snap->status;
+            if ($code === 'completed') {
+                return 'Completed';
+            } else if ($code === 'lowgrade') {
+                return 'Low grade';
+            } else if ($code === 'noattempt') {
+                return 'No attempt';
+            }
+        }
+
+        // 2. Fallback to live calculation
+        $windowdays = $this->get_course_window_days($courseid);
+        [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
+
+        $params = [
+            'quizid' => $quizid,
+            'userid' => $userid,
+            'start' => $windowstart,
+            'end' => $windowend
+        ];
+
+        $sql = "SELECT qa.sumgrades, qa.timestart, qa.timefinish
+                  FROM {quiz_attempts} qa
+                 WHERE qa.quiz = :quizid
+                   AND qa.userid = :userid
+                   AND qa.state = 'finished'
+                   AND qa.timefinish BETWEEN :start AND :end";
+
+        $attempts = $DB->get_records_sql($sql, $params);
+
+        $attempts_count = 0;
+        $bestpercent = 0.0;
+        
+        $quizgrade = $DB->get_field('quiz', 'grade', ['id' => $quizid]);
+        $grade = ($quizgrade > 0.0) ? (float)$quizgrade : 0.0;
+
+        foreach ($attempts as $a) {
+            $timestart = (int)$a->timestart;
+            $timefinish = (int)$a->timefinish;
+            if ($timestart <= 0 || $timefinish <= $timestart) {
+                continue;
+            }
+            $duration = $timefinish - $timestart;
+            if ($duration < 180) {
+                continue;
+            }
+
+            $attempts_count++;
+            if ($grade > 0.0 && $a->sumgrades !== null) {
+                $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                if ($pct > $bestpercent) {
+                    $bestpercent = $pct;
+                }
+            }
+        }
+
+        if ($attempts_count === 0) {
+            return 'No attempt';
+        } else if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
+            return 'Completed';
+        } else {
+            return 'Low grade';
+        }
+    }
+
+    private function sort_rows(array $rows, string $sort, string $dir): array {
         $sortkey = $sort ?: 'timefinish';
         $direction = (strtoupper($dir) === 'ASC') ? 1 : -1;
 
@@ -973,457 +1056,9 @@ class homework_manager {
         return $rows;
     }
 
-    public function get_homework_status_for_user_quiz_event(int $userid, int $quizid, int $courseid, int $timeclose): ?string {
-        global $DB;
-
-        if ($userid <= 0 || $quizid <= 0 || $courseid <= 0 || $timeclose <= 0) {
-            return null;
-        }
-
-        $snap = $DB->get_record('local_homework_status', [
-            'userid' => $userid,
-            'quizid' => $quizid,
-            'timeclose' => $timeclose,
-        ], 'status', IGNORE_MISSING);
-
-        if ($snap && !empty($snap->status)) {
-            $code = (string)$snap->status;
-            if ($code === 'completed') {
-                return 'Completed';
-            } else if ($code === 'lowgrade') {
-                return 'Low grade';
-            } else if ($code === 'noattempt') {
-                return 'No attempt';
-            }
-        }
-
-        $windowdays = $this->get_course_window_days($courseid);
-        [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
-
-        $quiz = $DB->get_record('quiz', ['id' => $quizid], 'id, grade', IGNORE_MISSING);
-        if (!$quiz) {
-            return null;
-        }
-        $grade = ($quiz->grade > 0.0) ? (float)$quiz->grade : 0.0;
-
-        $sql = "SELECT qa.timestart, qa.timefinish, qa.sumgrades
-                  FROM {quiz_attempts} qa
-                 WHERE qa.quiz = :quizid
-                   AND qa.userid = :userid
-                   AND qa.state = 'finished'
-                   AND qa.timefinish BETWEEN :start AND :end";
-        $params = [
-            'quizid' => $quizid,
-            'userid' => $userid,
-            'start' => $windowstart,
-            'end' => $windowend,
-        ];
-
-        $attempts = $DB->get_records_sql($sql, $params);
-
-        $hasvalid = false;
-        $bestpercent = 0.0;
-
-        foreach ($attempts as $a) {
-            $timestart = (int)$a->timestart;
-            $timefinish = (int)$a->timefinish;
-            if ($timestart <= 0 || $timefinish <= $timestart) {
-                continue;
-            }
-            $duration = $timefinish - $timestart;
-            if ($duration < 180) {
-                continue;
-            }
-
-            $hasvalid = true;
-            if ($grade > 0.0 && $a->sumgrades !== null) {
-                $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                if ($pct > $bestpercent) {
-                    $bestpercent = $pct;
-                }
-            }
-        }
-
-        if (!$hasvalid) {
-            return 'No attempt';
-        }
-
-        if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
-            return 'Completed';
-        }
-
-        return 'Low grade';
-    }
-
-    /**
-     * Get all homework attempts for a single student + quiz within its homework window.
-     *
-     * @return array of stdClass {id, attempt, timestart, timefinish, sumgrades, state}
-     */
-    public function get_homework_attempts_for_user_quiz(int $userid, int $quizid): array {
-        global $DB;
-
-        if ($userid <= 0 || $quizid <= 0) {
-            return [];
-        }
-
-        $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', IGNORE_MISSING);
-        if (!$quiz || empty($quiz->timeclose)) {
-            return [];
-        }
-
-        $courseid = (int)$quiz->course;
-        $windowdays = $this->get_course_window_days($courseid);
-        [$windowstart, $windowend] = $this->build_window((int)$quiz->timeclose, $windowdays);
-
-        $sql = "SELECT qa.id, qa.attempt, qa.timestart, qa.timefinish, qa.sumgrades, qa.state
-                  FROM {quiz_attempts} qa
-                 WHERE qa.quiz = :quizid
-                   AND qa.userid = :userid
-                   AND qa.timefinish BETWEEN :start AND :end
-                 ORDER BY qa.timefinish ASC";
-        $params = [
-            'quizid' => $quizid,
-            'userid' => $userid,
-            'start'  => $windowstart,
-            'end'    => $windowend,
-        ];
-
-        return array_values($DB->get_records_sql($sql, $params));
-    }
-
-    public function compute_due_snapshots(): void {
-        global $DB;
-
-        $now = time();
-
-        $sql = "SELECT q.id AS quizid, q.course AS courseid, q.timeclose, q.grade, cm.id AS cmid
-                  FROM {quiz} q
-                  JOIN {course_modules} cm ON cm.instance = q.id
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                 WHERE q.timeclose IS NOT NULL
-                   AND q.timeclose > 0
-                   AND q.timeclose <= :now";
-        $quizzes = $DB->get_records_sql($sql, ['now' => $now]);
-        if (empty($quizzes)) {
-            return;
-        }
-
-        foreach ($quizzes as $qrec) {
-            $quizid = (int)$qrec->quizid;
-            $courseid = (int)$qrec->courseid;
-            $cmid = (int)$qrec->cmid;
-            $timeclose = (int)$qrec->timeclose;
-
-            if ($timeclose <= 0) {
-                continue;
-            }
-
-            $classification = $this->get_activity_classification($cmid);
-            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
-
-            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'id,userid,classification,quiztype');
-            $existinguserids = [];
-            if (!empty($existing)) {
-                foreach ($existing as $ex) {
-                    $existinguserids[] = (int)$ex->userid;
-                }
-
-                $needsclassupdate = ($classification !== null && $classification !== '');
-                $needstypeupdate = ($quiztype !== null && $quiztype !== '');
-
-                if ($needsclassupdate) {
-                    foreach ($existing as $ex) {
-                        if (empty($ex->classification)) {
-                            $DB->set_field('local_homework_status', 'classification', $classification, ['quizid' => $quizid, 'timeclose' => $timeclose]);
-                            break;
-                        }
-                    }
-                }
-
-                if ($needstypeupdate) {
-                    foreach ($existing as $ex) {
-                        if (empty($ex->quiztype)) {
-                            $DB->set_field('local_homework_status', 'quiztype', $quiztype, ['quizid' => $quizid, 'timeclose' => $timeclose]);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            $windowdays = $this->get_course_window_days($courseid);
-            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
-
-            $roster = $this->get_course_roster($courseid);
-            if (!empty($existinguserids)) {
-                $roster = array_diff($roster, $existinguserids);
-            }
-
-            if (empty($roster)) {
-                continue;
-            }
-            $roster = array_values($roster);
-
-            list($insql, $params) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
-            $params['quizid'] = $quizid;
-            $params['start'] = $windowstart;
-            $params['end'] = $windowend;
-
-            $attemptsql = "SELECT qa.userid, qa.attempt, qa.timestart, qa.timefinish, qa.sumgrades
-                             FROM {quiz_attempts} qa
-                            WHERE qa.quiz = :quizid
-                              AND qa.state = 'finished'
-                              AND qa.userid $insql
-                              AND qa.timefinish BETWEEN :start AND :end";
-            $attempts = $DB->get_records_sql($attemptsql, $params);
-
-            $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
-
-            $peruser = [];
-            foreach ($attempts as $a) {
-                $timestart = (int)$a->timestart;
-                $timefinish = (int)$a->timefinish;
-                if ($timestart <= 0 || $timefinish <= $timestart) {
-                    continue;
-                }
-                $duration = $timefinish - $timestart;
-                if ($duration < 180) {
-                    // Ignore attempts shorter than 3 minutes.
-                    continue;
-                }
-
-                $uid = (int)$a->userid;
-                if (!isset($peruser[$uid])) {
-                    $peruser[$uid] = [
-                        'attempts' => 0,
-                        'bestpercent' => 0.0,
-                        'firstfinish' => 0,
-                        'lastfinish' => 0,
-                    ];
-                }
-
-                $peruser[$uid]['attempts']++;
-
-                if ($timefinish > 0) {
-                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
-                        $peruser[$uid]['firstfinish'] = $timefinish;
-                    }
-                    if ($timefinish > $peruser[$uid]['lastfinish']) {
-                        $peruser[$uid]['lastfinish'] = $timefinish;
-                    }
-                }
-
-                if ($grade > 0.0 && $a->sumgrades !== null) {
-                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                    if ($pct > $peruser[$uid]['bestpercent']) {
-                        $peruser[$uid]['bestpercent'] = $pct;
-                    }
-                }
-            }
-
-            foreach ($roster as $uid) {
-                $uid = (int)$uid;
-                $summary = $peruser[$uid] ?? [
-                    'attempts' => 0,
-                    'bestpercent' => 0.0,
-                    'firstfinish' => 0,
-                    'lastfinish' => 0,
-                ];
-
-                if ($summary['attempts'] === 0) {
-                    $status = 'noattempt';
-                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
-                    $status = 'completed';
-                } else {
-                    $status = 'lowgrade';
-                }
-
-                $record = (object) [
-                    'userid'       => $uid,
-                    'courseid'     => $courseid,
-                    'cmid'         => $cmid,
-                    'quizid'       => $quizid,
-                    'timeclose'    => $timeclose,
-                    'windowdays'   => $windowdays,
-                    'windowstart'  => $windowstart,
-                    'attempts'     => $summary['attempts'],
-                    'bestpercent'  => (int)round($summary['bestpercent']),
-                    'firstfinish'  => $summary['firstfinish'] ?: null,
-                    'lastfinish'   => $summary['lastfinish'] ?: null,
-                    'status'       => $status,
-                    'classification' => $classification ?: null,
-                    'quiztype'       => $quiztype ?: null,
-                    'computedat'   => $now,
-                ];
-
-                $DB->insert_record('local_homework_status', $record);
-            }
-        }
-    }
-
-    public function backfill_snapshots_from_events(int $weeks): int {
-        global $DB;
-
-        $weeks = max(1, $weeks);
-        $now = time();
-        $start = $now - ($weeks * 7 * 24 * 60 * 60);
-
-        $params = [
-            'start' => $start,
-            'end'   => $now,
-        ];
-
-        // Select quizzes that closed within the specified window.
-        $sql = "SELECT q.id AS quizid, q.timeclose, q.course AS courseid, q.grade, cm.id AS cmid
-                  FROM {quiz} q
-                  JOIN {course_modules} cm ON cm.instance = q.id
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                 WHERE q.timeclose > 0
-                   AND q.timeclose BETWEEN :start AND :end
-              ORDER BY q.timeclose ASC";
-
-        $quizzes = $DB->get_records_sql($sql, $params);
-        if (empty($quizzes)) {
-            return 0;
-        }
-
-        $inserted = 0;
-
-        foreach ($quizzes as $qrec) {
-            $quizid = (int)$qrec->quizid;
-            $courseid = (int)$qrec->courseid;
-            $cmid = (int)$qrec->cmid;
-            $timeclose = (int)$qrec->timeclose;
-
-            if ($timeclose <= 0) {
-                continue;
-            }
-
-            $existinguserids = $DB->get_fieldset_select('local_homework_status', 'userid', 'quizid = :quizid AND timeclose = :timeclose', ['quizid' => $quizid, 'timeclose' => $timeclose]);
-            $existinguserids = array_map('intval', $existinguserids);
-
-            $windowdays = $this->get_course_window_days($courseid);
-            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
-
-            $roster = $this->get_course_roster($courseid);
-            if (!empty($existinguserids)) {
-                $roster = array_diff($roster, $existinguserids);
-            }
-
-            if (empty($roster)) {
-                continue;
-            }
-            $roster = array_values($roster);
-
-            list($insql, $apparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
-            $apparams['quizid'] = $quizid;
-            $apparams['start'] = $windowstart;
-            $apparams['end'] = $windowend;
-
-            $attemptsql = "SELECT qa.userid, qa.attempt, qa.timestart, qa.timefinish, qa.sumgrades
-                             FROM {quiz_attempts} qa
-                            WHERE qa.quiz = :quizid
-                              AND qa.state = 'finished'
-                              AND qa.userid $insql
-                              AND qa.timefinish BETWEEN :start AND :end";
-            $attempts = $DB->get_records_sql($attemptsql, $apparams);
-
-            $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
-
-            $peruser = [];
-            foreach ($attempts as $a) {
-                $timestart = (int)$a->timestart;
-                $timefinish = (int)$a->timefinish;
-                if ($timestart <= 0 || $timefinish <= $timestart) {
-                    continue;
-                }
-                $duration = $timefinish - $timestart;
-                if ($duration < 180) {
-                    // Ignore attempts shorter than 3 minutes.
-                    continue;
-                }
-
-                $uid = (int)$a->userid;
-                if (!isset($peruser[$uid])) {
-                    $peruser[$uid] = [
-                        'attempts' => 0,
-                        'bestpercent' => 0.0,
-                        'firstfinish' => 0,
-                        'lastfinish' => 0,
-                    ];
-                }
-
-                $peruser[$uid]['attempts']++;
-
-                if ($timefinish > 0) {
-                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
-                        $peruser[$uid]['firstfinish'] = $timefinish;
-                    }
-                    if ($timefinish > $peruser[$uid]['lastfinish']) {
-                        $peruser[$uid]['lastfinish'] = $timefinish;
-                    }
-                }
-
-                if ($grade > 0.0 && $a->sumgrades !== null) {
-                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                    if ($pct > $peruser[$uid]['bestpercent']) {
-                        $peruser[$uid]['bestpercent'] = $pct;
-                    }
-                }
-            }
-
-            $classification = $this->get_activity_classification($cmid);
-            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
-
-            foreach ($roster as $uid) {
-                $uid = (int)$uid;
-                $summary = $peruser[$uid] ?? [
-                    'attempts' => 0,
-                    'bestpercent' => 0.0,
-                    'firstfinish' => 0,
-                    'lastfinish' => 0,
-                ];
-
-                if ($summary['attempts'] === 0) {
-                    $status = 'noattempt';
-                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
-                    $status = 'completed';
-                } else {
-                    $status = 'lowgrade';
-                }
-
-                $record = (object) [
-                    'userid'       => $uid,
-                    'courseid'     => $courseid,
-                    'cmid'         => $cmid,
-                    'quizid'       => $quizid,
-                    'timeclose'    => $timeclose,
-                    'windowdays'   => $windowdays,
-                    'windowstart'  => $windowstart,
-                    'attempts'     => $summary['attempts'],
-                    'bestpercent'  => (int)round($summary['bestpercent']),
-                    'firstfinish'  => $summary['firstfinish'] ?: null,
-                    'lastfinish'   => $summary['lastfinish'] ?: null,
-                    'status'       => $status,
-                    'classification' => $classification ?: null,
-                    'quiztype'       => $quiztype ?: null,
-                    'computedat'   => $now,
-                ];
-
-                $DB->insert_record('local_homework_status', $record);
-                $inserted++;
-            }
-        }
-
-        return $inserted;
-    }
-
     /**
      * Backfill snapshots for specific due dates (quiz close times).
      * Overwrites existing snapshots for these dates.
-     *
-     * @param array $timestamps Array of timestamps (due dates)
-     * @return int Number of records inserted
      */
     public function backfill_snapshots_from_dates(array $timestamps): int {
         global $DB;
@@ -1434,142 +1069,142 @@ class homework_manager {
 
         $inserted = 0;
         $now = time();
-
-        // Sanitize timestamps
         $timestamps = array_map('intval', $timestamps);
         $timestamps = array_unique($timestamps);
 
-        // Find quizzes that close on these dates
-        list($insql, $inparams) = $DB->get_in_or_equal($timestamps, SQL_PARAMS_NAMED, 'ts');
-        
-        $sql = "SELECT q.id AS quizid, q.timeclose, q.course AS courseid, q.grade, cm.id AS cmid
-                  FROM {quiz} q
-                  JOIN {course_modules} cm ON cm.instance = q.id
-                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-                 WHERE q.timeclose $insql
-              ORDER BY q.timeclose ASC";
+        foreach ($timestamps as $ts) {
+            if ($ts <= 0) continue;
 
-        $quizzes = $DB->get_records_sql($sql, $inparams);
+            // 1. Try to find a quiz that CURRENTLY closes at this time.
+            $quizzes = $DB->get_records('quiz', ['timeclose' => $ts]);
 
-        if (empty($quizzes)) {
-            return 0;
-        }
+            if (empty($quizzes)) {
+                // 2. If not found (quiz date changed), look for historical records in local_homework_status
+                // to identify which quiz it was.
+                $sql = "SELECT DISTINCT quizid FROM {local_homework_status} WHERE timeclose = :ts";
+                $historical_quizids = $DB->get_fieldset_sql($sql, ['ts' => $ts]);
 
-        foreach ($quizzes as $qrec) {
-            $quizid = (int)$qrec->quizid;
-            $courseid = (int)$qrec->courseid;
-            $cmid = (int)$qrec->cmid;
-            $timeclose = (int)$qrec->timeclose;
+                if (!empty($historical_quizids)) {
+                    list($insql, $inparams) = $DB->get_in_or_equal($historical_quizids);
+                    $quizzes = $DB->get_records_select('quiz', "id $insql", $inparams);
+                }
+            }
 
-            // OVERWRITE LOGIC: Delete existing records for this quiz and timeclose
-            $DB->delete_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose]);
-
-            $windowdays = $this->get_course_window_days($courseid);
-            [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
-
-            $roster = $this->get_course_roster($courseid);
-            if (empty($roster)) {
+            if (empty($quizzes)) {
                 continue;
             }
 
-            // Exclude staff if needed (defaulting to true/standard logic here, or we could pass it as param)
-            // The original backfill function didn't seem to explicitly exclude staff unless I missed it?
-            // Ah, looking at the original function in the sed output, it didn't seem to call get_staff_users_for_course.
-            // But get_homework_rows does.
-            // Let's stick to the logic in backfill_snapshots_from_events which seems to just use the roster.
-            // Wait, backfill_snapshots_from_events DOES NOT exclude staff in the snippet I saw.
-            // I will follow the same pattern as backfill_snapshots_from_events.
+            foreach ($quizzes as $quiz) {
+                $quizid = (int)$quiz->id;
+                $courseid = (int)$quiz->course;
+                $cm = get_coursemodule_from_instance('quiz', $quizid, $courseid);
+                if (!$cm) continue;
 
-            list($insql, $params) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
-            $params['quizid'] = $quizid;
-            $params['start'] = $windowstart;
-            $params['end'] = $windowend;
+                // Use the HISTORICAL timeclose ($ts), not the quiz's current timeclose.
+                $timeclose = $ts; 
 
-            // Fetch attempts in window
-            $sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
-                      FROM {quiz_attempts} qa
-                     WHERE qa.quiz = :quizid
-                       AND qa.userid $insql
-                       AND qa.state = 'finished'
-                       AND qa.timefinish BETWEEN :start AND :end
-                  ORDER BY qa.timefinish ASC";
+                // Clear existing snapshots for this specific historical date
+                $DB->delete_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose]);
 
-            $attempts = $DB->get_records_sql($sql, $params);
+                $windowdays = $this->get_course_window_days($courseid);
+                [$windowstart, $windowend] = $this->build_window($timeclose, $windowdays);
 
-            // Group by user
-            $peruser = [];
-            foreach ($attempts as $a) {
-                $uid = (int)$a->userid;
-                if (!isset($peruser[$uid])) {
-                    $peruser[$uid] = [
+                $roster = $this->get_course_roster($courseid);
+                if (empty($roster)) {
+                    continue;
+                }
+
+                // Fetch attempts in window
+                list($insql, $params) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'uid');
+                $params['quizid'] = $quizid;
+                $params['start'] = $windowstart;
+                $params['end'] = $windowend;
+
+                $sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                          FROM {quiz_attempts} qa
+                         WHERE qa.quiz = :quizid
+                           AND qa.userid $insql
+                           AND qa.state = 'finished'
+                           AND qa.timefinish BETWEEN :start AND :end
+                      ORDER BY qa.timefinish ASC";
+
+                $attempts = $DB->get_records_sql($sql, $params);
+
+                // Group by user
+                $peruser = [];
+                foreach ($attempts as $a) {
+                    $uid = (int)$a->userid;
+                    if (!isset($peruser[$uid])) {
+                        $peruser[$uid] = [
+                            'attempts' => 0,
+                            'bestpercent' => 0.0,
+                            'firstfinish' => 0,
+                            'lastfinish' => 0,
+                        ];
+                    }
+
+                    $peruser[$uid]['attempts']++;
+                    $timefinish = (int)$a->timefinish;
+                    $grade = (float)$quiz->grade;
+
+                    if ($timefinish > 0) {
+                        if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
+                            $peruser[$uid]['firstfinish'] = $timefinish;
+                        }
+                        if ($timefinish > $peruser[$uid]['lastfinish']) {
+                            $peruser[$uid]['lastfinish'] = $timefinish;
+                        }
+                    }
+
+                    if ($grade > 0.0 && $a->sumgrades !== null) {
+                        $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                        if ($pct > $peruser[$uid]['bestpercent']) {
+                            $peruser[$uid]['bestpercent'] = $pct;
+                        }
+                    }
+                }
+
+                $classification = $this->get_activity_classification((int)$cm->id);
+                $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
+
+                foreach ($roster as $uid) {
+                    $uid = (int)$uid;
+                    $summary = $peruser[$uid] ?? [
                         'attempts' => 0,
                         'bestpercent' => 0.0,
                         'firstfinish' => 0,
                         'lastfinish' => 0,
                     ];
-                }
 
-                $peruser[$uid]['attempts']++;
-                $timefinish = (int)$a->timefinish;
-                $grade = (float)$qrec->grade;
-
-                if ($timefinish > 0) {
-                    if ($peruser[$uid]['firstfinish'] === 0 || $timefinish < $peruser[$uid]['firstfinish']) {
-                        $peruser[$uid]['firstfinish'] = $timefinish;
+                    if ($summary['attempts'] === 0) {
+                        $status = 'noattempt';
+                    } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
+                        $status = 'completed';
+                    } else {
+                        $status = 'lowgrade';
                     }
-                    if ($timefinish > $peruser[$uid]['lastfinish']) {
-                        $peruser[$uid]['lastfinish'] = $timefinish;
-                    }
+
+                    $record = (object) [
+                        'userid'       => $uid,
+                        'courseid'     => $courseid,
+                        'cmid'         => (int)$cm->id,
+                        'quizid'       => $quizid,
+                        'timeclose'    => $timeclose,
+                        'windowdays'   => $windowdays,
+                        'windowstart'  => $windowstart,
+                        'attempts'     => $summary['attempts'],
+                        'bestpercent'  => (int)round($summary['bestpercent']),
+                        'firstfinish'  => $summary['firstfinish'] ?: null,
+                        'lastfinish'   => $summary['lastfinish'] ?: null,
+                        'status'       => $status,
+                        'classification' => $classification ?: null,
+                        'quiztype'       => $quiztype ?: null,
+                        'computedat'   => $now,
+                    ];
+
+                    $DB->insert_record('local_homework_status', $record);
+                    $inserted++;
                 }
-
-                if ($grade > 0.0 && $a->sumgrades !== null) {
-                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                    if ($pct > $peruser[$uid]['bestpercent']) {
-                        $peruser[$uid]['bestpercent'] = $pct;
-                    }
-                }
-            }
-
-            $classification = $this->get_activity_classification($cmid);
-            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
-
-            foreach ($roster as $uid) {
-                $uid = (int)$uid;
-                $summary = $peruser[$uid] ?? [
-                    'attempts' => 0,
-                    'bestpercent' => 0.0,
-                    'firstfinish' => 0,
-                    'lastfinish' => 0,
-                ];
-
-                if ($summary['attempts'] === 0) {
-                    $status = 'noattempt';
-                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
-                    $status = 'completed';
-                } else {
-                    $status = 'lowgrade';
-                }
-
-                $record = (object) [
-                    'userid'       => $uid,
-                    'courseid'     => $courseid,
-                    'cmid'         => $cmid,
-                    'quizid'       => $quizid,
-                    'timeclose'    => $timeclose,
-                    'windowdays'   => $windowdays,
-                    'windowstart'  => $windowstart,
-                    'attempts'     => $summary['attempts'],
-                    'bestpercent'  => (int)round($summary['bestpercent']),
-                    'firstfinish'  => $summary['firstfinish'] ?: null,
-                    'lastfinish'   => $summary['lastfinish'] ?: null,
-                    'status'       => $status,
-                    'classification' => $classification ?: null,
-                    'quiztype'       => $quiztype ?: null,
-                    'computedat'   => $now,
-                ];
-
-                $DB->insert_record('local_homework_status', $record);
-                $inserted++;
             }
         }
 
