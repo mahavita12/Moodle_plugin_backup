@@ -524,6 +524,40 @@ class homework_manager {
                 $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
             }
 
+            $windowstart = (int)$s->windowstart;
+            $windowend = (int)$s->timeclose;
+
+            $attempts = [];
+            $attemptparams = [
+                'quizid' => (int)$s->quizid,
+                'userid' => $uid,
+                'start'  => $windowstart,
+                'end'    => $windowend,
+            ];
+
+            $attemptsql = "SELECT qa.id, qa.attempt, qa.state, qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                              FROM {quiz_attempts} qa
+                             WHERE qa.quiz = :quizid
+                               AND qa.userid = :userid
+                               AND qa.state = 'finished'
+                               AND qa.timefinish BETWEEN :start AND :end
+                         ORDER BY qa.timefinish ASC";
+
+            $attemptrecords = $DB->get_records_sql($attemptsql, $attemptparams);
+
+            foreach ($attemptrecords as $a) {
+                $timestart = (int)$a->timestart;
+                $afinish = (int)$a->timefinish;
+                if ($timestart <= 0 || $afinish <= $timestart) {
+                    continue;
+                }
+                $duration = $afinish - $timestart;
+                if ($duration < 180) {
+                    continue;
+                }
+                $attempts[] = $a;
+            }
+
             $rows[] = (object) [
                 'userid'       => $uid,
                 'studentname'  => $fullname,
@@ -549,6 +583,7 @@ class homework_manager {
                 'percentage'   => $bestpercent,
                 'quiz_type'    => $s->quiztype ?? '',
                 'timeclose'    => (int)$s->timeclose,
+                'attempts'     => $attempts,
             ];
         }
 
