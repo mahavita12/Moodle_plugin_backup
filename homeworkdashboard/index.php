@@ -529,21 +529,21 @@ if ($tab === 'snapshot' && $canmanage) {
                         </tr>
                         <!-- Expansion row -->
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="14" style="padding: 0; border: none;">
-                                <?php if (empty($row->attempts)): ?>
-                                    <div class="no-data">No attempts found for this user.</div>
+                            <td colspan="14">
+                                <?php
+                                    // Sort attempts by attempt number ASC to match production layout.
+                                    $attempts = $row->attempts ?? [];
+                                    usort($attempts, function($a, $b) {
+                                        return $a->attempt - $b->attempt;
+                                    });
+                                ?>
+                                <?php if (empty($attempts)): ?>
+                                    <div class="no-data"><?php echo get_string('none'); ?></div>
                                 <?php else: ?>
-                                    <?php 
-                                        // Sort attempts by attempt number ASC
-                                        $attempts = $row->attempts;
-                                        usort($attempts, function($a, $b) {
-                                            return $a->attempt - $b->attempt;
-                                        });
-                                    ?>
-                                    <table class="table table-sm hw-attempts-table" style="margin: 0; background-color: #f8f9fa;">
+                                    <table class="dashboard-table hw-attempts-table">
                                         <thead>
                                             <tr>
-                                                <th>Attempt</th>
+                                                <th><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?></th>
                                                 <th><?php echo get_string('status'); ?></th>
                                                 <th>Due date</th>
                                                 <th>Finished</th>
