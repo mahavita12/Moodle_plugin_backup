@@ -101,68 +101,6 @@
 }
 
 .filter-controls .form-control {
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    padding: 8px 12px;
-    transition: border-color 0.2s ease;
-}
-
-.filter-controls .form-control:focus {
-    border-color: #3182ce;
-    box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
-}
-
-/* Tables */
-.dashboard-table {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-}
-
-.dashboard-table .table {
-    margin: 0;
-}
-
-.dashboard-table .table th {
-    background-color: #f7fafc;
-    border-bottom: 2px solid #e2e8f0;
-    color: #4a5568;
-    font-weight: 600;
-    padding: 16px;
-    font-size: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.dashboard-table .table td {
-    padding: 16px;
-    border-bottom: 1px solid #e2e8f0;
-    vertical-align: middle;
-}
-
-.dashboard-table .table tbody tr:hover {
-    background-color: #f9fafb;
-}
-
-/* Toggle Switches */
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 50px;
-    height: 24px;
-}
-
-.switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.slider {
-    position: absolute;
-    cursor: pointer;
     top: 0;
     left: 0;
     right: 0;
@@ -184,11 +122,11 @@
     transition: .4s;
 }
 
-input:checked + .slider {
+input:checked+.slider {
     background-color: #48bb78;
 }
 
-input:checked + .slider:before {
+input:checked+.slider:before {
     transform: translateX(26px);
 }
 
@@ -291,8 +229,13 @@ input:checked + .slider:before {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 /* Responsive Design */
@@ -300,21 +243,21 @@ input:checked + .slider:before {
     .stats-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .dashboard-actions {
         flex-direction: column;
     }
-    
+
     .dashboard-actions .btn {
         width: 100%;
         justify-content: center;
     }
-    
+
     .dashboard-table {
         overflow-x: auto;
     }
-    
-    .filter-controls .row > div {
+
+    .filter-controls .row>div {
         margin-bottom: 15px;
     }
 }
@@ -324,15 +267,15 @@ input:checked + .slider:before {
         padding: 8px 16px;
         font-size: 0.875rem;
     }
-    
+
     .stat-card {
         padding: 20px;
     }
-    
+
     .stat-card .stat-number {
         font-size: 2rem;
     }
-    
+
     .dashboard-table .table th,
     .dashboard-table .table td {
         padding: 12px 8px;
@@ -420,7 +363,7 @@ input:checked + .slider:before {
     .student-progress-table {
         font-size: 0.75rem;
     }
-    
+
     .student-progress-table th,
     .student-progress-table td {
         padding: 4px 3px !important;
@@ -433,28 +376,28 @@ input:checked + .slider:before {
     .essaysmaster-dashboard {
         color: #e2e8f0;
     }
-    
+
     .stat-card {
         background: #2d3748;
         border-color: #4a5568;
         color: #e2e8f0;
     }
-    
+
     .dashboard-table {
         background: #2d3748;
         border-color: #4a5568;
     }
-    
+
     .dashboard-table .table th {
         background-color: #1a202c;
         color: #e2e8f0;
     }
-    
+
     .dashboard-table .table td {
         border-color: #4a5568;
         color: #e2e8f0;
     }
-    
+
     .filter-controls {
         background: #2d3748;
         border-color: #4a5568;
@@ -735,11 +678,11 @@ input:checked + .slider:before {
     .enhanced-filters .filter-row {
         flex-direction: column;
     }
-    
+
     .enhanced-filters .filter-group {
         min-width: 100%;
     }
-    
+
     .statistics-row {
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 15px;
@@ -751,19 +694,19 @@ input:checked + .slider:before {
         flex-direction: column;
         width: 100%;
     }
-    
+
     .enhanced-filters .btn {
         width: 100%;
     }
-    
+
     .bulk-controls {
         flex-direction: column;
     }
-    
+
     .bulk-controls .btn {
         width: 100%;
     }
-    
+
     .statistics-row {
         grid-template-columns: 1fr;
     }
