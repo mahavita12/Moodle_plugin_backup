@@ -16,13 +16,13 @@ $PAGE->set_pagelayout('admin');
 
 // Add CSS styles
 $PAGE->requires->css('/local/essaysmaster/styles.css');
-
 // Parameters
 $action = optional_param('action', '', PARAM_ALPHA);
 $courseid = optional_param('course', 0, PARAM_INT);
 $quizid   = optional_param('quizid', 0, PARAM_INT);
 $status = optional_param('status', '', PARAM_ALPHA);
 $userid = optional_param('userid', 0, PARAM_INT);
+$search = optional_param('search', '', PARAM_TEXT);
 $filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
 if ($filtersubmitted) {
     $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);

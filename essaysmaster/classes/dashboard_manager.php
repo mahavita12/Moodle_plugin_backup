@@ -598,8 +598,8 @@ class dashboard_manager {
             );
             
             // Standard headers
-            $output .= \html_writer::tag('th', 'Student ID');
-            $output .= \html_writer::tag('th', 'Student Name');
+            $output .= \html_writer::tag('th', 'ID');
+            $output .= \html_writer::tag('th', 'Name');
             $output .= \html_writer::tag('th', 'Category');
             $output .= \html_writer::tag('th', 'Course');
             $output .= \html_writer::tag('th', 'Quiz Name');
