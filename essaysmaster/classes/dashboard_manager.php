@@ -694,7 +694,15 @@ class dashboard_manager {
                         'class' => 'quiz-link'
                     ])
                 );
-                $output .= \html_writer::tag('td', $progress->student_attempt_number ?? '-');
+                // Link attempt number to review page
+                if (!empty($progress->student_attempt_number) && !empty($progress->attempt_id)) {
+                    $review_url = new \moodle_url('/mod/quiz/review.php', ['attempt' => $progress->attempt_id]);
+                    $output .= \html_writer::tag('td', 
+                        \html_writer::link($review_url, $progress->student_attempt_number, ['target' => '_blank'])
+                    );
+                } else {
+                    $output .= \html_writer::tag('td', $progress->student_attempt_number ?? '-');
+                }
                 $output .= \html_writer::tag('td', ($progress->current_round ?? 1) . '/6');
                 
                 // Status badge

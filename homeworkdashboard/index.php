@@ -28,7 +28,7 @@ $studentname   = optional_param('studentname', '', PARAM_TEXT);
 $statusfilter  = optional_param('status', '', PARAM_TEXT);
 $quiztypefilter = optional_param('quiztype', '', PARAM_TEXT);
 $classfilter   = optional_param('classification', '', PARAM_ALPHA);
-$weekvalue     = optional_param('week', '', PARAM_TEXT);
+// $weekvalue     = optional_param('week', '', PARAM_TEXT);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
 $filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
@@ -75,6 +75,8 @@ try {
 $courses = [];
 if (!empty($categoryid)) {
     $courses = $DB->get_records('course', ['category' => $categoryid, 'visible' => 1], 'fullname ASC', 'id, fullname');
+} else {
+    $courses = $DB->get_records('course', ['visible' => 1], 'fullname ASC', 'id, fullname');
 }
 
 $manager = new \local_homeworkdashboard\homework_manager();
@@ -92,19 +94,8 @@ if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
     }
 }
 
-$weekoptions = [];
-$now = time();
-$basesunday = ((int)date('w', $now) === 0) ? $now : strtotime('next Sunday', $now);
-if ($basesunday === false) {
-    $basesunday = $now;
-}
-$currsunday = $basesunday + (7 * 24 * 60 * 60);
-
-for ($i = 0; $i < 12; $i++) {
-    $ts = $currsunday - ($i * 7 * 24 * 60 * 60);
-    $label = userdate($ts, get_string('strftimedate', 'langconfig'));
-    $weekoptions[$ts] = $label;
-}
+// Week options removed
+$weekvalue = ''; // Ensure variable exists but is empty
 
 // Fetch data
 $rows = [];
@@ -252,7 +243,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     <div class="filter-group">
                         <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
                         <select name="courseid" id="courseid">
-                            <option value="0"><?php echo get_string('all_courses', 'local_homeworkdashboard'); ?></option>
+                            <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
                             <?php foreach ($courses as $c): ?>
                                 <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
                                     <?php echo format_string($c->fullname); ?>
@@ -336,17 +327,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         </select>
                     </div>
 
-                    <div class="filter-group">
-                        <label for="week"><?php echo get_string('week'); ?></label>
-                        <select name="week" id="week">
-                            <option value=""><?php echo get_string('all'); ?></option>
-                            <?php foreach ($weekoptions as $value => $label): ?>
-                                <option value="<?php echo s($value); ?>" <?php echo ($weekvalue === $value) ? 'selected' : ''; ?>>
-                                    <?php echo $label; ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                    <!-- Week filter removed -->
                     <div class="filter-group">
                         <label for="duedate">Due date</label>
                         <select name="duedate" id="duedate">
@@ -440,22 +421,22 @@ if ($tab === 'snapshot' && $canmanage) {
                             </td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["userid" => (int)$row->userid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "userid" => (int)$row->userid]))->out(false); ?>">
                                     <?php echo s($row->studentname); ?>
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["categoryid" => (int)$row->categoryid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "categoryid" => (int)$row->categoryid]))->out(false); ?>">
                                     <?php echo s($row->categoryname); ?>
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["courseid" => (int)$row->courseid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "courseid" => (int)$row->courseid]))->out(false); ?>">
                                     <?php echo s($row->coursename); ?>
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["quizid" => (int)$row->quizid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "quizid" => (int)$row->quizid]))->out(false); ?>">
                                     <?php echo s($row->quizname); ?>
                                 </a>
                                 &nbsp;
@@ -473,7 +454,7 @@ if ($tab === 'snapshot' && $canmanage) {
                                         $badgetext = "Done";
                                     } else if ($st === "Low grade") {
                                         $badgeclass = "hw-badge-lowgrade";
-                                        $badgetext = "? Policy";
+                                        $badgetext = "Retry";
                                     } else if ($st === "No attempt") {
                                         $badgeclass = "hw-badge-noattempt";
                                         $badgetext = "To do";
@@ -499,7 +480,7 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td>
                                 <?php 
                                     if ($row->timeclose > 0) {
-                                        echo '<a href="' . (new moodle_url('/local/homeworkdashboard/index.php', ['duedate' => $row->timeclose]))->out(false) . '">';
+                                        echo '<a href="' . (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab, 'duedate' => $row->timeclose]))->out(false) . '">';
                                         echo userdate($row->timeclose, get_string("strftimedatetime", "langconfig")); 
                                         echo '</a>';
                                     } else {

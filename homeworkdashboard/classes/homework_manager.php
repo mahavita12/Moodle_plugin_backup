@@ -531,8 +531,6 @@ class homework_manager {
             $attemptparams = [
                 'quizid' => (int)$s->quizid,
                 'userid' => $uid,
-                'start'  => $windowstart,
-                'end'    => $windowend,
             ];
 
             $attemptsql = "SELECT qa.id, qa.attempt, qa.state, qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
@@ -540,10 +538,13 @@ class homework_manager {
                              WHERE qa.quiz = :quizid
                                AND qa.userid = :userid
                                AND qa.state = 'finished'
-                               AND qa.timefinish BETWEEN :start AND :end
                          ORDER BY qa.timefinish ASC";
 
             $attemptrecords = $DB->get_records_sql($attemptsql, $attemptparams);
+
+            // Track best attempt for duration calculation
+            $best_attempt_for_duration = null;
+            $highest_score = -1.0;
 
             foreach ($attemptrecords as $a) {
                 $timestart = (int)$a->timestart;
@@ -556,8 +557,36 @@ class homework_manager {
                     continue;
                 }
                 $attempts[] = $a;
+
+                $current_score = $a->sumgrades !== null ? (float)$a->sumgrades : 0.0;
+                if ($current_score > $highest_score) {
+                    $highest_score = $current_score;
+                    $best_attempt_for_duration = $a;
+                }
             }
 
+            // Calculate duration string
+            $time_taken = '';
+            if ($best_attempt_for_duration) {
+                $timestart = (int)$best_attempt_for_duration->timestart;
+                $timefinish = (int)$best_attempt_for_duration->timefinish;
+                if ($timestart > 0 && $timefinish > 0 && $timefinish > $timestart) {
+                    $duration = $timefinish - $timestart;
+                    $hours = (int)floor($duration / 3600);
+                    $minutes = (int)floor(($duration % 3600) / 60);
+                    $seconds = (int)($duration % 60);
+                    if ($hours > 0) {
+                        $time_taken = sprintf('%dh %dm %ds', $hours, $minutes, $seconds);
+                    } else if ($minutes > 0) {
+                        $time_taken = sprintf('%dm %ds', $minutes, $seconds);
+                    } else {
+                        $time_taken = sprintf('%ds', $seconds);
+                    }
+                }
+            }
+
+
+            if ($uid == 10) { echo "<!-- SNAPSHOT_DEBUG: Q={$s->quizid} U={$uid} Atts=" . count($attemptrecords) . " TimeTaken='{$time_taken}' Start={$windowstart} End={$windowend} -->"; }
             $rows[] = (object) [
                 'userid'       => $uid,
                 'studentname'  => $fullname,
@@ -577,7 +606,7 @@ class homework_manager {
                 'status'       => $hwstatus,
                 'timestart'    => 0,
                 'timefinish'   => $timefinish,
-                'time_taken'   => '',
+                'time_taken'   => $time_taken,
                 'score'        => $bestscore,
                 'maxscore'     => $maxscore,
                 'percentage'   => $bestpercent,
@@ -826,7 +855,9 @@ class homework_manager {
 
                 $lastscore = $bestattempt && $bestattempt->sumgrades !== null ? (float)$bestattempt->sumgrades : 0.0;
 
-                $rows[] = (object) [
+    
+            if ($uid == 10) { echo "<!-- SNAPSHOT_DEBUG: Q={$s->quizid} U={$uid} Atts=" . count($attemptrecords) . " TimeTaken='{$time_taken}' Start={$windowstart} End={$windowend} -->"; }
+            $rows[] = (object) [
                     'userid'       => $uid,
                     'studentname'  => $fullname,
                     'courseid'     => (int)$qrec->courseid,
@@ -1242,8 +1273,6 @@ class homework_manager {
                         'status'       => $status,
                         'classification' => $classification ?: null,
                         'quiz_type'    => $quiztype,
-                        'timeclose'    => $timeclose,
-                        'attempts'     => $summary['attempts_data'],
                         'computedat'   => $now,
                     ];
 
