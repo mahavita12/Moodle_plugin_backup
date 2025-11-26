@@ -1121,7 +1121,7 @@ class homework_manager {
                 $params['start'] = $windowstart;
                 $params['end'] = $windowend;
 
-                $sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                $sql = "SELECT qa.id, qa.attempt, qa.state, qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
                           FROM {quiz_attempts} qa
                          WHERE qa.quiz = :quizid
                            AND qa.userid $insql
@@ -1141,10 +1141,12 @@ class homework_manager {
                             'bestpercent' => 0.0,
                             'firstfinish' => 0,
                             'lastfinish' => 0,
+                            'attempts_data' => [],
                         ];
                     }
 
                     $peruser[$uid]['attempts']++;
+                    $peruser[$uid]['attempts_data'][] = $a;
                     $timefinish = (int)$a->timefinish;
                     $grade = (float)$quiz->grade;
 
@@ -1175,6 +1177,7 @@ class homework_manager {
                         'bestpercent' => 0.0,
                         'firstfinish' => 0,
                         'lastfinish' => 0,
+                        'attempts_data' => [],
                     ];
 
                     if ($summary['attempts'] === 0) {
@@ -1199,7 +1202,9 @@ class homework_manager {
                         'lastfinish'   => $summary['lastfinish'] ?: null,
                         'status'       => $status,
                         'classification' => $classification ?: null,
-                        'quiztype'       => $quiztype ?: null,
+                        'quiz_type'    => $quiztype,
+                        'timeclose'    => $timeclose,
+                        'attempts'     => $summary['attempts_data'],
                         'computedat'   => $now,
                     ];
 

@@ -365,7 +365,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
                 </div>
 
-                <div class="filter-group" style="margin-left: auto; display: flex; gap: 5px;">
+                <div class="filter-actions">
                     <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
                     <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
                 </div>
@@ -499,7 +499,9 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td>
                                 <?php 
                                     if ($row->timeclose > 0) {
+                                        echo '<a href="' . (new moodle_url('/local/homeworkdashboard/index.php', ['duedate' => $row->timeclose]))->out(false) . '">';
                                         echo userdate($row->timeclose, get_string("strftimedatetime", "langconfig")); 
+                                        echo '</a>';
                                     } else {
                                         echo "-";
                                     }
