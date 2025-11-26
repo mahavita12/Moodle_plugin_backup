@@ -6,20 +6,37 @@
     margin-bottom: 15px;
 }
 
+/* Filter Row Card Styling */
 .hw-filter-row {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    align-items: flex-end;
+    gap: 15px; /* Increased gap for spread look */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .hw-filter-group {
-    min-width: 220px;
+    margin-bottom: 0;
+    min-width: auto;
 }
 
 .hw-filter-group label {
     display: block;
     font-weight: 600;
     margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.hw-filter-group select,
+.hw-filter-group input {
+    height: 30px;
+    padding: 2px 6px;
+    font-size: 13px;
 }
 
 .hw-legend {
@@ -69,9 +86,18 @@
     border-bottom: 1px solid #dee2e6;
 }
 
+/* Dark Header Style */
+.thead-dark th {
+    background-color: #343a40;
+    color: #fff;
+    border-color: #454d55;
+}
+
 .hw-table th {
     text-align: left;
-    background: #f8f9fa;
+    white-space: nowrap !important;
+    vertical-align: middle;
+    padding-right: 20px;
 }
 
 .hw-info {
@@ -85,8 +111,7 @@
 }
 
 /* Alternating column backgrounds for better readability */
-.hw-table tbody tr td:nth-child(even),
-.hw-table thead tr th:nth-child(even) {
+.hw-table tbody tr td:nth-child(even) {
     background: linear-gradient(to bottom, #f8f9fa 0%, #f1f3f5 100%);
 }
 
@@ -118,3 +143,35 @@
     background-color: #ffc107;
     color: #ffffff;
 }
+
+/* Smaller Sort Arrows */
+.sort-arrows {
+    font-size: 10px;
+    margin-left: 4px;
+    color: #999;
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.8;
+    vertical-align: middle;
+}
+
+.sort-arrows .arrow {
+    cursor: pointer;
+}
+
+.sort-arrows .arrow.active {
+    color: #000;
+}
+
+/* Specific Filter Widths to match screenshot */
+#categoryid { width: 160px; }
+#courseid { width: 220px; }
+#sectionid { width: 160px; }
+#quizid { width: 220px; }
+#classification { width: 150px; }
+#quiztype { width: 120px; }
+#studentname { width: 170px; }
+#userid { width: 80px; }
+#status { width: 120px; }
+#week { width: 160px; }
+#duedate { width: 200px; }

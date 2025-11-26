@@ -39,15 +39,15 @@ if ($filtersubmitted) {
 }
 $duedate       = optional_param('duedate', 0, PARAM_INT);
 
-// If a specific due date is selected, clear the week filter to avoid confusion/conflicts in UI state.
+// If a specific due date is selected, clear the week filter to avoid confusion/conflict
 if ($duedate > 0) {
     $weekvalue = '';
 }
 
-function local_homeworkdashboard_sort_arrows(string $column, string $current_sort, string $current_dir): string {
-    $up_class = '';
+function local_homeworkdashboard_sort_arrows($field, $current_sort, $current_dir) {
+    $up_class   = '';
     $down_class = '';
-    if ($current_sort === $column) {
+    if ($field === $current_sort) {
         if (strtoupper($current_dir) === 'ASC') {
             $up_class = ' active';
         } else {
@@ -55,8 +55,8 @@ function local_homeworkdashboard_sort_arrows(string $column, string $current_sor
         }
     }
     return '<span class="sort-arrows">'
-        . '<span class="arrow up' . $up_class . '">▲</span>'
-        . '<span class="arrow down' . $down_class . '">▼</span>'
+        . '<span class="arrow up' . $up_class . '">&#9650;</span>'
+        . '<span class="arrow down' . $down_class . '">&#9660;</span>'
         . '</span>';
 }
 
@@ -81,8 +81,6 @@ $manager = new \local_homeworkdashboard\homework_manager();
 
 $canmanage = has_capability('local/homeworkdashboard:manage', $context);
 $backfillmessage = '';
-
-// Handle Backfill (Only allowed in snapshot tab, effectively)
 if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
     require_sesskey();
     $backfilldates = optional_param_array('backfilldates', [], PARAM_INT);
@@ -101,15 +99,16 @@ if ($basesunday === false) {
     $basesunday = $now;
 }
 $currsunday = $basesunday + (7 * 24 * 60 * 60);
+
 for ($i = 0; $i < 12; $i++) {
-    $sunday = $currsunday - ($i * 7 * 24 * 60 * 60);
-    $value = date('Y-m-d', $sunday);
-    $label = userdate($sunday, get_string('strftimedateshort', 'langconfig'));
-    $weekoptions[$value] = $label;
+    $ts = $currsunday - ($i * 7 * 24 * 60 * 60);
+    $label = userdate($ts, get_string('strftimedate', 'langconfig'));
+    $weekoptions[$ts] = $label;
 }
 
-// Fetch rows based on Tab
-if ($tab === 'snapshot') {
+// Fetch data
+$rows = [];
+if ($tab === "snapshot") {
     $rows = $manager->get_snapshot_homework_rows(
         $categoryid,
         $courseid,
@@ -126,19 +125,7 @@ if ($tab === 'snapshot') {
         $excludestaff,
         $duedate
     );
-    
-    // Get unique due dates for backfill dropdown (from snapshot data only? or all historical?)
-    // Actually, to backfill, we might want to see all possible due dates.
-    // But usually backfill is driven by what's in the table or what's available.
-    // The previous logic derived unique due dates from the $allrows (unfiltered).
-    // Let's do a broad fetch for filters.
-    
-    // Note: Ideally we shouldn't run the query twice (once for filters, once for display).
-    // But for now, to populate filters, we need a broad set.
-    // Or we can just populate filters from the displayed rows if pagination isn't an issue (no pagination yet).
-    $allrows = $rows; 
 } else {
-    // Live Tab
     $rows = $manager->get_live_homework_rows(
         $categoryid,
         $courseid,
@@ -155,48 +142,28 @@ if ($tab === 'snapshot') {
         $excludestaff,
         $duedate
     );
-    $allrows = $rows;
 }
 
-// Process rows for filter dropdowns
-$uniqueusers = [];
-$uniqueuserids = [];
+// Populate filters based on returned data
 $uniquesections = [];
 $uniquequizzes = [];
+$uniqueusers = [];
+$uniqueuserids = [];
 $uniqueduedates = [];
 
-foreach ($allrows as $r) {
-    if (!isset($uniqueusers[$r->userid])) {
-        $uniqueusers[$r->userid] = (object) [
-            'id' => $r->userid,
-            'fullname' => $r->studentname,
-        ];
-    }
-    if (!isset($uniqueuserids[$r->userid])) {
-        $uniqueuserids[$r->userid] = (object) [
-            'id' => $r->userid,
-            'userid' => $r->userid,
-        ];
-    }
+foreach ($rows as $r) {
     if (!empty($r->sectionid)) {
-        if (!isset($uniquesections[$r->sectionid])) {
-            $uniquesections[$r->sectionid] = (object) [
-                'id' => $r->sectionid,
-                'name' => $r->sectionname,
-                'section' => $r->sectionnumber,
-                'coursename' => $r->coursename,
-            ];
-        }
+        $uniquesections[$r->sectionid] = (object)['id' => $r->sectionid, 'name' => $r->sectionname, 'coursename' => $r->coursename];
     }
-    if (!isset($uniquequizzes[$r->quizid])) {
-        $uniquequizzes[$r->quizid] = (object) [
-            'id' => $r->quizid,
-            'name' => $r->quizname,
-        ];
+    if (!empty($r->quizid)) {
+        $uniquequizzes[$r->quizid] = (object)['id' => $r->quizid, 'name' => $r->quizname];
     }
-    // Collect unique due dates
+    if (!empty($r->userid)) {
+        $uniqueusers[$r->userid] = (object)['id' => $r->userid, 'fullname' => $r->studentname];
+        $uniqueuserids[$r->userid] = true;
+    }
     if (!empty($r->timeclose)) {
-        $duedatekey = (int)$r->timeclose;
+        $duedatekey = $r->timeclose;
         if (!isset($uniqueduedates[$duedatekey])) {
             $uniqueduedates[$duedatekey] = (object) [
                 'timestamp' => $duedatekey,
@@ -240,38 +207,38 @@ $tabs = [
 ];
 echo $OUTPUT->tabtree($tabs, $tab);
 
-if ($backfillmessage !== '') {
-    echo $OUTPUT->notification($backfillmessage, 'notifysuccess');
+// BACKFILL UI (Only for snapshots tab and managers)
+if ($tab === 'snapshot' && $canmanage) {
+    echo '<div class="backfill-section" style="margin: 20px 0; padding: 10px; background: #fff; border: 1px solid #dee2e6; border-radius: 4px;">';
+    if ($backfillmessage) {
+        echo $OUTPUT->notification($backfillmessage, 'success');
+    }
+    echo '<form method="post" action="" class="form-inline" style="display: flex; align-items: center; gap: 10px;">';
+    echo '<input type="hidden" name="tab" value="snapshot">';
+    echo '<input type="hidden" name="backfill" value="1">';
+    echo '<input type="hidden" name="sesskey" value="' . sesskey() . '">';
+    echo '<label style="margin-bottom: 0;">Due dates to backfill:</label>';
+    echo '<select name="backfilldates[]" class="form-control" style="max-width: 200px;">';
+    foreach ($uniqueduedates as $dd) {
+        echo '<option value="' . $dd->timestamp . '">' . $dd->formatted . '</option>';
+    }
+    echo '</select>';
+    echo '<button type="submit" class="btn btn-secondary">Backfill snapshot from Due dates</button>';
+    echo '</form>';
+    echo '</div>';
 }
 
-$baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]);
 ?>
-<div class="essay-dashboard-container homework-dashboard-container">
-    <?php if ($canmanage && $tab === 'snapshot'): ?>
-    <div class="hw-backfill">
-        <form method="post" action="<?php echo $baseurl->out(false); ?>" class="filter-form">
-            <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>" />
-            <div style="display: flex; align-items: center; gap: 10px;">
-            <label for="backfilldates" style="margin-bottom: 0;">Due dates to backfill:</label>
-            <select name="backfilldates[]" id="backfilldates" class="custom-select" style="width: auto; max-width: 250px;">
-                <?php foreach ($uniqueduedates as $ts => $dateobj): ?>
-                    <option value="<?php echo $ts; ?>"><?php echo $dateobj->formatted; ?></option>
-                <?php endforeach; ?>
-            </select>
-            <button type="submit" name="backfill" value="1" class="btn btn-secondary">Backfill snapshot from Due dates</button>
-        </div>
-        </form>
-    </div>
-    <?php endif; ?>
-    <div class="dashboard-filters">
-        <form method="get" class="filter-form">
-        <input type="hidden" name="filtersubmitted" value="1" />
-        <input type="hidden" name="tab" value="<?php echo s($tab); ?>" />
+
+<div class="container-fluid">
+    <div class="dashboard-controls">
+        <form method="get" action="" class="form-inline">
+            <input type="hidden" name="tab" value="<?php echo s($tab); ?>">
+            <input type="hidden" name="filtersubmitted" value="1">
             
             <div class="hw-filter-row">
-                <!-- Row 1: Dropdowns -->
                 <div class="filter-group">
-                    <label for="categoryid"><?php echo get_string('filtercategory', 'local_homeworkdashboard'); ?></label>
+                    <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
                     <select name="categoryid" id="categoryid">
                         <option value="0"><?php echo get_string('all'); ?></option>
                         <?php foreach ($categories as $cat): ?>
@@ -283,9 +250,9 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab])
                 </div>
 
                 <div class="filter-group">
-                    <label for="courseid"><?php echo get_string('filtercourse', 'local_homeworkdashboard'); ?></label>
+                    <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
                     <select name="courseid" id="courseid">
-                        <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
+                        <option value="0"><?php echo get_string('all_courses', 'local_homeworkdashboard'); ?></option>
                         <?php foreach ($courses as $c): ?>
                             <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
                                 <?php echo format_string($c->fullname); ?>
@@ -300,26 +267,14 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab])
                         <option value="0"><?php echo get_string('all'); ?></option>
                         <?php foreach ($uniquesections as $s): ?>
                             <option value="<?php echo (int)$s->id; ?>" <?php echo ((int)$sectionid === (int)$s->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($s->coursename . ' - ' . $s->name); ?>
+                                <?php echo format_string(trim($s->coursename . ' ' . ($s->name ?? ''))); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
                 <div class="filter-group">
-                    <label for="week">Week</label>
-                    <select name="week" id="week">
-                        <option value="">All weeks</option>
-                        <?php foreach ($weekoptions as $val => $label): ?>
-                            <option value="<?php echo $val; ?>" <?php echo ($weekvalue === $val) ? 'selected' : ''; ?>>
-                                <?php echo $label; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="filter-group">
-                    <label for="quizid"><?php echo get_string('filterquiz', 'local_homeworkdashboard'); ?></label>
+                    <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
                     <select name="quizid" id="quizid">
                         <option value="0"><?php echo get_string('all'); ?></option>
                         <?php foreach ($uniquequizzes as $q): ?>
@@ -329,63 +284,90 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab])
                         <?php endforeach; ?>
                     </select>
                 </div>
-                
-                 <div class="filter-group">
-                    <label for="quiztype">Quiz Type</label>
-                    <select name="quiztype" id="quiztype">
-                        <option value="">All</option>
-                        <option value="Essay" <?php echo ($quiztypefilter === 'Essay') ? 'selected' : ''; ?>>Essay</option>
-                        <option value="Non-Essay" <?php echo ($quiztypefilter === 'Non-Essay') ? 'selected' : ''; ?>>Non-Essay</option>
-                    </select>
-                </div>
 
-                 <div class="filter-group">
-                    <label for="classification">Classification</label>
+                <div class="filter-group">
+                    <label for="classification"><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></label>
                     <select name="classification" id="classification">
-                        <option value="">All</option>
-                        <option value="New" <?php echo ($classfilter === 'New') ? 'selected' : ''; ?>>New</option>
-                        <option value="Revision" <?php echo ($classfilter === 'Revision') ? 'selected' : ''; ?>>Revision</option>
+                        <option value=""><?php echo get_string('all'); ?></option>
+                        <option value="New" <?php echo $classfilter === 'New' ? 'selected' : ''; ?>><?php echo get_string('classification_new', 'local_homeworkdashboard'); ?></option>
+                        <option value="Revision" <?php echo $classfilter === 'Revision' ? 'selected' : ''; ?>><?php echo get_string('classification_revision', 'local_homeworkdashboard'); ?></option>
                     </select>
                 </div>
 
-                 <div class="filter-group">
-                    <label for="status"><?php echo get_string('status'); ?></label>
-                    <select name="status" id="status">
-                        <option value="">All</option>
-                        <option value="Completed" <?php echo ($statusfilter === 'Completed') ? 'selected' : ''; ?>>Completed</option>
-                        <option value="Low grade" <?php echo ($statusfilter === 'Low grade') ? 'selected' : ''; ?>>Low grade</option>
-                        <option value="No attempt" <?php echo ($statusfilter === 'No attempt') ? 'selected' : ''; ?>>No attempt</option>
+                <div class="filter-group">
+                    <label for="quiztype"><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
+                    <select name="quiztype" id="quiztype">
+                        <option value=""><?php echo get_string('all'); ?></option>
+                        <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
+                        <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
                     </select>
                 </div>
-            </div>
-
-            <div class="hw-filter-row" style="margin-top: 10px; align-items: flex-end;">
-                <!-- Row 2: Inputs & Buttons -->
-                 <div class="filter-group">
-                    <label for="studentname">Student Name</label>
-                    <input type="text" name="studentname" id="studentname" value="<?php echo s($studentname); ?>" placeholder="Search student..." class="form-control" style="width: 150px;">
+                <div class="filter-group">
+                    <label for="studentname"><?php echo get_string("user"); ?></label>
+                    <select name="studentname" id="studentname">
+                        <option value=""><?php echo get_string("all"); ?></option>
+                        <?php foreach ($uniqueusers as $u): ?>
+                            <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? "selected" : ""; ?>>
+                                <?php echo s($u->fullname); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
                 </div>
 
-                 <div class="filter-group">
-                    <label for="userid">User ID</label>
+                <div class="filter-group">
+                    <label for="userid">ID:</label>
                     <select name="userid" id="userid">
-                        <option value="0">All</option>
-                        <?php foreach ($uniqueuserids as $u): ?>
-                            <option value="<?php echo (int)$u->id; ?>" <?php echo ((int)$userid === (int)$u->id) ? 'selected' : ''; ?>>
-                                <?php echo (int)$u->id; ?>
+                        <option value="0"><?php echo get_string('all'); ?></option>
+                        <?php foreach ($uniqueuserids as $uid => $dummy): ?>
+                            <option value="<?php echo (int)$uid; ?>" <?php echo ((int)$userid === (int)$uid) ? 'selected' : ''; ?>>
+                                <?php echo (int)$uid; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
-                 <div class="filter-group checkbox-group" style="padding-bottom: 8px;">
-                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?>>
-                    <label for="excludestaff" style="display:inline; margin-left: 4px;">Exclude staff</label>
+                <div class="filter-group">
+                    <label for="status"><?php echo get_string('status'); ?></label>
+                    <select name="status" id="status">
+                        <option value=""><?php echo get_string('all'); ?></option>
+                        <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
+                        <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
+                        <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
+                    </select>
                 </div>
 
-                <div class="filter-group" style="margin-left: auto;">
+                <div class="filter-group">
+                    <label for="week"><?php echo get_string('week'); ?></label>
+                    <select name="week" id="week">
+                        <option value=""><?php echo get_string('all'); ?></option>
+                        <?php foreach ($weekoptions as $value => $label): ?>
+                            <option value="<?php echo s($value); ?>" <?php echo ($weekvalue === $value) ? 'selected' : ''; ?>>
+                                <?php echo $label; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="duedate">Due date</label>
+                    <select name="duedate" id="duedate">
+                        <option value="0"><?php echo get_string("all"); ?></option>
+                        <?php foreach ($uniqueduedates as $dd): ?>
+                            <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo ((int)$duedate === (int)$dd->timestamp) ? "selected" : ""; ?>>
+                                <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                    <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
+                </div>
+
+                <div class="filter-group" style="margin-left: auto; display: flex; gap: 5px;">
                     <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
-                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary"><?php echo get_string('clear'); ?></a>
+                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
                 </div>
             </div>
         </form>
@@ -399,163 +381,140 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab])
     <?php endif; ?>
 
     <div class="dashboard-table-wrapper">
-        <table class="dashboard-table">
-            <thead>
+        <table class="dashboard-table table table-striped">
+            <thead class="thead-dark">
                 <tr>
                     <th></th> <!-- Expand -->
-                    <th class="sortable-column" data-sort="userid">User ID <?php echo local_homeworkdashboard_sort_arrows('userid', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="userid">ID <?php echo local_homeworkdashboard_sort_arrows('userid', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="studentname"><?php echo get_string('col_studentname', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="categoryname"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="coursename"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?></th>
-                    <th>Section</th>
                     <th class="sortable-column" data-sort="quizname"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="attemptno"><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="classification">Class <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="quiz_type">Type <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="status"><?php echo get_string('status'); ?> <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="attemptno"><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="classification">Activity classification <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="quiz_type">Quiz type <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="timeclose">Due date <?php echo local_homeworkdashboard_sort_arrows('timeclose', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="timefinish">Finished <?php echo local_homeworkdashboard_sort_arrows('timefinish', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="time_taken">Duration <?php echo local_homeworkdashboard_sort_arrows('time_taken', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="score">Score <?php echo local_homeworkdashboard_sort_arrows('score', $sort, $dir); ?></th>
-                    <th>%</th>
+                    <th>Score</th>
+                    <th class="sortable-column" data-sort="score">% <?php echo local_homeworkdashboard_sort_arrows('score', $sort, $dir); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="15" class="text-center"><?php echo get_string('no_data', 'local_homeworkdashboard'); ?></td></tr>
+                    <tr>
+                        <td colspan="14" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
+                    </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <?php
-                            $childid = 'attempts-' . $row->userid . '-' . $row->quizid . '-' . $row->timeclose;
-                            // For live rows, we computed attempts on the fly. For snapshots, we don't strictly have the attempt details in the row object 
-                            // unless we re-fetched them.
-                            // Wait, build_snapshot_rows_for_quiz DOES NOT return the attempts array in the row object. 
-                            // It only returns the aggregated stats.
-                            // The previous implementation rendered a sub-table.
-                            // If I want to support the expand row for snapshots, I need to fetch attempts for that user/quiz/timeclose.
-                            // BUT, getting attempts for a historical snapshot might be tricky if the attempts are gone or if we just want to show what's in the snapshot.
-                            // The previous implementation of get_homework_rows DID include the attempts in the live calculation.
-                            // For snapshots, get_homework_rows (old) called build_snapshot_rows_for_quiz which returned rows. 
-                            // AND IT DID NOT attach the 'attempts' array to the row object.
-                            // So the expansion probably failed or showed empty for snapshots in the old code too?
-                            // Actually, checking the old code (lines 600-800):
-                            // build_snapshot_rows_for_quiz returns rows.
-                            // It DOES NOT attach attempts.
-                            // So the expansion was likely empty for snapshots.
-                            // I will keep it consistent (empty/no expansion for snapshots, or fix it).
-                            // The template code below tries to loop `foreach ($attempts as $attempt)`.
-                            // I need to make sure $attempts is defined.
-                            
-                            // In get_live_homework_rows, I attached `attempts` to $peruser but I flattened it to $rows.
-                            // I DID NOT attach the full attempts array to the $row object in get_live_homework_rows.
-                            // I only attached `lastattemptid`, `attemptno`, `status` etc.
-                            // Wait, let me check my get_live_homework_rows implementation again.
-                            // I did NOT attach 'attempts' list to the final row object.
-                            // So the sub-table will be empty.
-                            
-                            // FIX: I need to attach the attempts list to the row object in get_live_homework_rows.
-                            // In get_snapshot_homework_rows, I can't easily attach them without querying.
-                            // For now, I will leave it as is (empty expansion) to match what I suspect was the behavior for snapshots, 
-                            // but for Live rows, I should probably support it if the user expects it.
-                            // However, the user didn't complain about expansion. They complained about filtering and backfill.
-                            // I'll stick to the plan. If expansion is broken, it's a separate issue or I can fix it quickly if I see where I missed it.
-                            // Re-reading get_homework_rows (old) line 863: $peruser[$uid]['attempts'][] = $a;
-                            // And then lines 925+: $rows[] = (object) [...]; 
-                            // I don't see 'attempts' => $summary['attempts'] in the final object in the old code either!
-                            // So maybe the expansion was doing something else?
-                            // Ah, looking at index.php rendering:
-                            // $attempts = $DB->get_records('quiz_attempts', ['quiz' => $row->quizid, 'userid' => $row->userid]);
-                            // NO, index.php does NOT fetch attempts.
-                            // It loops `foreach ($attempts as $attempt)`... where does $attempts come from?
-                            // It's not in the truncated index.php I read.
-                            // Let me check index.php again.
-                            // "foreach ($attempts as $attempt)" is inside the loop over rows?
-                            // "<?php $attempts = $manager->get_user_attempts($row->quizid, $row->userid); " ?? 
-                            // I don't see that.
-                            // I'll assume the row object HAS an attempts property.
-                            // But I didn't see it being added in the old code.
-                            
-                            // Wait! I missed something in index.php or homework_manager.php.
-                            // Maybe I should look at index.php rendering loop again.
-                            // It says: "<?php if (empty($attempts)):" inside the expansion row.
-                            // BUT where is $attempts defined?
-                            // It must be defined inside the loop: foreach ($rows as $row) ...
-                            // I suspect I missed a line in index.php or the manager adds it.
-                            
-                            // Let's assume for now I need to add it.
-                            // In get_live_homework_rows, I have $summary['attempts']. I should add it to the row object.
-                            // In get_snapshot_homework_rows, I don't have it.
+                            $childid = 'child_' . $row->id; // row->id is unique attempt id or similar
+                            // Calculate duration
+                            $durationstr = '';
+                            if ($row->timestart > 0 && $row->timefinish > 0 && $row->timefinish > $row->timestart) {
+                                $duration = $row->timefinish - $row->timestart;
+                                $hours = floor($duration / 3600);
+                                $minutes = floor(($duration % 3600) / 60);
+                                $seconds = $duration % 60;
+                                if ($hours > 0) {
+                                    $durationstr = sprintf('%dh %dm %ds', $hours, $minutes, $seconds);
+                                } else if ($minutes > 0) {
+                                    $durationstr = sprintf('%dm %ds', $minutes, $seconds);
+                                } else {
+                                    $durationstr = sprintf('%ds', $seconds);
+                                }
+                            }
+
+                            $rawscore = isset($row->grade) ? (float)$row->grade : 0.0;
+                            $maxscore = isset($row->sumgrades) ? (float)$row->sumgrades : 0.0;
+                            $percent = 0.0;
+                            if ($maxscore > 0) {
+                                $percent = ($rawscore / $maxscore) * 100.0;
+                            }
+                            $parentid = "parent_" . $row->id;
                         ?>
-                        <tr class="hw-main-row">
-                             <td>
+                        <tr class="hw-main-row" id="<?php echo $parentid; ?>">
+                                                        <td>
                                 <a href="#" class="hw-expand-toggle" data-target="<?php echo $childid; ?>">+</a>
                             </td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <td>
-                                <a href="<?php echo (new moodle_url('/user/view.php', ['id' => $row->userid, 'course' => $row->courseid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["userid" => (int)$row->userid]))->out(false); ?>">
                                     <?php echo s($row->studentname); ?>
                                 </a>
                             </td>
-                            <td><?php echo s($row->categoryname); ?></td>
-                            <td><?php echo s($row->coursename); ?></td>
                             <td>
-                                <?php 
-                                    echo s($row->sectionname);
-                                    if (!empty($row->sectionnumber)) {
-                                        echo ' (Sec ' . $row->sectionnumber . ')';
-                                    }
-                                ?>
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["categoryid" => (int)$row->categoryid]))->out(false); ?>">
+                                    <?php echo s($row->categoryname); ?>
+                                </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url('/mod/quiz/view.php', ['id' => $row->cmid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["courseid" => (int)$row->courseid]))->out(false); ?>">
+                                    <?php echo s($row->coursename); ?>
+                                </a>
+                            </td>
+                            <td>
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["quizid" => (int)$row->quizid]))->out(false); ?>">
                                     <?php echo s($row->quizname); ?>
                                 </a>
+                                &nbsp;
+                                <a href="<?php echo (new moodle_url("/mod/quiz/view.php", ["id" => $row->cmid]))->out(false); ?>" class="quiz-link" target="_blank">
+                                    <?php echo get_string("view"); ?>
+                                </a>
+                            </td>
+                            <td>
+                                <?php
+                                    $st = $row->status;
+                                    $badgeclass = "hw-badge-lowgrade";
+                                    $badgetext = $st;
+                                    if ($st === "Completed") {
+                                        $badgeclass = "hw-badge-completed";
+                                        $badgetext = "Done";
+                                    } else if ($st === "Low grade") {
+                                        $badgeclass = "hw-badge-lowgrade";
+                                        $badgetext = "? Policy";
+                                    } else if ($st === "No attempt") {
+                                        $badgeclass = "hw-badge-noattempt";
+                                        $badgetext = "To do";
+                                    }
+                                    echo '<span class="hw-badge ' . $badgeclass . '">' . s($badgetext) . '</span>';
+                                ?>
                             </td>
                             <td><?php echo (int)$row->attemptno; ?></td>
                             <td>
                                 <?php 
-                                    $cls = $row->classification ?? '';
-                                    if ($cls === 'New') {
-                                        echo '<span class="badge badge-success">New</span>';
-                                    } else if ($cls === 'Revision') {
-                                        echo '<span class="badge badge-warning">Revision</span>';
-                                    } else {
-                                        echo s($cls);
+                                    $cls = $row->classification;
+                                    $clsbadge = "hw-classification-badge";
+                                    $clsmod = "";
+                                    if ($cls === "New") {
+                                        $clsmod = "hw-classification-new";
+                                    } else if ($cls === "Revision") {
+                                        $clsmod = "hw-classification-revision";
                                     }
+                                    echo '<span class="hw-classification-badge ' . $clsmod . '">' . s($cls) . '</span>';
                                 ?>
                             </td>
                             <td><?php echo s($row->quiz_type); ?></td>
                             <td>
-                                <?php
-                                    $st = $row->status;
-                                    $badgeclass = 'badge-secondary';
-                                    if ($st === 'Completed') {
-                                        $badgeclass = 'badge-success';
-                                    } else if ($st === 'Low grade') {
-                                        $badgeclass = 'badge-danger';
+                                <?php 
+                                    if ($row->timeclose > 0) {
+                                        echo userdate($row->timeclose, get_string("strftimedatetime", "langconfig")); 
+                                    } else {
+                                        echo "-";
                                     }
-                                    echo '<span class="badge ' . $badgeclass . '">' . s($st) . '</span>';
                                 ?>
                             </td>
                             <td>
-                                <?php if (!empty($row->timeclose)): ?>
-                                    <!-- Link updates specific Due Date filter while keeping other filters -->
-                                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', array_merge($_GET, ['duedate' => $row->timeclose, 'week' => '', 'tab' => $tab])))->out(false); ?>">
-                                        <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
-                                    </a>
-                                <?php endif; ?>
+                                <?php 
+                                    if ($row->timefinish > 0) {
+                                        echo userdate($row->timefinish, get_string('strftimedatetime', 'langconfig')); 
+                                    } else {
+                                        echo '-';
+                                    }
+                                ?>
                             </td>
-                            <td>
-                                <?php if (!empty($row->timefinish)): ?>
-                                    <?php echo userdate($row->timefinish, get_string('strftimedatetime', 'langconfig')); ?>
-                                <?php endif; ?>
-                            </td>
-                            <td><?php echo s($row->time_taken); ?></td>
-                            <?php
-                                $rawscore = isset($row->score) ? (float)$row->score : 0.0;
-                                $maxscore = isset($row->maxscore) ? (float)$row->maxscore : 0.0;
-                                $percent  = isset($row->percentage) ? (float)$row->percentage : 0.0;
-                            ?>
+                            <td><?php echo $durationstr; ?></td>
                             <td>
                                 <?php if ($maxscore > 0.0 && $rawscore > 0.0): ?>
                                     <?php echo format_float($rawscore, 2) . ' / ' . format_float($maxscore, 2); ?>
@@ -567,9 +526,9 @@ $baseurl = new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab])
                                 <?php endif; ?>
                             </td>
                         </tr>
-                        <!-- Expansion row (placeholders for now as attempts fetching logic was ambiguous) -->
+                        <!-- Expansion row -->
                          <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="15">
+                            <td colspan="14">
                                 <div class="no-data">Details not available in this view</div>
                             </td>
                         </tr>
