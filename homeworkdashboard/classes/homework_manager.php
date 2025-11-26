@@ -913,12 +913,16 @@ class homework_manager {
             $snapsql .= " AND s.timeclose = :sduedate";
             $snapparams['sduedate'] = $duedate;
         } else {
-             [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
-             if ($weekstart > 0 && $weekend > 0) {
+            [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+            if ($weekstart > 0 && $weekend > 0) {
                 $snapsql .= " AND s.timeclose BETWEEN :sweekstart AND :sweekend";
                 $snapparams['sweekstart'] = $weekstart;
                 $snapparams['sweekend'] = $weekend;
             }
+
+            // By default, Historical Snapshots should only include past-due quizzes.
+            $snapsql .= " AND s.timeclose <= :snow";
+            $snapparams['snow'] = $now;
         }
 
         $snapsql .= " ORDER BY s.timeclose ASC";
