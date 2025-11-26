@@ -7,53 +7,81 @@
 }
 
 /* Filter Row Card Styling */
-.hw-filter-row {
-    background-color: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 15px;
-    margin-bottom: 20px;
+/* Horizontal Filter Layout matching Quiz Dashboard */
+.essay-dashboard-container .filter-form {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
-    gap: 15px; /* Increased gap for spread look */
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    gap: 15px;
 }
 
-.hw-filter-group {
+.essay-dashboard-container .filter-group {
     flex: 1;
     min-width: 140px;
     margin-bottom: 0;
 }
 
-.hw-filter-group label {
+.essay-dashboard-container .filter-group label {
     display: block;
-    font-weight: 600;
-    margin-bottom: 4px;
-    font-size: 12px;
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #333;
 }
 
-.hw-filter-group select,
-.hw-filter-group input {
-    height: 30px;
-    padding: 2px 6px;
-    font-size: 13px;
-    width: 100%; /* Ensure full width within flex item */
+.essay-dashboard-container .filter-group select,
+.essay-dashboard-container .filter-group input[type="text"] {
+    width: 100%;
+    height: 35px;
+    /* Consistent height */
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
     box-sizing: border-box;
 }
 
-/* Specific handling for Exclude Staff checkbox to prevent stretching */
-.hw-filter-group.checkbox-group {
+/* Specific handling for Exclude Staff */
+.essay-dashboard-container .filter-group.checkbox-group {
     flex: 0 0 auto;
-    min-width: auto;
     display: flex;
     align-items: center;
-    padding-bottom: 5px;
+    padding-bottom: 8px;
+    /* Align with inputs */
+    min-width: auto;
 }
 
-.hw-filter-group.checkbox-group label {
+.essay-dashboard-container .filter-group.checkbox-group label {
     margin-bottom: 0;
     margin-left: 5px;
+    font-weight: normal;
+}
+
+/* Filter Actions (Buttons) */
+.essay-dashboard-container .filter-actions {
+    flex: 0 0 auto;
+    padding-bottom: 2px;
+    display: flex;
+    gap: 5px;
+}
+
+.essay-dashboard-container .filter-actions .btn {
+    height: 35px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .essay-dashboard-container .filter-group {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 992px) {
+    .essay-dashboard-container .filter-form {
+        gap: 10px;
+    }
 }
 
 .hw-legend {

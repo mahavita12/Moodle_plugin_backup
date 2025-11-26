@@ -231,145 +231,146 @@ if ($tab === 'snapshot' && $canmanage) {
 ?>
 
 <div class="container-fluid">
-    <div class="dashboard-controls">
-        <form method="get" action="" class="form-inline">
-            <input type="hidden" name="tab" value="<?php echo s($tab); ?>">
-            <input type="hidden" name="filtersubmitted" value="1">
-            
-            <div class="hw-filter-row">
-                <div class="hw-filter-group">
-                    <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
-                    <select name="categoryid" id="categoryid">
-                        <option value="0"><?php echo get_string('all'); ?></option>
-                        <?php foreach ($categories as $cat): ?>
-                            <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($cat->name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="hw-filter-group">
-                    <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
-                    <select name="courseid" id="courseid">
-                        <option value="0"><?php echo get_string('all_courses', 'local_homeworkdashboard'); ?></option>
-                        <?php foreach ($courses as $c): ?>
-                            <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($c->fullname); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+    <div class="essay-dashboard-container">
+        <div class="dashboard-filters">
+            <form method="get" action="" class="filter-form">
+                <input type="hidden" name="tab" value="<?php echo s($tab); ?>">
+                <input type="hidden" name="filtersubmitted" value="1">
+                
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
+                        <select name="categoryid" id="categoryid">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($categories as $cat): ?>
+                                <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($cat->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
+                        <select name="courseid" id="courseid">
+                            <option value="0"><?php echo get_string('all_courses', 'local_homeworkdashboard'); ?></option>
+                            <?php foreach ($courses as $c): ?>
+                                <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($c->fullname); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="hw-filter-group">
-                    <label for="sectionid">Section</label>
-                    <select name="sectionid" id="sectionid">
-                        <option value="0"><?php echo get_string('all'); ?></option>
-                        <?php foreach ($uniquesections as $s): ?>
-                            <option value="<?php echo (int)$s->id; ?>" <?php echo ((int)$sectionid === (int)$s->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string(trim($s->coursename . ' ' . ($s->name ?? ''))); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="sectionid">Section</label>
+                        <select name="sectionid" id="sectionid">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($uniquesections as $s): ?>
+                                <option value="<?php echo (int)$s->id; ?>" <?php echo ((int)$sectionid === (int)$s->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string(trim($s->coursename . ' ' . ($s->name ?? ''))); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
-                    <select name="quizid" id="quizid">
-                        <option value="0"><?php echo get_string('all'); ?></option>
-                        <?php foreach ($uniquequizzes as $q): ?>
-                            <option value="<?php echo (int)$q->id; ?>" <?php echo ((int)$quizid === (int)$q->id) ? 'selected' : ''; ?>>
-                                <?php echo format_string($q->name); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
+                        <select name="quizid" id="quizid">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($uniquequizzes as $q): ?>
+                                <option value="<?php echo (int)$q->id; ?>" <?php echo ((int)$quizid === (int)$q->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($q->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="classification"><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></label>
-                    <select name="classification" id="classification">
-                        <option value=""><?php echo get_string('all'); ?></option>
-                        <option value="New" <?php echo $classfilter === 'New' ? 'selected' : ''; ?>><?php echo get_string('classification_new', 'local_homeworkdashboard'); ?></option>
-                        <option value="Revision" <?php echo $classfilter === 'Revision' ? 'selected' : ''; ?>><?php echo get_string('classification_revision', 'local_homeworkdashboard'); ?></option>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="classification"><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></label>
+                        <select name="classification" id="classification">
+                            <option value=""><?php echo get_string('all'); ?></option>
+                            <option value="New" <?php echo $classfilter === 'New' ? 'selected' : ''; ?>><?php echo get_string('classification_new', 'local_homeworkdashboard'); ?></option>
+                            <option value="Revision" <?php echo $classfilter === 'Revision' ? 'selected' : ''; ?>><?php echo get_string('classification_revision', 'local_homeworkdashboard'); ?></option>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="quiztype"><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
-                    <select name="quiztype" id="quiztype">
-                        <option value=""><?php echo get_string('all'); ?></option>
-                        <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
-                        <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
-                    </select>
-                </div>
-                <div class="hw-filter-group">
-                    <label for="studentname"><?php echo get_string("user"); ?></label>
-                    <select name="studentname" id="studentname">
-                        <option value=""><?php echo get_string("all"); ?></option>
-                        <?php foreach ($uniqueusers as $u): ?>
-                            <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? "selected" : ""; ?>>
-                                <?php echo s($u->fullname); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="quiztype"><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
+                        <select name="quiztype" id="quiztype">
+                            <option value=""><?php echo get_string('all'); ?></option>
+                            <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
+                            <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="studentname"><?php echo get_string("user"); ?></label>
+                        <select name="studentname" id="studentname">
+                            <option value=""><?php echo get_string("all"); ?></option>
+                            <?php foreach ($uniqueusers as $u): ?>
+                                <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? "selected" : ""; ?>>
+                                    <?php echo s($u->fullname); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="hw-filter-group">
-                    <label for="userid">ID:</label>
-                    <select name="userid" id="userid">
-                        <option value="0"><?php echo get_string('all'); ?></option>
-                        <?php foreach ($uniqueuserids as $uid => $dummy): ?>
-                            <option value="<?php echo (int)$uid; ?>" <?php echo ((int)$userid === (int)$uid) ? 'selected' : ''; ?>>
-                                <?php echo (int)$uid; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="userid">ID:</label>
+                        <select name="userid" id="userid">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($uniqueuserids as $uid => $dummy): ?>
+                                <option value="<?php echo (int)$uid; ?>" <?php echo ((int)$userid === (int)$uid) ? 'selected' : ''; ?>>
+                                    <?php echo (int)$uid; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="filter-group">
-                    <label for="status"><?php echo get_string('status'); ?></label>
-                    <select name="status" id="status">
-                        <option value=""><?php echo get_string('all'); ?></option>
-                        <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
-                        <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
-                        <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="status"><?php echo get_string('status'); ?></label>
+                        <select name="status" id="status">
+                            <option value=""><?php echo get_string('all'); ?></option>
+                            <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
+                            <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
+                            <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
+                        </select>
+                    </div>
 
-                <div class="hw-filter-group">
-                    <label for="week"><?php echo get_string('week'); ?></label>
-                    <select name="week" id="week">
-                        <option value=""><?php echo get_string('all'); ?></option>
-                        <?php foreach ($weekoptions as $value => $label): ?>
-                            <option value="<?php echo s($value); ?>" <?php echo ($weekvalue === $value) ? 'selected' : ''; ?>>
-                                <?php echo $label; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="hw-filter-group">
-                    <label for="duedate">Due date</label>
-                    <select name="duedate" id="duedate">
-                        <option value="0"><?php echo get_string("all"); ?></option>
-                        <?php foreach ($uniqueduedates as $dd): ?>
-                            <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo ((int)$duedate === (int)$dd->timestamp) ? "selected" : ""; ?>>
-                                <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                    <div class="filter-group">
+                        <label for="week"><?php echo get_string('week'); ?></label>
+                        <select name="week" id="week">
+                            <option value=""><?php echo get_string('all'); ?></option>
+                            <?php foreach ($weekoptions as $value => $label): ?>
+                                <option value="<?php echo s($value); ?>" <?php echo ($weekvalue === $value) ? 'selected' : ''; ?>>
+                                    <?php echo $label; ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="duedate">Due date</label>
+                        <select name="duedate" id="duedate">
+                            <option value="0"><?php echo get_string("all"); ?></option>
+                            <?php foreach ($uniqueduedates as $dd): ?>
+                                <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo ((int)$duedate === (int)$dd->timestamp) ? "selected" : ""; ?>>
+                                    <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
-                <div class="hw-filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
-                    <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
-                    <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
-                </div>
+                    <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                        <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                        <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
+                    </div>
 
-                <div class="filter-actions">
-                    <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
-                    <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
+                        <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
+                    </div>
                 </div>
-            </div>
-        </form>
-    </div>
+            </form>
+        </div>
 
     <?php if ($duedate > 0): ?>
         <div class="alert alert-info">
