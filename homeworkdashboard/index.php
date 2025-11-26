@@ -237,7 +237,7 @@ if ($tab === 'snapshot' && $canmanage) {
             <input type="hidden" name="filtersubmitted" value="1">
             
             <div class="hw-filter-row">
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
                     <select name="categoryid" id="categoryid">
                         <option value="0"><?php echo get_string('all'); ?></option>
@@ -248,8 +248,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
                     <select name="courseid" id="courseid">
                         <option value="0"><?php echo get_string('all_courses', 'local_homeworkdashboard'); ?></option>
@@ -261,7 +260,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     </select>
                 </div>
 
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="sectionid">Section</label>
                     <select name="sectionid" id="sectionid">
                         <option value="0"><?php echo get_string('all'); ?></option>
@@ -302,7 +301,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="studentname"><?php echo get_string("user"); ?></label>
                     <select name="studentname" id="studentname">
                         <option value=""><?php echo get_string("all"); ?></option>
@@ -313,9 +312,8 @@ if ($tab === 'snapshot' && $canmanage) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                </div>
 
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="userid">ID:</label>
                     <select name="userid" id="userid">
                         <option value="0"><?php echo get_string('all'); ?></option>
@@ -337,7 +335,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     </select>
                 </div>
 
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="week"><?php echo get_string('week'); ?></label>
                     <select name="week" id="week">
                         <option value=""><?php echo get_string('all'); ?></option>
@@ -348,7 +346,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="filter-group">
+                <div class="hw-filter-group">
                     <label for="duedate">Due date</label>
                     <select name="duedate" id="duedate">
                         <option value="0"><?php echo get_string("all"); ?></option>
@@ -360,7 +358,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     </select>
                 </div>
 
-                <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                <div class="hw-filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
                     <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
                     <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
                 </div>
@@ -409,7 +407,8 @@ if ($tab === 'snapshot' && $canmanage) {
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <?php
-                            $childid = 'child_' . $row->id; // row->id is unique attempt id or similar
+                            $rowkey = (int)$row->userid . '_' . (int)$row->quizid . '_' . (int)$row->timeclose;
+                            $childid = 'child_' . $rowkey;
                             // Calculate duration
                             $durationstr = '';
                             if ($row->timestart > 0 && $row->timefinish > 0 && $row->timefinish > $row->timestart) {
@@ -432,10 +431,10 @@ if ($tab === 'snapshot' && $canmanage) {
                             if ($maxscore > 0) {
                                 $percent = ($rawscore / $maxscore) * 100.0;
                             }
-                            $parentid = "parent_" . $row->id;
+                            $parentid = 'parent_' . $rowkey;
                         ?>
                         <tr class="hw-main-row" id="<?php echo $parentid; ?>">
-                                                        <td>
+                            <td>
                                 <a href="#" class="hw-expand-toggle" data-target="<?php echo $childid; ?>">+</a>
                             </td>
                             <td><?php echo (int)$row->userid; ?></td>
