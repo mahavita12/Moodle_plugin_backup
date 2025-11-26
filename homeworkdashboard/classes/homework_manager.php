@@ -816,6 +816,7 @@ class homework_manager {
                     'percentage'   => ($grade > 0.0 && $lastscore > 0.0) ? round(($lastscore / $grade) * 100.0, 2) : 0.0,
                     'quiz_type'    => $quiztype,
                     'timeclose'    => $qtimeclose,
+                    'attempts'     => $summary['attempts'],
                 ];
             }
         }

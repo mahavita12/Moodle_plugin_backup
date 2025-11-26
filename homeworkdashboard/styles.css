@@ -21,8 +21,9 @@
 }
 
 .hw-filter-group {
+    flex: 1;
+    min-width: 140px;
     margin-bottom: 0;
-    min-width: auto;
 }
 
 .hw-filter-group label {
@@ -37,6 +38,22 @@
     height: 30px;
     padding: 2px 6px;
     font-size: 13px;
+    width: 100%; /* Ensure full width within flex item */
+    box-sizing: border-box;
+}
+
+/* Specific handling for Exclude Staff checkbox to prevent stretching */
+.hw-filter-group.checkbox-group {
+    flex: 0 0 auto;
+    min-width: auto;
+    display: flex;
+    align-items: center;
+    padding-bottom: 5px;
+}
+
+.hw-filter-group.checkbox-group label {
+    margin-bottom: 0;
+    margin-left: 5px;
 }
 
 .hw-legend {
@@ -162,16 +179,3 @@
 .sort-arrows .arrow.active {
     color: #000;
 }
-
-/* Specific Filter Widths to match screenshot */
-#categoryid { width: 160px; }
-#courseid { width: 220px; }
-#sectionid { width: 160px; }
-#quizid { width: 220px; }
-#classification { width: 150px; }
-#quiztype { width: 120px; }
-#studentname { width: 170px; }
-#userid { width: 80px; }
-#status { width: 120px; }
-#week { width: 160px; }
-#duedate { width: 200px; }

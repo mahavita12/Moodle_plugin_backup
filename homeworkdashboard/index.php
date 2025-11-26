@@ -426,8 +426,8 @@ if ($tab === 'snapshot' && $canmanage) {
                                 }
                             }
 
-                            $rawscore = isset($row->grade) ? (float)$row->grade : 0.0;
-                            $maxscore = isset($row->sumgrades) ? (float)$row->sumgrades : 0.0;
+                            $rawscore = isset($row->score) ? (float)$row->score : 0.0;
+                            $maxscore = isset($row->maxscore) ? (float)$row->maxscore : 0.0;
                             $percent = 0.0;
                             if ($maxscore > 0) {
                                 $percent = ($rawscore / $maxscore) * 100.0;
@@ -527,9 +527,104 @@ if ($tab === 'snapshot' && $canmanage) {
                             </td>
                         </tr>
                         <!-- Expansion row -->
-                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="14">
-                                <div class="no-data">Details not available in this view</div>
+                        <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
+                            <td colspan="14" style="padding: 0; border: none;">
+                                <?php if (empty($row->attempts)): ?>
+                                    <div class="no-data">No attempts found for this user.</div>
+                                <?php else: ?>
+                                    <?php 
+                                        // Sort attempts by attempt number ASC
+                                        $attempts = $row->attempts;
+                                        usort($attempts, function($a, $b) {
+                                            return $a->attempt - $b->attempt;
+                                        });
+                                    ?>
+                                    <table class="table table-sm hw-attempts-table" style="margin: 0; background-color: #f8f9fa;">
+                                        <thead>
+                                            <tr>
+                                                <th>Attempt</th>
+                                                <th><?php echo get_string('status'); ?></th>
+                                                <th>Due date</th>
+                                                <th>Finished</th>
+                                                <th>Duration</th>
+                                                <th>Score</th>
+                                                <th>%</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($attempts as $attempt): ?>
+                                                <?php
+                                                    $timestart = (int)$attempt->timestart;
+                                                    $timefinish = (int)$attempt->timefinish;
+                                                    $durationstr = '';
+                                                    $duration = 0;
+                                                    if ($timestart > 0 && $timefinish > 0 && $timefinish > $timestart) {
+                                                        $duration = $timefinish - $timestart;
+                                                        $hours = (int) floor($duration / 3600);
+                                                        $minutes = (int) floor(($duration % 3600) / 60);
+                                                        $seconds = (int) ($duration % 60);
+                                                        if ($hours > 0) {
+                                                            $durationstr = sprintf('%dh %dm %ds', $hours, $minutes, $seconds);
+                                                        } else if ($minutes > 0) {
+                                                            $durationstr = sprintf('%dm %ds', $minutes, $seconds);
+                                                        } else {
+                                                            $durationstr = sprintf('%ds', $seconds);
+                                                        }
+                                                    }
+                                                    $score = $attempt->sumgrades !== null ? (float)$attempt->sumgrades : 0.0;
+                                                    $percent = ($row->maxscore > 0 && $score > 0) ? round(($score / $row->maxscore) * 100.0, 2) : 0.0;
+
+                                                    $isshort = ($duration > 0 && $duration < 180);
+
+                                                    if ($isshort) {
+                                                        $statuslabel = get_string('attempt_status_short', 'local_homeworkdashboard');
+                                                    } else if ($percent >= 30.0) {
+                                                        $statuslabel = get_string('attempt_status_completed', 'local_homeworkdashboard');
+                                                    } else if ($percent > 0.0) {
+                                                        $statuslabel = get_string('attempt_status_below', 'local_homeworkdashboard');
+                                                    } else if ($duration > 0) {
+                                                        $statuslabel = get_string('attempt_status_attempted', 'local_homeworkdashboard');
+                                                    } else {
+                                                        $statuslabel = s($attempt->state);
+                                                    }
+                                                ?>
+                                                <tr class="<?php echo $isshort ? 'hw-attempt-short' : ''; ?>">
+                                                    <td>
+                                                        <?php if (!empty($attempt->id)): ?>
+                                                            <a href="<?php echo (new moodle_url('/mod/quiz/review.php', ['attempt' => (int)$attempt->id]))->out(false); ?>" target="_blank">
+                                                                <?php echo (int)$attempt->attempt; ?>
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <?php echo (int)$attempt->attempt; ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?php echo s($statuslabel); ?></td>
+                                                    <td>
+                                                        <?php if (!empty($row->timeclose)): ?>
+                                                            <?php echo userdate($row->timeclose, get_string('strftimedatetime', 'langconfig')); ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <?php if (!empty($attempt->timefinish)): ?>
+                                                            <?php echo userdate($attempt->timefinish, get_string('strftimedatetime', 'langconfig')); ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?php echo s($durationstr); ?></td>
+                                                    <td>
+                                                        <?php if ($row->maxscore > 0 && $score > 0): ?>
+                                                            <?php echo format_float($score, 2) . ' / ' . format_float($row->maxscore, 2); ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td>
+                                                        <?php if ($percent > 0.0): ?>
+                                                            <?php echo format_float($percent, 2) . '%'; ?>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
