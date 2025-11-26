@@ -638,6 +638,7 @@ if ($tab === 'snapshot' && $canmanage) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Sortable columns
     document.querySelectorAll('.sortable-column').forEach(function(header) {
         header.addEventListener('click', function() {
             var sortField = this.getAttribute('data-sort');
@@ -653,6 +654,50 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = url.toString();
         });
     });
+
+    // Interactive Filters
+    const filterForm = document.querySelector('.filter-form');
+    if (filterForm) {
+        const categorySelect = document.getElementById('categoryid');
+        const courseSelect = document.getElementById('courseid');
+        const sectionSelect = document.getElementById('sectionid');
+        const quizSelect = document.getElementById('quizid');
+
+        // Helper to reset a select to value '0'
+        const resetSelect = (select) => {
+            if (select) select.value = '0';
+        };
+
+        if (categorySelect) {
+            categorySelect.addEventListener('change', function() {
+                resetSelect(courseSelect);
+                resetSelect(sectionSelect);
+                resetSelect(quizSelect);
+                filterForm.submit();
+            });
+        }
+
+        if (courseSelect) {
+            courseSelect.addEventListener('change', function() {
+                resetSelect(sectionSelect);
+                resetSelect(quizSelect);
+                filterForm.submit();
+            });
+        }
+
+        if (sectionSelect) {
+            sectionSelect.addEventListener('change', function() {
+                resetSelect(quizSelect);
+                filterForm.submit();
+            });
+        }
+
+        if (quizSelect) {
+            quizSelect.addEventListener('change', function() {
+                filterForm.submit();
+            });
+        }
+    }
 });
 </script>
 
