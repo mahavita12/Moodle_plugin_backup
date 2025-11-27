@@ -23,8 +23,13 @@ if (!CLI_SCRIPT && !during_initial_install()) {
                 return $buffer;
             }
             
-            // Skip if user doesn't have capability
-            if (!function_exists('has_capability') || !has_capability('local/quizdashboard:view', context_system::instance())) {
+            // Skip if user doesn't have capability (Check for either Quiz OR Homework dashboard view)
+            $can_view_quiz = function_exists('has_capability') && has_capability('local/quizdashboard:view', context_system::instance());
+            $can_view_homework = function_exists('has_capability') && has_capability('local/homeworkdashboard:view', context_system::instance());
+            
+            // Only show this dropdown if the user is STAFF (has quiz dashboard view)
+            // Students (who only have homework view) should NOT see this dropdown, as per requirements.
+            if (!$can_view_quiz) {
                 return $buffer;
             }
             

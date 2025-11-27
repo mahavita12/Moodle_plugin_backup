@@ -10,6 +10,7 @@ $capabilities = [
             'manager' => CAP_ALLOW,
             'teacher' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,
+            'student' => CAP_ALLOW,
         ],
         'clonepermissionsfrom' => 'moodle/site:viewreports',
     ],
@@ -19,6 +20,8 @@ $capabilities = [
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => [
             'manager' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
         ],
         'clonepermissionsfrom' => 'moodle/site:config',
     ],

@@ -18,6 +18,9 @@ $PAGE->set_pagelayout('admin');
 $PAGE->requires->css('/local/homeworkdashboard/styles.css');
 $PAGE->requires->css('/local/quizdashboard/styles.css');
 
+// Check capability for management (Staff vs Student)
+$canmanage = has_capability('local/homeworkdashboard:manage', $context);
+
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
 // $userid        = optional_param('userid', 0, PARAM_INT); // Removed to avoid conflict with array input
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
@@ -32,6 +35,7 @@ $classfilter   = optional_param('classification', '', PARAM_ALPHA);
 $sort          = optional_param('sort', 'timeclose', PARAM_ALPHA);
 $dir           = optional_param('dir', 'DESC', PARAM_ALPHA);
 $filtersubmitted = optional_param('filtersubmitted', 0, PARAM_BOOL);
+
 if ($filtersubmitted) {
     $excludestaff = optional_param('excludestaff', 0, PARAM_BOOL);
 } else {
@@ -39,6 +43,16 @@ if ($filtersubmitted) {
 }
 $duedates      = optional_param_array('duedate', [0], PARAM_INT);
 $userids       = optional_param_array('userid', [0], PARAM_INT);
+
+// Enforce Student View Restrictions
+if (!$canmanage) {
+    // Force view to current user only
+    $userids = [$USER->id];
+    // Disable exclude staff (irrelevant for single user)
+    $excludestaff = 0;
+    // Clear student name filter to avoid confusion
+    $studentname = '';
+}
 
 // If a specific due date is selected, clear the week filter to avoid confusion/conflict
 $hasduedate = !empty(array_filter($duedates, function($d) { return $d > 0; }));
@@ -305,6 +319,7 @@ if ($tab === 'snapshot' && $canmanage) {
                             <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
                         </select>
                     </div>
+                    <?php if ($canmanage): ?>
                     <div class="filter-group">
                         <label for="studentname"><?php echo get_string("user"); ?></label>
                         <select name="userid[]" id="studentname" multiple="multiple">
@@ -316,6 +331,7 @@ if ($tab === 'snapshot' && $canmanage) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
 
 
 
@@ -342,10 +358,12 @@ if ($tab === 'snapshot' && $canmanage) {
                         </select>
                     </div>
 
+                    <?php if ($canmanage): ?>
                     <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
                         <input type="checkbox" name="excludestaff" id="excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
                         <label for="excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
                     </div>
+                    <?php endif; ?>
 
                     <div class="filter-actions">
                         <button type="submit" class="btn btn-primary"><?php echo get_string('filter'); ?></button>
@@ -443,9 +461,11 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "courseid[]" => (int)$row->courseid]))->out(false); ?>">
                                     <?php echo s($row->coursename); ?>
                                 </a>
+                                <?php if ($canmanage): ?>
                                 <a href="<?php echo (new moodle_url("/course/edit.php", ["id" => (int)$row->courseid]))->out(false); ?>" class="hw-action-icon" target="_blank" title="<?php echo get_string("edit"); ?>">
                                     <i class="fa fa-pencil"></i>
                                 </a>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "quizid[]" => (int)$row->quizid]))->out(false); ?>">
