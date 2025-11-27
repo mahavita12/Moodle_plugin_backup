@@ -390,7 +390,7 @@ class homework_manager {
         int $categoryid,
         int $courseid,
         int $sectionid,
-        int $userid,
+        array $userids,
         string $studentname,
         string $statusfilter,
         string $classificationfilter,
@@ -451,9 +451,13 @@ class homework_manager {
             $sql .= " AND cs.id = :sectionid";
             $params['sectionid'] = $sectionid;
         }
-        if ($userid > 0) {
-            $sql .= " AND s.userid = :userid";
-            $params['userid'] = $userid;
+        
+        // Filter by specific user IDs if provided
+        $userids = array_filter($userids, function($id) { return $id > 0; });
+        if (!empty($userids)) {
+            list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+            $sql .= " AND s.userid $usql";
+            $params = array_merge($params, $uparams);
         }
         if ($classificationfilter !== '') {
             $sql .= " AND s.classification = :classification";
@@ -597,10 +601,10 @@ class homework_manager {
      */
     public function get_live_homework_rows(
         int $categoryid,
-        int $courseid,
+        array $courseids,
         int $sectionid,
-        int $quizid,
-        int $userid,
+        array $quizids,
+        array $userids,
         string $studentname,
         string $quiztypefilter,
         string $statusfilter,
@@ -609,7 +613,7 @@ class homework_manager {
         string $sort,
         string $dir,
         bool $excludestaff = false,
-        int $duedate = 0
+        array $duedates = []
     ): array {
         global $DB;
 
@@ -654,21 +658,38 @@ class homework_manager {
             $sql .= " AND c.category = :categoryid";
             $params['categoryid'] = $categoryid;
         }
-        if ($courseid > 0) {
-            $sql .= " AND c.id = :courseid";
-            $params['courseid'] = $courseid;
+        if ($categoryid > 0) {
+            $sql .= " AND c.category = :categoryid";
+            $params['categoryid'] = $categoryid;
         }
+        
+        $courseids = array_filter($courseids, function($id) { return $id > 0; });
+        if (!empty($courseids)) {
+            list($csql, $cparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'cid');
+            $sql .= " AND c.id $csql";
+            $params = array_merge($params, $cparams);
+        }
+
         if ($sectionid > 0) {
             $sql .= " AND cs.id = :sectionid";
             $params['sectionid'] = $sectionid;
         }
-        if ($quizid > 0) {
-            $sql .= " AND q.id = :quizid";
-            $params['quizid'] = $quizid;
+
+        $quizids = array_filter($quizids, function($id) { return $id > 0; });
+        if (!empty($quizids)) {
+            list($qsql, $qparams) = $DB->get_in_or_equal($quizids, SQL_PARAMS_NAMED, 'qid');
+            $sql .= " AND q.id $qsql";
+            $params = array_merge($params, $qparams);
         }
-        if ($duedate > 0) {
-            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) = :duedate";
-            $params['duedate'] = $duedate;
+
+        $duedates = array_filter($duedates, function($d) { return $d > 0; });
+        if (!empty($duedates)) {
+            // Complex logic for due dates: check both q.timeclose and ev.eventclose
+            // Simplification: We filter where the effective close time matches one of the dates.
+            // Note: This might be slow if many dates.
+            list($dsql, $dparams) = $DB->get_in_or_equal($duedates, SQL_PARAMS_NAMED, 'dd');
+            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) $dsql";
+            $params = array_merge($params, $dparams);
         } else {
             [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
             if ($weekstart > 0 && $weekend > 0) {
@@ -726,8 +747,9 @@ class homework_manager {
                 $roster = array_values($roster);
             }
 
-            if ($userid > 0) {
-                $roster = array_values(array_intersect($roster, [$userid]));
+            $userids = array_filter($userids, function($id) { return $id > 0; });
+            if (!empty($userids)) {
+                $roster = array_values(array_intersect($roster, $userids));
                 if (empty($roster)) {
                     continue;
                 }
@@ -868,10 +890,10 @@ class homework_manager {
      */
     public function get_snapshot_homework_rows(
         int $categoryid,
-        int $courseid,
+        array $courseids,
         int $sectionid,
-        int $quizid,
-        int $userid,
+        array $quizids,
+        array $userids,
         string $studentname,
         string $quiztypefilter,
         string $statusfilter,
@@ -880,7 +902,7 @@ class homework_manager {
         string $sort,
         string $dir,
         bool $excludestaff = false,
-        int $duedate = 0
+        array $duedates = []
     ): array {
         global $DB;
 
@@ -901,21 +923,30 @@ class homework_manager {
             $snapsql .= " AND c.category = :scategoryid";
             $snapparams['scategoryid'] = $categoryid;
         }
-        if ($courseid > 0) {
-            $snapsql .= " AND c.id = :scourseid";
-            $snapparams['scourseid'] = $courseid;
+        $courseids = array_filter($courseids, function($id) { return $id > 0; });
+        if (!empty($courseids)) {
+            list($csql, $cparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'scid');
+            $snapsql .= " AND c.id $csql";
+            $snapparams = array_merge($snapparams, $cparams);
         }
+
         if ($sectionid > 0) {
             $snapsql .= " AND cs.id = :ssectionid";
             $snapparams['ssectionid'] = $sectionid;
         }
-        if ($quizid > 0) {
-            $snapsql .= " AND s.quizid = :squizid";
-            $snapparams['squizid'] = $quizid;
+
+        $quizids = array_filter($quizids, function($id) { return $id > 0; });
+        if (!empty($quizids)) {
+            list($qsql, $qparams) = $DB->get_in_or_equal($quizids, SQL_PARAMS_NAMED, 'sqid');
+            $snapsql .= " AND s.quizid $qsql";
+            $snapparams = array_merge($snapparams, $qparams);
         }
-        if ($duedate > 0) {
-            $snapsql .= " AND s.timeclose = :sduedate";
-            $snapparams['sduedate'] = $duedate;
+
+        $duedates = array_filter($duedates, function($d) { return $d > 0; });
+        if (!empty($duedates)) {
+            list($dsql, $dparams) = $DB->get_in_or_equal($duedates, SQL_PARAMS_NAMED, 'sdd');
+            $snapsql .= " AND s.timeclose $dsql";
+            $snapparams = array_merge($snapparams, $dparams);
         } else {
             [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
             if ($weekstart > 0 && $weekend > 0) {
@@ -967,7 +998,7 @@ class homework_manager {
                     $categoryid,
                     (int)$cid,
                     $sectionid,
-                    $userid,
+                    $userids,
                     $studentname,
                     $statusfilter,
                     $classificationfilter,

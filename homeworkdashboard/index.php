@@ -21,9 +21,9 @@ $PAGE->requires->css('/local/quizdashboard/styles.css');
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
 $userid        = optional_param('userid', 0, PARAM_INT);
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
-$courseid      = optional_param('courseid', 0, PARAM_INT);
+$courseids     = optional_param_array('courseid', [0], PARAM_INT);
 $sectionid     = optional_param('sectionid', 0, PARAM_INT);
-$quizid        = optional_param('quizid', 0, PARAM_INT);
+$quizids       = optional_param_array('quizid', [0], PARAM_INT);
 $studentname   = optional_param('studentname', '', PARAM_TEXT);
 $statusfilter  = optional_param('status', '', PARAM_TEXT);
 $quiztypefilter = optional_param('quiztype', '', PARAM_TEXT);
@@ -37,10 +37,12 @@ if ($filtersubmitted) {
 } else {
     $excludestaff = 1;
 }
-$duedate       = optional_param('duedate', 0, PARAM_INT);
+$duedates      = optional_param_array('duedate', [0], PARAM_INT);
+$userids       = optional_param_array('userid', [0], PARAM_INT);
 
 // If a specific due date is selected, clear the week filter to avoid confusion/conflict
-if ($duedate > 0) {
+$hasduedate = !empty(array_filter($duedates, function($d) { return $d > 0; }));
+if ($hasduedate) {
     $weekvalue = '';
 }
 
@@ -102,10 +104,10 @@ $rows = [];
 if ($tab === "snapshot") {
     $rows = $manager->get_snapshot_homework_rows(
         $categoryid,
-        $courseid,
+        $courseids,
         $sectionid,
-        $quizid,
-        $userid,
+        $quizids,
+        $userids,
         $studentname,
         $quiztypefilter,
         $statusfilter,
@@ -114,15 +116,15 @@ if ($tab === "snapshot") {
         $sort,
         $dir,
         $excludestaff,
-        $duedate
+        $duedates
     );
 } else {
     $rows = $manager->get_live_homework_rows(
         $categoryid,
-        $courseid,
+        $courseids,
         $sectionid,
-        $quizid,
-        $userid,
+        $quizids,
+        $userids,
         $studentname,
         $quiztypefilter,
         $statusfilter,
@@ -131,7 +133,7 @@ if ($tab === "snapshot") {
         $sort,
         $dir,
         $excludestaff,
-        $duedate
+        $duedates
     );
 }
 
@@ -242,10 +244,10 @@ if ($tab === 'snapshot' && $canmanage) {
                     </div>
                     <div class="filter-group">
                         <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
-                        <select name="courseid" id="courseid">
+                        <select name="courseid[]" id="courseid" multiple="multiple">
                             <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
                             <?php foreach ($courses as $c): ?>
-                                <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$courseid === (int)$c->id) ? 'selected' : ''; ?>>
+                                <option value="<?php echo (int)$c->id; ?>" <?php echo in_array((int)$c->id, $courseids) ? 'selected' : ''; ?>>
                                     <?php echo format_string($c->fullname); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -266,10 +268,10 @@ if ($tab === 'snapshot' && $canmanage) {
 
                     <div class="filter-group">
                         <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
-                        <select name="quizid" id="quizid">
+                        <select name="quizid[]" id="quizid" multiple="multiple">
                             <option value="0"><?php echo get_string('all'); ?></option>
                             <?php foreach ($uniquequizzes as $q): ?>
-                                <option value="<?php echo (int)$q->id; ?>" <?php echo ((int)$quizid === (int)$q->id) ? 'selected' : ''; ?>>
+                                <option value="<?php echo (int)$q->id; ?>" <?php echo in_array((int)$q->id, $quizids) ? 'selected' : ''; ?>>
                                     <?php echo format_string($q->name); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -307,10 +309,10 @@ if ($tab === 'snapshot' && $canmanage) {
 
                     <div class="filter-group">
                         <label for="userid">ID:</label>
-                        <select name="userid" id="userid">
+                        <select name="userid[]" id="userid" multiple="multiple">
                             <option value="0"><?php echo get_string('all'); ?></option>
                             <?php foreach ($uniqueuserids as $uid => $dummy): ?>
-                                <option value="<?php echo (int)$uid; ?>" <?php echo ((int)$userid === (int)$uid) ? 'selected' : ''; ?>>
+                                <option value="<?php echo (int)$uid; ?>" <?php echo in_array((int)$uid, $userids) ? 'selected' : ''; ?>>
                                     <?php echo (int)$uid; ?>
                                 </option>
                             <?php endforeach; ?>
@@ -330,10 +332,10 @@ if ($tab === 'snapshot' && $canmanage) {
                     <!-- Week filter removed -->
                     <div class="filter-group">
                         <label for="duedate">Due date</label>
-                        <select name="duedate" id="duedate">
+                        <select name="duedate[]" id="duedate" multiple="multiple">
                             <option value="0"><?php echo get_string("all"); ?></option>
                             <?php foreach ($uniqueduedates as $dd): ?>
-                                <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo ((int)$duedate === (int)$dd->timestamp) ? "selected" : ""; ?>>
+                                <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo in_array((int)$dd->timestamp, $duedates) ? "selected" : ""; ?>>
                                     <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -353,9 +355,16 @@ if ($tab === 'snapshot' && $canmanage) {
             </form>
         </div>
 
-    <?php if ($duedate > 0): ?>
+    <?php if ($hasduedate): ?>
         <div class="alert alert-info">
-            Filtering by Due Date: <strong><?php echo userdate($duedate, get_string('strftimedatetime', 'langconfig')); ?></strong>
+            Filtering by Due Date: 
+            <strong>
+                <?php 
+                $dates = array_filter($duedates, function($d) { return $d > 0; });
+                $datestrs = array_map(function($d) { return userdate($d, get_string('strftimedatetime', 'langconfig')); }, $dates);
+                echo implode(', ', $datestrs); 
+                ?>
+            </strong>
             <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="ml-2">Clear</a>
         </div>
     <?php endif; ?>
@@ -640,9 +649,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterForm = document.querySelector('.filter-form');
     if (filterForm) {
         const categorySelect = document.getElementById('categoryid');
-        const courseSelect = document.getElementById('courseid');
         const sectionSelect = document.getElementById('sectionid');
-        const quizSelect = document.getElementById('quizid');
 
         // Helper to reset a select to value '0'
         const resetSelect = (select) => {
@@ -651,34 +658,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (categorySelect) {
             categorySelect.addEventListener('change', function() {
-                resetSelect(courseSelect);
-                resetSelect(sectionSelect);
-                resetSelect(quizSelect);
-                filterForm.submit();
-            });
-        }
-
-        if (courseSelect) {
-            courseSelect.addEventListener('change', function() {
-                resetSelect(sectionSelect);
-                resetSelect(quizSelect);
+                // resetSelect(courseSelect); // Course is now multi-select, don't reset blindly or it breaks UX
+                // resetSelect(sectionSelect);
+                // resetSelect(quizSelect);
                 filterForm.submit();
             });
         }
 
         if (sectionSelect) {
             sectionSelect.addEventListener('change', function() {
-                resetSelect(quizSelect);
-                filterForm.submit();
-            });
-        }
-
-        if (quizSelect) {
-            quizSelect.addEventListener('change', function() {
+                // resetSelect(quizSelect);
                 filterForm.submit();
             });
         }
     }
+    
+    // Initialize Moodle Autocomplete
+    require(['core/form-autocomplete'], function(Autocomplete) {
+        // Enhance Course, Quiz, UserID, DueDate
+        Autocomplete.enhance('#courseid', false, false, "<?php echo get_string('allcourses', 'local_homeworkdashboard'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+        Autocomplete.enhance('#quizid', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+        Autocomplete.enhance('#userid', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+        Autocomplete.enhance('#duedate', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+    });
 });
 </script>
 
