@@ -21,6 +21,8 @@ class quiz_manager {
         // ADDED: Section information for filtering and display
         $sql = "SELECT 
             qa.id AS attemptid,
+            cm.id AS cmid,
+            q.id AS quizid,
             qa.userid,
             CONCAT(u.firstname, ' ', u.lastname) AS studentname,
             c.id AS courseid,

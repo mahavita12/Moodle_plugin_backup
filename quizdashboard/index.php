@@ -290,9 +290,11 @@ global $DB;
 $rows = [];
 foreach ($records as $r) {
     $attemptid = (int)$r->attemptid;
-    $quizid = $DB->get_field('quiz_attempts', 'quiz', ['id' => $attemptid]);
-    $cmid = null;
-    if ($quizid) {
+    // Optimize: Use values from SQL if available
+    $quizid = isset($r->quizid) ? $r->quizid : $DB->get_field('quiz_attempts', 'quiz', ['id' => $attemptid]);
+    $cmid = isset($r->cmid) ? $r->cmid : null;
+
+    if (!$cmid && $quizid) {
         if ($cm = get_coursemodule_from_instance('quiz', $quizid)) { $cmid = $cm->id; }
     }
     $reviewurl = new moodle_url('/mod/quiz/review.php', ['attempt' => $attemptid]);
@@ -336,6 +338,8 @@ foreach ($records as $r) {
 
     $rows[] = (object) [
         'attemptid'     => $attemptid,
+        'quizid'        => $quizid,
+        'cmid'          => $cmid,
         'userid'        => $r->userid,
         'courseid'      => $r->courseid,
         'studentname'   => $r->studentname,
@@ -638,10 +642,16 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['coursename' => $row->coursename]))->out(false); ?>" class="course-link">
                                     <?php echo htmlspecialchars($row->coursename); ?>
                                 </a>
+                                <a href="<?php echo (new moodle_url("/course/edit.php", ["id" => (int)$row->courseid]))->out(false); ?>" class="qd-action-icon" target="_blank" title="<?php echo get_string("edit"); ?>">
+                                    <i class="fa fa-pencil"></i>
+                                </a>
                             </td>
                             <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/index.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
                                     <?php echo htmlspecialchars($row->quizname); ?>
+                                </a>
+                                <a href="<?php echo (new moodle_url("/mod/quiz/view.php", ["q" => (int)$row->quizid]))->out(false); ?>" class="qd-action-icon" target="_blank" title="<?php echo get_string("view"); ?>">
+                                    <i class="fa fa-external-link"></i>
                                 </a>
                             </td>
                             <td>

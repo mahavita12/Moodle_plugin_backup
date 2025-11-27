@@ -430,7 +430,7 @@ if ($tab === 'snapshot' && $canmanage) {
                             </td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "userid" => (int)$row->userid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "userid[]" => (int)$row->userid]))->out(false); ?>">
                                     <?php echo s($row->studentname); ?>
                                 </a>
                             </td>
@@ -440,7 +440,7 @@ if ($tab === 'snapshot' && $canmanage) {
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "courseid" => (int)$row->courseid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "courseid[]" => (int)$row->courseid]))->out(false); ?>">
                                     <?php echo s($row->coursename); ?>
                                 </a>
                                 <a href="<?php echo (new moodle_url("/course/edit.php", ["id" => (int)$row->courseid]))->out(false); ?>" class="hw-action-icon" target="_blank" title="<?php echo get_string("edit"); ?>">
@@ -448,7 +448,7 @@ if ($tab === 'snapshot' && $canmanage) {
                                 </a>
                             </td>
                             <td>
-                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "quizid" => (int)$row->quizid]))->out(false); ?>">
+                                <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "quizid[]" => (int)$row->quizid]))->out(false); ?>">
                                     <?php echo s($row->quizname); ?>
                                 </a>
                                 <a href="<?php echo (new moodle_url("/mod/quiz/view.php", ["id" => $row->cmid]))->out(false); ?>" class="hw-action-icon" target="_blank" title="<?php echo get_string("view"); ?>">
@@ -496,7 +496,7 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td>
                                 <?php 
                                     if ($row->timeclose > 0) {
-                                        echo '<a href="' . (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab, 'duedate' => $row->timeclose]))->out(false) . '">';
+                                        echo '<a href="' . (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab, 'duedate[]' => $row->timeclose]))->out(false) . '">';
                                         echo userdate($row->timeclose, get_string("strftimedatetime", "langconfig")); 
                                         echo '</a>';
                                     } else {

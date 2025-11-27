@@ -73,3 +73,28 @@
         gap: 10px;
     }
 }
+
+/* Action Icons (Small Green Square Buttons) */
+.qd-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background-color: #28a745;
+    color: #fff;
+    border-radius: 3px;
+    text-decoration: none;
+    font-size: 10px;
+    margin-left: 5px;
+}
+
+.qd-action-icon:hover {
+    background-color: #218838;
+    color: #fff;
+    text-decoration: none;
+}
+
+.qd-action-icon i {
+    margin: 0;
+}
