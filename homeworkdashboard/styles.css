@@ -207,3 +207,34 @@
 .sort-arrows .arrow.active {
     color: #000;
 }
+
+/* Action Icons (Small Green Square Buttons) */
+.hw-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background-color: #28a745;
+    color: #fff;
+    border-radius: 3px;
+    text-decoration: none;
+    font-size: 10px;
+    margin-left: 5px;
+}
+
+.hw-action-icon:hover {
+    background-color: #218838;
+    color: #fff;
+    text-decoration: none;
+}
+
+.hw-action-icon i {
+    margin: 0;
+}
+
+/* Widen Backfill Dropdown */
+#backfill_duedates {
+    min-width: 250px;
+    width: auto;
+}

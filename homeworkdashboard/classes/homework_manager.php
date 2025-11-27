@@ -658,10 +658,6 @@ class homework_manager {
             $sql .= " AND c.category = :categoryid";
             $params['categoryid'] = $categoryid;
         }
-        if ($categoryid > 0) {
-            $sql .= " AND c.category = :categoryid";
-            $params['categoryid'] = $categoryid;
-        }
         
         $courseids = array_filter($courseids, function($id) { return $id > 0; });
         if (!empty($courseids)) {
@@ -701,7 +697,13 @@ class homework_manager {
 
         $sql .= " ORDER BY c.fullname, q.name";
 
+        // Debug logging
+        error_log("HM_DEBUG: SQL: " . $sql);
+        error_log("HM_DEBUG: Params: " . json_encode($params));
+
         $quizrecords = $DB->get_records_sql($sql, $params);
+        error_log("HM_DEBUG: Records found: " . count($quizrecords));
+
         if (empty($quizrecords)) {
             return [];
         }
@@ -728,6 +730,7 @@ class homework_manager {
             $excludeduserids = [];
             if ($excludestaff) {
                 $excludeduserids = $this->get_staff_users_for_course((int)$qrec->courseid);
+                error_log("HM_DEBUG: Course " . $qrec->courseid . " Excluded Staff Count: " . count($excludeduserids));
             }
 
             // Calculate Live Window
@@ -742,6 +745,7 @@ class homework_manager {
             if (!empty($excludeduserids)) {
                 $roster = array_diff($roster, $excludeduserids);
                 if (empty($roster)) {
+                    error_log("HM_DEBUG: Course " . $qrec->courseid . " skipped because roster is empty after excluding staff.");
                     continue;
                 }
                 $roster = array_values($roster);
@@ -1129,6 +1133,85 @@ class homework_manager {
         });
 
         return $rows;
+    }
+
+    /**
+     * Get users for filter context (Category/Course).
+     * Used to populate the User dropdown with all eligible users, independent of the current User filter.
+     */
+    public function get_users_for_filter_context(int $categoryid, array $courseids, bool $excludestaff): array {
+        global $DB;
+
+        $users = [];
+        $courseids = array_filter($courseids, function($id) { return $id > 0; });
+
+        // 1. Identify relevant courses
+        $target_courseids = [];
+        if (!empty($courseids)) {
+            $target_courseids = $courseids;
+        } else if ($categoryid > 0) {
+            $target_courseids = $DB->get_fieldset_select('course', 'id', 'category = :cat', ['cat' => $categoryid]);
+            $target_courseids = array_map('intval', $target_courseids);
+        }
+
+        if (empty($target_courseids)) {
+            // If no course/category selected, we might want to return ALL users who have attempts?
+            // Or just return empty to force course selection?
+            // For performance, let's limit to users who have attempts in quizzes if no course is selected.
+            // However, the dashboard usually shows "All courses" by default.
+            // Let's try to get users from visible courses if list is not too huge, or just return empty if too broad.
+            // Better approach: Return users from the rows logic if no context, BUT the rows logic is filtered.
+            // Let's stick to: if no course selected, return empty (user must select course/category), OR
+            // fetch from all visible courses (might be heavy).
+            // Compromise: If no filter, return empty array (UI will show "All" or nothing).
+            // Actually, the previous behavior was "users in the rows".
+            // Let's try to fetch users from all visible courses? No, too many.
+            // Let's return empty if no context, and handle it in index.php (fallback to existing logic or empty).
+            return [];
+        }
+
+        // 2. Fetch users enrolled in these courses
+        list($csql, $cparams) = $DB->get_in_or_equal($target_courseids, SQL_PARAMS_NAMED, 'cid');
+        
+        // Get distinct users enrolled in these courses
+        $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email
+                  FROM {user} u
+                  JOIN {user_enrolments} ue ON ue.userid = u.id
+                  JOIN {enrol} e ON e.id = ue.enrolid
+                 WHERE e.courseid $csql
+                   AND u.deleted = 0 AND u.suspended = 0";
+        
+        $userrecords = $DB->get_records_sql($sql, $cparams);
+
+        // 3. Filter excluded staff
+        if ($excludestaff) {
+            $staffids = [];
+            foreach ($target_courseids as $cid) {
+                $staffids = array_merge($staffids, $this->get_staff_users_for_course($cid));
+            }
+            $staffids = array_unique($staffids);
+            
+            foreach ($userrecords as $uid => $u) {
+                if (in_array($uid, $staffids)) {
+                    unset($userrecords[$uid]);
+                }
+            }
+        }
+
+        // Format for dropdown
+        foreach ($userrecords as $u) {
+            $users[$u->id] = (object)[
+                'id' => $u->id,
+                'fullname' => fullname($u),
+            ];
+        }
+
+        // Sort by name
+        uasort($users, function($a, $b) {
+            return strcmp($a->fullname, $b->fullname);
+        });
+
+        return $users;
     }
 
     /**

@@ -19,7 +19,7 @@ $PAGE->requires->css('/local/homeworkdashboard/styles.css');
 $PAGE->requires->css('/local/quizdashboard/styles.css');
 
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
-$userid        = optional_param('userid', 0, PARAM_INT);
+// $userid        = optional_param('userid', 0, PARAM_INT); // Removed to avoid conflict with array input
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
 $courseids     = optional_param_array('courseid', [0], PARAM_INT);
 $sectionid     = optional_param('sectionid', 0, PARAM_INT);
@@ -140,7 +140,7 @@ if ($tab === "snapshot") {
 // Populate filters based on returned data
 $uniquesections = [];
 $uniquequizzes = [];
-$uniqueusers = [];
+// $uniqueusers = []; // Populated via context now
 $uniqueuserids = [];
 $uniqueduedates = [];
 
@@ -151,10 +151,10 @@ foreach ($rows as $r) {
     if (!empty($r->quizid)) {
         $uniquequizzes[$r->quizid] = (object)['id' => $r->quizid, 'name' => $r->quizname];
     }
-    if (!empty($r->userid)) {
-        $uniqueusers[$r->userid] = (object)['id' => $r->userid, 'fullname' => $r->studentname];
-        $uniqueuserids[$r->userid] = true;
-    }
+    // if (!empty($r->userid)) {
+    //     $uniqueusers[$r->userid] = (object)['id' => $r->userid, 'fullname' => $r->studentname];
+    //     $uniqueuserids[$r->userid] = true;
+    // }
     if (!empty($r->timeclose)) {
         $duedatekey = $r->timeclose;
         if (!isset($uniqueduedates[$duedatekey])) {
@@ -166,7 +166,17 @@ foreach ($rows as $r) {
     }
 }
 
-if (!empty($uniqueusers)) {
+// Populate User Dropdown from Context (Category/Course)
+$uniqueusers = $manager->get_users_for_filter_context($categoryid, $courseids, $excludestaff);
+
+// Fallback: If no users found (e.g. no course selected), try to populate from rows as backup?
+// Or just leave empty. The previous behavior was from rows.
+if (empty($uniqueusers) && !empty($rows)) {
+    foreach ($rows as $r) {
+        if (!empty($r->userid)) {
+            $uniqueusers[$r->userid] = (object)['id' => $r->userid, 'fullname' => $r->studentname];
+        }
+    }
     uasort($uniqueusers, function($a, $b) {
         return strcmp($a->fullname, $b->fullname);
     });
@@ -211,7 +221,7 @@ if ($tab === 'snapshot' && $canmanage) {
     echo '<input type="hidden" name="backfill" value="1">';
     echo '<input type="hidden" name="sesskey" value="' . sesskey() . '">';
     echo '<label style="margin-bottom: 0;">Due dates to backfill:</label>';
-    echo '<select name="backfilldates[]" class="form-control" style="max-width: 200px;">';
+    echo '<select name="backfilldates[]" id="backfill_duedates" class="form-control">';
     foreach ($uniqueduedates as $dd) {
         echo '<option value="' . $dd->timestamp . '">' . $dd->formatted . '</option>';
     }
@@ -297,27 +307,17 @@ if ($tab === 'snapshot' && $canmanage) {
                     </div>
                     <div class="filter-group">
                         <label for="studentname"><?php echo get_string("user"); ?></label>
-                        <select name="studentname" id="studentname">
-                            <option value=""><?php echo get_string("all"); ?></option>
+                        <select name="userid[]" id="studentname" multiple="multiple">
+                            <option value="0"><?php echo get_string("all"); ?></option>
                             <?php foreach ($uniqueusers as $u): ?>
-                                <option value="<?php echo s($u->fullname); ?>" <?php echo ($studentname === $u->fullname) ? "selected" : ""; ?>>
+                                <option value="<?php echo (int)$u->id; ?>" <?php echo in_array((int)$u->id, $userids) ? "selected" : ""; ?>>
                                     <?php echo s($u->fullname); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
 
-                    <div class="filter-group">
-                        <label for="userid">ID:</label>
-                        <select name="userid[]" id="userid" multiple="multiple">
-                            <option value="0"><?php echo get_string('all'); ?></option>
-                            <?php foreach ($uniqueuserids as $uid => $dummy): ?>
-                                <option value="<?php echo (int)$uid; ?>" <?php echo in_array((int)$uid, $userids) ? 'selected' : ''; ?>>
-                                    <?php echo (int)$uid; ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+
 
                     <div class="filter-group">
                         <label for="status"><?php echo get_string('status'); ?></label>
@@ -443,14 +443,16 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "courseid" => (int)$row->courseid]))->out(false); ?>">
                                     <?php echo s($row->coursename); ?>
                                 </a>
+                                <a href="<?php echo (new moodle_url("/course/edit.php", ["id" => (int)$row->courseid]))->out(false); ?>" class="hw-action-icon" target="_blank" title="<?php echo get_string("edit"); ?>">
+                                    <i class="fa fa-pencil"></i>
+                                </a>
                             </td>
                             <td>
                                 <a href="<?php echo (new moodle_url("/local/homeworkdashboard/index.php", ["tab" => $tab, "quizid" => (int)$row->quizid]))->out(false); ?>">
                                     <?php echo s($row->quizname); ?>
                                 </a>
-                                &nbsp;
-                                <a href="<?php echo (new moodle_url("/mod/quiz/view.php", ["id" => $row->cmid]))->out(false); ?>" class="quiz-link" target="_blank">
-                                    <?php echo get_string("view"); ?>
+                                <a href="<?php echo (new moodle_url("/mod/quiz/view.php", ["id" => $row->cmid]))->out(false); ?>" class="hw-action-icon" target="_blank" title="<?php echo get_string("view"); ?>">
+                                    <i class="fa fa-external-link"></i>
                                 </a>
                             </td>
                             <td>
@@ -482,7 +484,12 @@ if ($tab === 'snapshot' && $canmanage) {
                                     } else if ($cls === "Revision") {
                                         $clsmod = "hw-classification-revision";
                                     }
-                                    echo '<span class="hw-classification-badge ' . $clsmod . '">' . s($cls) . '</span>';
+                                    // Make badge clickable to filter
+                                    echo '<span class="hw-classification-badge ' . $clsmod . '" ' .
+                                         'style="cursor: pointer;" ' .
+                                         'onclick="setFilter(\'classification\', \'' . s($cls) . '\');" ' .
+                                         'title="' . get_string('filterby', 'local_homeworkdashboard') . ' ' . s($cls) . '">' . 
+                                         s($cls) . '</span>';
                                 ?>
                             </td>
                             <td><?php echo s($row->quiz_type); ?></td>
@@ -647,6 +654,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Interactive Filters
     const filterForm = document.querySelector('.filter-form');
+
+    // Make available globally for onclick handlers
+    window.setFilter = function(fieldId, value) {
+        const field = document.getElementById(fieldId);
+        if (field && filterForm) {
+            field.value = value;
+            filterForm.submit();
+        }
+    };
+
     if (filterForm) {
         const categorySelect = document.getElementById('categoryid');
         const sectionSelect = document.getElementById('sectionid');
@@ -678,7 +695,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Enhance Course, Quiz, UserID, DueDate
         Autocomplete.enhance('#courseid', false, false, "<?php echo get_string('allcourses', 'local_homeworkdashboard'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
         Autocomplete.enhance('#quizid', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
-        Autocomplete.enhance('#userid', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+
+        Autocomplete.enhance('#studentname', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
         Autocomplete.enhance('#duedate', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
     });
 });
