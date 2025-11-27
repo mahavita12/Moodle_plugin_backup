@@ -11,8 +11,8 @@ $capabilities = [
             'teacher' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,
             'student' => CAP_ALLOW,
+            'user' => CAP_ALLOW,
         ],
-        'clonepermissionsfrom' => 'moodle/site:viewreports',
     ],
     'local/homeworkdashboard:manage' => [
         'riskbitmask' => RISK_PERSONAL | RISK_DATALOSS,

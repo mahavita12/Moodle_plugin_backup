@@ -53,39 +53,5 @@ function local_homeworkdashboard_calendar_get_event_homework_status(event_interf
     );
 }
 
-/**
- * Extend the user navigation (Profile menu).
- * Adds "Homework Dashboard" link for users with view capability.
- */
-function local_homeworkdashboard_extend_navigation_user($navigation, $user, $context, $course, $coursecontext) {
-    if (has_capability('local/homeworkdashboard:view', context_system::instance())) {
-        $url = new moodle_url('/local/homeworkdashboard/index.php');
-        $node = navigation_node::create(
-            get_string('pluginname', 'local_homeworkdashboard'),
-            $url,
-            navigation_node::TYPE_CUSTOM,
-            null,
-            'homeworkdashboard',
-            new pix_icon('i/dashboard', '')
-        );
-        $navigation->add_node($node);
-    }
-}
 
-/**
- * Extend the global navigation (Side Drawer / Site Pages).
- * Adds "Homework Dashboard" link for users with view capability.
- */
-function local_homeworkdashboard_extend_navigation(global_navigation $navigation) {
-    if (has_capability('local/homeworkdashboard:view', context_system::instance())) {
-        $url = new moodle_url('/local/homeworkdashboard/index.php');
-        $navigation->add(
-            get_string('pluginname', 'local_homeworkdashboard'),
-            $url,
-            navigation_node::TYPE_CUSTOM,
-            null,
-            'homeworkdashboard',
-            new pix_icon('i/dashboard', '')
-        );
-    }
-}
+

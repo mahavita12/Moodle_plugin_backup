@@ -40,22 +40,24 @@ if (!CLI_SCRIPT && !during_initial_install()) {
             
             global $CFG, $PAGE;
             // Extra safety: if the final page layout is print, do not inject
-            if (isset($PAGE) && $PAGE->pagelayout === 'print') {
+            if ($PAGE->pagelayout === 'print') {
                 return $buffer;
             }
-            
-            $current_url = $PAGE->url ? $PAGE->url->out(false) : '';
+
+            // Determine active state
+            $current_url = $PAGE->url->out_as_string();
             $is_main_dashboard = strpos($current_url, '/local/quizdashboard/index.php') !== false;
             $is_essay_dashboard = strpos($current_url, '/local/quizdashboard/essays.php') !== false;
             
+            // Build navigation HTML
             $navigation_html = "
             <style>
             .quiz-dashboard-global-nav {
                 position: fixed;
                 top: 60px;
-                right: 20px;
-                z-index: 10000;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                right: 60px;
+                z-index: 10001;
+                font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
             }
             
             .quiz-dashboard-global-nav .nav-dropdown {
@@ -65,66 +67,57 @@ if (!CLI_SCRIPT && !during_initial_install()) {
             
             .quiz-dashboard-global-nav .nav-button {
                 background: #007cba;
-                color: #ffffff;
-                padding: 10px 15px;
+                color: #fff;
+                padding: 8px 12px;
                 border: 1px solid #005a87;
                 cursor: pointer;
-                border-radius: 6px;
-                font-size: 14px;
-                font-weight: 500;
-                transition: all 0.2s ease-in-out;
-                display: inline-block;
-                min-width: 130px;
+                border-radius: 4px;
+                font-size: 13px;
+                min-width: 100px;
                 text-align: center;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                transition: background 0.2s;
             }
             
             .quiz-dashboard-global-nav .nav-button:hover {
                 background: #005a87;
-                transform: translateY(-1px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.15);
             }
             
             .quiz-dashboard-global-nav .nav-menu {
                 display: none;
                 position: absolute;
                 right: 0;
-                top: calc(100% + 5px);
-                background: #ffffff;
-                min-width: 200px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                top: 100%;
+                background: #fff;
+                min-width: 160px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                border-radius: 4px;
+                margin-top: 2px;
                 border: 1px solid #dee2e6;
-                border-radius: 6px;
                 overflow: hidden;
             }
             
             .quiz-dashboard-global-nav .nav-dropdown:hover .nav-menu {
                 display: block;
-                animation: fadeInDown 0.2s ease-out;
-            }
-            
-            @keyframes fadeInDown {
-                from { opacity: 0; transform: translateY(-5px); }
-                to { opacity: 1; transform: translateY(0); }
             }
             
             .quiz-dashboard-global-nav .nav-menu a {
                 display: block;
-                padding: 12px 16px;
-                color: #333;
+                padding: 8px 12px;
+                color: #007cba;
                 text-decoration: none;
-                border-bottom: 1px solid #f1f3f4;
-                font-size: 14px;
-                transition: background-color 0.15s ease-in-out;
+                font-size: 13px;
+                border-bottom: 1px solid #dee2e6;
+                transition: background 0.2s;
             }
             
             .quiz-dashboard-global-nav .nav-menu a:hover {
                 background: #f8f9fa;
-                color: #007cba;
+                color: #0056b3;
             }
             
             .quiz-dashboard-global-nav .nav-menu a.active {
-                background: #e7f3ff;
+                background: #e9ecef;
                 color: #007cba;
                 font-weight: 600;
                 border-left: 3px solid #007cba;
@@ -150,12 +143,12 @@ if (!CLI_SCRIPT && !during_initial_install()) {
             
             <div class='quiz-dashboard-global-nav'>
                 <div class='nav-dropdown'>
-                    <button class='nav-button'>📊 Dashboards</button>
+                    <button class='nav-button'>\ud83d\udcca Dashboards</button>
                     <div class='nav-menu'>
                         <a href='{$CFG->wwwroot}/local/quizdashboard/index.php'" . 
-                            ($is_main_dashboard ? " class='active'" : "") . ">📝 Quiz Dashboard</a>
+                            ($is_main_dashboard ? " class='active'" : "") . ">\ud83d\udcdd Quiz Dashboard</a>
                         <a href='{$CFG->wwwroot}/local/quizdashboard/essays.php'" .
-                            ($is_essay_dashboard ? " class='active'" : "") . ">✍️ Essay Dashboard</a>
+                            ($is_essay_dashboard ? " class='active'" : "") . ">\u270d\ufe0f Essay Dashboard</a>
                     </div>
                 </div>
             </div>";
