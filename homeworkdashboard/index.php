@@ -492,7 +492,7 @@ if ($tab === 'snapshot' && $canmanage) {
             <thead class="thead-dark">
                 <tr>
                     <th style="width: 40px;"><input type="checkbox" id="select-all-reports"></th>
-                    <th>Student Name</th>
+                    <th>Name</th>
                     <th>ID</th>
                     <th>Due Date</th>
                     <th>Categories</th>
@@ -520,12 +520,12 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
                             <td>
                                 <?php foreach ($row->categories as $cat): ?>
-                                    <span class="badge badge-secondary"><?php echo s($cat); ?></span>
+                                    <div class="mb-1"><span class="badge badge-dark text-white"><?php echo s($cat); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <td>
                                 <?php foreach ($row->courses as $c): ?>
-                                    <span class="badge badge-info"><?php echo s($c); ?></span>
+                                    <div class="mb-1"><span class="badge badge-info"><?php echo s($c); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <!-- Classifications column removed -->
@@ -553,7 +553,7 @@ if ($tab === 'snapshot' && $canmanage) {
                                         ?>
                                         
                                         <?php if (!empty($new_acts)): ?>
-                                            <h6 class="dropdown-header">New</h6>
+                                            <h6 class="dropdown-header"><span class="hw-classification-badge hw-classification-new">New</span></h6>
                                             <?php foreach ($new_acts as $aname): ?>
                                                 <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
                                             <?php endforeach; ?>
@@ -561,7 +561,7 @@ if ($tab === 'snapshot' && $canmanage) {
 
                                         <?php if (!empty($rev_acts)): ?>
                                             <?php if (!empty($new_acts)) echo '<div class="dropdown-divider"></div>'; ?>
-                                            <h6 class="dropdown-header">Revision</h6>
+                                            <h6 class="dropdown-header"><span class="hw-classification-badge hw-classification-revision">Revision</span></h6>
                                             <?php foreach ($rev_acts as $aname): ?>
                                                 <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
                                             <?php endforeach; ?>
