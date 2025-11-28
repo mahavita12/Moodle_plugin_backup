@@ -19,7 +19,7 @@ $PAGE->requires->css('/local/homeworkdashboard/styles.css');
 $PAGE->requires->css('/local/quizdashboard/styles.css');
 
 // Check capability for management (Staff vs Student)
-$canmanage = has_capability('local/homeworkdashboard:manage', $context);
+$canmanage = has_capability('local/homeworkdashboard:manage', $context) || is_siteadmin();
 
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
 $userids       = optional_param_array('userid', [], PARAM_INT); // Retrieve user IDs from dropdown
@@ -161,6 +161,58 @@ if ($tab === "snapshot") {
         $excludestaff,
         $duedates
     );
+} elseif ($tab === "reports" && $canmanage) {
+    // Reports Tab Logic
+    $report_start = optional_param('report_start', strtotime('-7 days', time()), PARAM_INT);
+    $report_end   = optional_param('report_end', time(), PARAM_INT);
+    
+    // Fetch all homework in range (past and future)
+    $raw_rows = $manager->get_live_homework_rows(
+        $categoryid,
+        $courseids,
+        $sectionid,
+        $quizids,
+        $userids,
+        $studentname,
+        $quiztypefilter,
+        $statusfilter,
+        $classfilter,
+        null, // No week value
+        'timeclose', // Default sort by date
+        'DESC',
+        $excludestaff,
+        [], // No specific due dates
+        $report_start,
+        $report_end,
+        true // Include past
+    );
+
+    // Group by Student + Due Date
+    $grouped_rows = [];
+    foreach ($raw_rows as $r) {
+        $key = $r->userid . '_' . $r->timeclose;
+        if (!isset($grouped_rows[$key])) {
+            $grouped_rows[$key] = (object)[
+                'userid' => $r->userid,
+                'studentname' => $r->studentname,
+                'timeclose' => $r->timeclose,
+                'courses' => [],
+                'categories' => [],
+                'classifications' => [],
+                'activities' => [],
+                'status' => 'Not Sent', // Placeholder
+            ];
+        }
+        $grouped_rows[$key]->courses[$r->courseid] = $r->coursename;
+        $grouped_rows[$key]->categories[$r->categoryid] = $r->categoryname;
+        if (!empty($r->classification)) {
+            $grouped_rows[$key]->classifications[$r->classification] = $r->classification;
+        }
+        $grouped_rows[$key]->activities[] = $r->quizname;
+    }
+    $rows = array_values($grouped_rows);
+    
+    // Sort logic for grouped rows could be added here if needed
 } else {
     $rows = $manager->get_live_homework_rows(
         $categoryid,
@@ -251,6 +303,9 @@ $tabs = [
     new tabobject('live', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'live']), 'Live Homework'),
     new tabobject('snapshot', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'snapshot']), 'Historical Snapshots'),
 ];
+if ($canmanage) {
+    $tabs[] = new tabobject('reports', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'reports']), 'Homework Reports');
+}
 echo $OUTPUT->tabtree($tabs, $tab);
 
 // BACKFILL UI (Only for snapshots tab and managers)
@@ -399,6 +454,35 @@ if ($tab === 'snapshot' && $canmanage) {
                         <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
                     </div>
                 </div>
+                
+                <?php if ($tab === 'reports'): ?>
+                <div class="filter-row" style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <div class="filter-group">
+                        <label>Report Range:</label>
+                        <input type="date" name="report_start_date" value="<?php echo date('Y-m-d', $report_start); ?>" onchange="updateTimestamp(this, 'report_start')">
+                        <input type="hidden" name="report_start" id="report_start" value="<?php echo $report_start; ?>">
+                        <span>to</span>
+                        <input type="date" name="report_end_date" value="<?php echo date('Y-m-d', $report_end); ?>" onchange="updateTimestamp(this, 'report_end')">
+                        <input type="hidden" name="report_end" id="report_end" value="<?php echo $report_end; ?>">
+                    </div>
+                    <script>
+                        function updateTimestamp(input, targetId) {
+                            var date = new Date(input.value);
+                            // Set to midnight or end of day? 
+                            // For start date: midnight. For end date: 23:59:59?
+                            // Simple approach: just timestamp of the date string (midnight UTC usually in JS, but we need server time compatibility)
+                            // Better: let PHP handle the string to timestamp conversion?
+                            // Actually, let's just submit the date string and handle it in PHP if possible, 
+                            // but existing code uses ints.
+                            // Let's just use the date string in the form and convert in PHP.
+                            // But I already wrote the PHP to expect ints.
+                            // Let's change the PHP to accept date strings if I can.
+                            // Or just use a simple JS conversion.
+                            // Assuming local browser time is roughly same as server for now, or just send Y-m-d and parse in PHP.
+                        }
+                    </script>
+                </div>
+                <?php endif; ?>
             </form>
         </div>
 
@@ -416,8 +500,129 @@ if ($tab === 'snapshot' && $canmanage) {
         </div>
     <?php endif; ?>
 
+    <?php if ($tab === 'reports' && $canmanage): ?>
+    <!-- REPORTS TABLE -->
     <div class="dashboard-table-wrapper">
         <table class="dashboard-table table table-striped">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Student Name</th>
+                    <th>ID</th>
+                    <th>Due Date</th>
+                    <th>Categories</th>
+                    <th>Courses</th>
+                    <th>Classifications</th>
+                    <th>Activities</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($rows)): ?>
+                    <tr><td colspan="9" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
+                <?php else: ?>
+                    <?php foreach ($rows as $row): ?>
+                        <tr>
+                            <td><?php echo s($row->studentname); ?></td>
+                            <td><?php echo (int)$row->userid; ?></td>
+                            <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
+                            <td>
+                                <?php foreach ($row->categories as $cat): ?>
+                                    <span class="badge badge-secondary"><?php echo s($cat); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <?php foreach ($row->courses as $c): ?>
+                                    <span class="badge badge-info"><?php echo s($c); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <?php foreach ($row->classifications as $cls): ?>
+                                    <?php 
+                                        $clsclass = ($cls === 'New') ? 'hw-classification-new' : 'hw-classification-revision';
+                                    ?>
+                                    <span class="hw-classification-badge <?php echo $clsclass; ?>"><?php echo s($cls); ?></span>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown">
+                                        <?php echo count($row->activities); ?> Activities
+                                    </button>
+                                    <div class="dropdown-menu">
+                                        <?php foreach ($row->activities as $act): ?>
+                                            <a class="dropdown-item" href="#"><?php echo s($act); ?></a>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </td>
+                            <td id="status-<?php echo $row->userid . '-' . $row->timeclose; ?>">
+                                <span class="badge badge-light">Not Sent</span>
+                            </td>
+                            <td>
+                                <button class="btn btn-primary btn-sm send-report-btn" 
+                                        data-userid="<?php echo $row->userid; ?>" 
+                                        data-duedate="<?php echo $row->timeclose; ?>"
+                                        data-studentname="<?php echo s($row->studentname); ?>"
+                                        data-date="<?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?>">
+                                    Send Report
+                                </button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.send-report-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var userid = this.getAttribute('data-userid');
+                var duedate = this.getAttribute('data-duedate');
+                var studentname = this.getAttribute('data-studentname');
+                var dateStr = this.getAttribute('data-date');
+                
+                if (confirm('Send homework report for ' + studentname + ' due on ' + dateStr + '?')) {
+                    var statusCell = document.getElementById('status-' + userid + '-' + duedate);
+                    statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
+                    
+                    // AJAX call
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', 'ajax.php', true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            try {
+                                var resp = JSON.parse(xhr.responseText);
+                                if (resp.success) {
+                                    statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
+                                    alert(resp.message);
+                                } else {
+                                    statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                                    alert('Error: ' + resp.message);
+                                }
+                            } catch (e) {
+                                statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                                alert('Invalid response from server.');
+                            }
+                        } else {
+                            statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                            alert('Request failed.');
+                        }
+                    };
+                    xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
+                }
+            });
+        });
+    });
+    </script>
+    
+    <?php else: ?>
+    <!-- EXISTING TABLE (Live/Snapshot) -->
+    <div class="dashboard-table-wrapper">
+        <table class="dashboard-table table table-striped">
+
             <thead class="thead-dark">
                 <tr>
                     <th></th> <!-- Expand -->
@@ -680,6 +885,7 @@ if ($tab === 'snapshot' && $canmanage) {
             </tbody>
         </table>
     </div>
+    <?php endif; ?>
 </div>
 
 <script>

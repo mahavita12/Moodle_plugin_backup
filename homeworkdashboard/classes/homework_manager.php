@@ -613,7 +613,10 @@ class homework_manager {
         string $sort,
         string $dir,
         bool $excludestaff = false,
-        array $duedates = []
+        array $duedates = [],
+        int $customstart = 0,
+        int $customend = 0,
+        bool $include_past = false
     ): array {
         global $DB;
 
@@ -650,9 +653,11 @@ class homework_manager {
                 WHERE ((q.timeclose IS NOT NULL AND q.timeclose > 0)
                    OR ((q.timeclose IS NULL OR q.timeclose = 0) AND ev.eventclose IS NOT NULL))";
         
-        // Filter for LIVE quizzes (close time > now)
-        $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) > :now";
-        $params['now'] = $now;
+        // Filter for LIVE quizzes (close time > now) unless include_past is true
+        if (!$include_past) {
+            $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) > :now";
+            $params['now'] = $now;
+        }
 
         if ($categoryid > 0) {
             $sql .= " AND c.category = :categoryid";
@@ -687,7 +692,13 @@ class homework_manager {
             $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) $dsql";
             $params = array_merge($params, $dparams);
         } else {
-            [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+            if ($customstart > 0 && $customend > 0) {
+                $weekstart = $customstart;
+                $weekend = $customend;
+            } else {
+                [$weekstart, $weekend] = $this->get_week_bounds($weekvalue);
+            }
+            
             if ($weekstart > 0 && $weekend > 0) {
                 $sql .= " AND COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) BETWEEN :weekstart AND :weekend";
                 $params['weekstart'] = $weekstart;
