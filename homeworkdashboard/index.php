@@ -22,7 +22,7 @@ $PAGE->requires->css('/local/quizdashboard/styles.css');
 $canmanage = has_capability('local/homeworkdashboard:manage', $context);
 
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
-// $userid        = optional_param('userid', 0, PARAM_INT); // Removed to avoid conflict with array input
+$userids       = optional_param_array('userid', [], PARAM_INT); // Retrieve user IDs from dropdown
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
 $courseids     = optional_param_array('courseid', [0], PARAM_INT);
 $sectionid     = optional_param('sectionid', 0, PARAM_INT);
@@ -93,6 +93,35 @@ if (!empty($categoryid)) {
     $courses = $DB->get_records('course', ['category' => $categoryid, 'visible' => 1], 'fullname ASC', 'id, fullname');
 } else {
     $courses = $DB->get_records('course', ['visible' => 1], 'fullname ASC', 'id, fullname');
+}
+
+// Filter courses by selected user(s)
+// Use $userids (from dropdown)
+// Sanitize userids first (remove 0 or invalid)
+$filter_userids = array_filter($userids, function($id) { return $id > 0; });
+
+if (!empty($filter_userids)) {
+    error_log("HM_DEBUG: Filtering courses for " . count($filter_userids) . " users.");
+    
+    $enrolled_course_ids = [];
+    foreach ($filter_userids as $uid) {
+        // Get enrolled courses for this user
+        // true = only active enrollments, 'id' = return only fields needed (id is key)
+        $enrolled = enrol_get_users_courses($uid, true, 'id');
+        foreach ($enrolled as $ec) {
+            $enrolled_course_ids[$ec->id] = true;
+        }
+    }
+    
+    error_log("HM_DEBUG: Found " . count($enrolled_course_ids) . " unique enrolled courses.");
+
+    // Intersect: Keep only courses that are in the enrolled list
+    // If multiple users selected, we show union of their courses (any course ANY selected user is in)
+    $courses = array_filter($courses, function($c) use ($enrolled_course_ids) {
+        return isset($enrolled_course_ids[$c->id]);
+    });
+    
+    error_log("HM_DEBUG: Filtered course list to " . count($courses) . " items.");
 }
 
 $manager = new \local_homeworkdashboard\homework_manager();
