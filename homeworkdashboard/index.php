@@ -175,7 +175,7 @@ if ($tab === "snapshot") {
         $customend = strtotime('+30 days'); 
     }
 
-    $raw_rows = $manager->get_live_homework_rows(
+    $raw_rows = $manager->get_snapshot_homework_rows(
         $categoryid,
         $courseids,
         $sectionid,
@@ -189,10 +189,7 @@ if ($tab === "snapshot") {
         'timeclose', // Default sort by date
         'DESC',
         $excludestaff,
-        $report_duedates, // Pass selected due dates
-        $customstart,
-        $customend,
-        true // Include past
+        $report_duedates // Pass selected due dates
     );
     error_log("HM_DEBUG: Raw Rows Count: " . count($raw_rows));
 
@@ -206,6 +203,7 @@ if ($tab === "snapshot") {
                 'studentname' => $r->studentname,
                 'email' => $r->email,
                 'timeclose' => $r->timeclose,
+                'next_due_date' => null,
                 'courses' => [],
                 'categories' => [],
                 // 'classifications' => [], // Removed column
@@ -213,14 +211,63 @@ if ($tab === "snapshot") {
                 'status' => 'Not Sent', // Placeholder
             ];
         }
-        $grouped_rows[$key]->courses[$r->courseid] = $r->coursename;
+        $grouped_rows[$key]->courses[$r->courseid] = ['name' => $r->coursename, 'category' => $r->categoryname];
         $grouped_rows[$key]->categories[$r->categoryid] = $r->categoryname;
-        // Store activity with classification
+        
+        // Capture Next Due Date for Category 1
+        if (strcasecmp($r->categoryname, 'Category 1') === 0 && !empty($r->next_due_date)) {
+            if (empty($grouped_rows[$key]->next_due_date) || $r->next_due_date < $grouped_rows[$key]->next_due_date) {
+                $grouped_rows[$key]->next_due_date = $r->next_due_date;
+                $grouped_rows[$key]->next_due_date_courseid = $r->courseid; // Store course ID for fetching activities
+            }
+        }
+
+        // Store activity with classification and category
         $grouped_rows[$key]->activities[] = (object)[
             'name' => $r->quizname,
-            'classification' => $r->classification
+            'classification' => $r->classification,
+            'category' => $r->categoryname
         ];
     }
+
+    // Sort Categories and Courses
+    foreach ($grouped_rows as $g) {
+        // Fetch Activities 2 if applicable
+        $g->activities_2 = [];
+        if (!empty($g->next_due_date)) {
+            // Get all course IDs for this user/group
+            $g_courseids = array_keys($g->courses);
+            $g->activities_2 = $manager->get_quizzes_for_deadline($g_courseids, $g->next_due_date);
+        }
+
+        // Sort Categories: Category 1 first
+        uasort($g->categories, function($a, $b) {
+            $a_is_cat1 = strcasecmp($a, 'Category 1') === 0;
+            $b_is_cat1 = strcasecmp($b, 'Category 1') === 0;
+            if ($a_is_cat1 && !$b_is_cat1) return -1;
+            if (!$a_is_cat1 && $b_is_cat1) return 1;
+            return strcasecmp($a, $b);
+        });
+
+        // Sort Courses: Category 1 courses first
+        uasort($g->courses, function($a, $b) {
+            $a_cat1 = strcasecmp($a['category'], 'Category 1') === 0;
+            $b_cat1 = strcasecmp($b['category'], 'Category 1') === 0;
+            if ($a_cat1 && !$b_cat1) return -1;
+            if (!$a_cat1 && $b_cat1) return 1;
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        // Sort Activities 1: Category 1 activities first
+        usort($g->activities, function($a, $b) {
+            $a_cat1 = strcasecmp($a->category, 'Category 1') === 0;
+            $b_cat1 = strcasecmp($b->category, 'Category 1') === 0;
+            if ($a_cat1 && !$b_cat1) return -1;
+            if (!$a_cat1 && $b_cat1) return 1;
+            return strcasecmp($a->name, $b->name);
+        });
+    }
+
     $rows = array_values($grouped_rows);
 
 } else {
@@ -496,18 +543,20 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th>Name</th>
                     <th>ID</th>
                     <th>Email</th>
-                    <th>Due Date</th>
+                    <th>Due Date 1</th>
+                    <th>Due Date 2</th>
                     <th>Categories</th>
                     <th>Courses</th>
                     <!-- <th>Classifications</th> Removed -->
-                    <th>Activities</th>
+                    <th>Activities 1</th>
+                    <th>Activities 2</th>
                     <th>Status</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="10" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
+                    <tr><td colspan="13" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
@@ -522,13 +571,16 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td><?php echo s($row->email); ?></td>
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
                             <td>
+                                <?php echo !empty($row->next_due_date) ? userdate($row->next_due_date, get_string('strftimedate', 'langconfig')) : '-'; ?>
+                            </td>
+                            <td>
                                 <?php foreach ($row->categories as $cat): ?>
                                     <div class="mb-1"><span class="badge badge-primary text-white"><?php echo s($cat); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <td>
                                 <?php foreach ($row->courses as $c): ?>
-                                    <div class="mb-1"><span class="badge badge-info"><?php echo s($c); ?></span></div>
+                                    <div class="mb-1"><span class="badge badge-info"><?php echo s($c['name']); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <!-- Classifications column removed -->
@@ -579,6 +631,59 @@ if ($tab === 'snapshot' && $canmanage) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
+                            </td>
+                            <td>
+                                <!-- Activities 2 Column -->
+                                <?php if (!empty($row->activities_2)): ?>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown">
+                                        <?php echo count($row->activities_2); ?> Activities
+                                    </button>
+                                    <div class="dropdown-menu">
+                                        <?php 
+                                            // Group activities 2 by classification
+                                            $new_acts_2 = [];
+                                            $rev_acts_2 = [];
+                                            $other_acts_2 = [];
+                                            
+                                            foreach ($row->activities_2 as $act) {
+                                                if ($act->classification === 'New') {
+                                                    $new_acts_2[] = $act->name;
+                                                } elseif ($act->classification === 'Revision') {
+                                                    $rev_acts_2[] = $act->name;
+                                                } else {
+                                                    $other_acts_2[] = $act->name;
+                                                }
+                                            }
+                                        ?>
+                                        
+                                        <?php if (!empty($new_acts_2)): ?>
+                                            <h6 class="dropdown-header"><span class="hw-classification-badge hw-classification-new">New</span></h6>
+                                            <?php foreach ($new_acts_2 as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($rev_acts_2)): ?>
+                                            <?php if (!empty($new_acts_2)) echo '<div class="dropdown-divider"></div>'; ?>
+                                            <h6 class="dropdown-header"><span class="hw-classification-badge hw-classification-revision">Revision</span></h6>
+                                            <?php foreach ($rev_acts_2 as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($other_acts_2)): ?>
+                                            <?php if (!empty($new_acts_2) || !empty($rev_acts_2)) echo '<div class="dropdown-divider"></div>'; ?>
+                                            <h6 class="dropdown-header">Other</h6>
+                                            <?php foreach ($other_acts_2 as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
                             </td>
                             <td id="status-<?php echo $row->userid . '-' . $row->timeclose; ?>">
                                 <span class="badge badge-light">Not Sent</span>

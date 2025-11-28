@@ -422,6 +422,7 @@ class homework_manager {
                     s.quiztype,
                     s.computedat,
                     q.name      AS quizname,
+                    (SELECT MIN(q2.timeclose) FROM {quiz} q2 WHERE q2.course = s.courseid AND q2.timeclose > s.timeclose AND q2.timeclose > 0) AS next_due_date,
                     q.grade,
                     c.fullname  AS coursename,
                     cat.id      AS categoryid,
@@ -487,7 +488,7 @@ class homework_manager {
 
         if (!empty($userids)) {
             list($userinsql, $userparams) = $DB->get_in_or_equal($userids, \SQL_PARAMS_NAMED, 'u');
-            $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
+            $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname, email FROM {user} WHERE id $userinsql", $userparams);
         } else {
             $userrecs = [];
         }
@@ -501,6 +502,7 @@ class homework_manager {
             }
             $userdata = $userrecs[$uid] ?? null;
             $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
+            $email = $userdata ? $userdata->email : '';
 
             if ($studentname !== '' && $fullname !== $studentname) {
                 continue;
@@ -567,6 +569,7 @@ class homework_manager {
             $rows[] = (object) [
                 'userid'       => $uid,
                 'studentname'  => $fullname,
+                'email'        => $email,
                 'courseid'     => (int)$s->courseid,
                 'coursename'   => $s->coursename,
                 'categoryid'   => (int)$s->categoryid,
@@ -576,6 +579,7 @@ class homework_manager {
                 'sectionnumber'=> $s->sectionnumber,
                 'quizid'       => (int)$s->quizid,
                 'quizname'     => $s->quizname,
+                'next_due_date'=> $s->next_due_date,
                 'cmid'         => (int)$s->cmid_real,
                 'classification'=> $s->classification ?? '',
                 'lastattemptid'=> 0,
@@ -630,6 +634,7 @@ class homework_manager {
                     q.name     AS quizname,
                     q.course   AS courseid,
                     COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) AS timeclose,
+                    (SELECT MIN(q2.timeclose) FROM {quiz} q2 WHERE q2.course = q.course AND q2.timeclose > COALESCE(NULLIF(q.timeclose, 0), ev.eventclose) AND q2.timeclose > 0) AS next_due_date,
                     q.grade,
                     c.fullname AS coursename,
                     cat.id     AS categoryid,
@@ -873,6 +878,7 @@ class homework_manager {
                     'studentname'  => $fullname,
                     'email'        => $email,
                     'courseid'     => (int)$qrec->courseid,
+                    'next_due_date'=> $qrec->next_due_date,
                     'coursename'   => $qrec->coursename,
                     'categoryid'   => (int)$qrec->categoryid,
                     'categoryname' => $qrec->categoryname,
@@ -1368,5 +1374,41 @@ class homework_manager {
         
         $users = $DB->get_records_sql($sql);
         return $users;
+    }
+
+    /**
+     * Get quizzes for specific courses and deadline.
+     * Used for populating 'Activities 2' column.
+     */
+    public function get_quizzes_for_deadline(array $courseids, int $timeclose): array {
+        global $DB;
+
+        $courseids = array_filter($courseids, function($id) { return $id > 0; });
+        if (empty($courseids) || $timeclose <= 0) {
+            return [];
+        }
+
+        list($csql, $cparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'cid');
+        $params = array_merge($cparams, ['timeclose' => $timeclose]);
+
+        $sql = "SELECT q.id, q.name, cm.id AS cmid
+                  FROM {quiz} q
+                  JOIN {course_modules} cm ON cm.instance = q.id
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                  JOIN {course} c ON c.id = q.course
+                  JOIN {course_categories} cc ON cc.id = c.category
+                 WHERE q.course $csql
+                   AND q.timeclose = :timeclose
+                 ORDER BY CASE WHEN cc.name = 'Category 1' THEN 0 ELSE 1 END, q.name";
+
+        $quizzes = $DB->get_records_sql($sql, $params);
+        
+        $results = [];
+        foreach ($quizzes as $q) {
+            $q->classification = $this->get_activity_classification((int)$q->cmid) ?? 'New';
+            $results[] = $q;
+        }
+
+        return $results;
     }
 }
