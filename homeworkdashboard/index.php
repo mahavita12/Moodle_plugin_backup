@@ -202,7 +202,10 @@ if ($tab === "snapshot") {
                 'userid' => $r->userid,
                 'studentname' => $r->studentname,
                 'email' => $r->email,
+                'parent1' => $r->parent1,
+                'parent2' => $r->parent2,
                 'timeclose' => $r->timeclose,
+                'reportid' => $DB->get_field('local_homework_reports', 'id', ['userid' => $r->userid, 'timeclose' => $r->timeclose]),
                 'next_due_date' => null,
                 'courses' => [],
                 'categories' => [],
@@ -543,6 +546,8 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th>Name</th>
                     <th>ID</th>
                     <th>Email</th>
+                    <th>Parent 1</th>
+                    <th>Parent 2</th>
                     <th>Due Date 1</th>
                     <th>Due Date 2</th>
                     <th>Categories</th>
@@ -551,12 +556,11 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th>Activities 1</th>
                     <th>Activities 2</th>
                     <th>Status</th>
-                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="13" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
+                    <tr><td colspan="14" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
@@ -569,6 +573,38 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td><?php echo s($row->studentname); ?></td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <td><?php echo s($row->email); ?></td>
+                            <td>
+                                <?php if (!empty($row->parent1) && !empty($row->parent1->name)): ?>
+                                    <div><?php echo s($row->parent1->name); ?></div>
+                                    <?php if (!empty($row->parent1->email)): ?>
+                                        <div><a href="mailto:<?php echo s($row->parent1->email); ?>"><?php echo s($row->parent1->email); ?></a></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row->parent1->phone)): ?>
+                                        <div><?php echo s($row->parent1->phone); ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row->parent1->lang)): ?>
+                                        <div><?php echo s($row->parent1->lang); ?></div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if (!empty($row->parent2) && !empty($row->parent2->name)): ?>
+                                    <div><?php echo s($row->parent2->name); ?></div>
+                                    <?php if (!empty($row->parent2->email)): ?>
+                                        <div><a href="mailto:<?php echo s($row->parent2->email); ?>"><?php echo s($row->parent2->email); ?></a></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row->parent2->phone)): ?>
+                                        <div><?php echo s($row->parent2->phone); ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row->parent2->lang)): ?>
+                                        <div><?php echo s($row->parent2->lang); ?></div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
                             <td>
                                 <?php echo !empty($row->next_due_date) ? userdate($row->next_due_date, get_string('strftimedate', 'langconfig')) : '-'; ?>
@@ -686,16 +722,11 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <?php endif; ?>
                             </td>
                             <td id="status-<?php echo $row->userid . '-' . $row->timeclose; ?>">
-                                <span class="badge badge-light">Not Sent</span>
-                            </td>
-                            <td>
-                                <button class="btn btn-primary btn-sm send-report-btn" 
-                                        data-userid="<?php echo $row->userid; ?>" 
-                                        data-duedate="<?php echo $row->timeclose; ?>"
-                                        data-studentname="<?php echo s($row->studentname); ?>"
-                                        data-date="<?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?>">
-                                    Send Report
-                                </button>
+                                <?php if (!empty($row->reportid)): ?>
+                                    <a href="view_report.php?id=<?php echo $row->reportid; ?>" class="btn btn-info btn-sm" target="_blank">View</a>
+                                <?php else: ?>
+                                    <span class="badge badge-light">Not Sent</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -705,7 +736,73 @@ if ($tab === 'snapshot' && $canmanage) {
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Individual Send
+        // Bulk Actions
+        document.getElementById('bulk-action-btn').addEventListener('click', function() {
+            var action = document.getElementById('bulk-action-select').value;
+            if (action === 'sendreport') {
+                var selected = [];
+                document.querySelectorAll('.report-checkbox:checked').forEach(function(cb) {
+                    selected.push({
+                        userid: cb.dataset.userid,
+                        timeclose: cb.dataset.duedate
+                    });
+                });
+
+                if (selected.length === 0) {
+                    alert('Please select at least one student.');
+                    return;
+                }
+
+                if (!confirm('Send report for ' + selected.length + ' students?')) {
+                    return;
+                }
+
+                // Process sequentially to avoid overwhelming server
+                var processQueue = function(index) {
+                    if (index >= selected.length) {
+                        alert('Reports sent successfully.');
+                        location.reload();
+                        return;
+                    }
+
+                    var item = selected[index];
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', 'ajax_send_report.php', true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.onreadystatechange = function() {
+                        if (xhr.readyState === 4) {
+                            if (xhr.status === 200) {
+                                try {
+                                    var resp = JSON.parse(xhr.responseText);
+                                    if (resp.status === 'success') {
+                                        // Update UI row status if possible, or just continue
+                                        console.log('Success for ' + item.userid);
+                                    } else {
+                                        console.error('Error for ' + item.userid + ': ' + resp.message);
+                                    }
+                                } catch (e) {
+                                    console.error('Invalid response for ' + item.userid);
+                                }
+                            }
+                            processQueue(index + 1);
+                        }
+                    };
+                    xhr.send('userid=' + item.userid + '&timeclose=' + item.timeclose);
+                };
+
+                processQueue(0);
+            }
+        });
+
+        // Select All
+        document.getElementById('select-all-reports').addEventListener('change', function() {
+            var checked = this.checked;
+            document.querySelectorAll('.report-checkbox').forEach(function(cb) {
+                cb.checked = checked;
+            });
+        });
+
+        // Individual Send (Legacy/Removed but keeping script structure clean)
         document.querySelectorAll('.send-report-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var userid = this.getAttribute('data-userid');

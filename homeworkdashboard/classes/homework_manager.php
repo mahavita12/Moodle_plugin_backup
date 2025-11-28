@@ -489,8 +489,10 @@ class homework_manager {
         if (!empty($userids)) {
             list($userinsql, $userparams) = $DB->get_in_or_equal($userids, \SQL_PARAMS_NAMED, 'u');
             $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname, email FROM {user} WHERE id $userinsql", $userparams);
+            $parentinfo = $this->get_users_parent_info($userids);
         } else {
             $userrecs = [];
+            $parentinfo = [];
         }
 
         $rows = [];
@@ -503,6 +505,7 @@ class homework_manager {
             $userdata = $userrecs[$uid] ?? null;
             $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
             $email = $userdata ? $userdata->email : '';
+            $pinfo = $parentinfo[$uid] ?? null;
 
             if ($studentname !== '' && $fullname !== $studentname) {
                 continue;
@@ -570,6 +573,8 @@ class homework_manager {
                 'userid'       => $uid,
                 'studentname'  => $fullname,
                 'email'        => $email,
+                'parent1'      => $pinfo ? (object)['name' => $pinfo->p1_name, 'email' => $pinfo->p1_email, 'phone' => $pinfo->p1_phone, 'lang' => $pinfo->p1_lang] : null,
+                'parent2'      => $pinfo ? (object)['name' => $pinfo->p2_name, 'email' => $pinfo->p2_email, 'phone' => $pinfo->p2_phone, 'lang' => $pinfo->p2_lang] : null,
                 'courseid'     => (int)$s->courseid,
                 'coursename'   => $s->coursename,
                 'categoryid'   => (int)$s->categoryid,
@@ -1410,5 +1415,58 @@ class homework_manager {
         }
 
         return $results;
+    }
+
+    /**
+     * Get parent info (Name, Email, Phone, Language) for a list of users.
+     */
+    public function get_users_parent_info(array $userids): array {
+        global $DB;
+
+        $userids = array_filter($userids, function($id) { return $id > 0; });
+        if (empty($userids)) {
+            return [];
+        }
+
+        // Define the fields we want
+        $fields = [
+            'parent1name' => 'p1_name',
+            'parent1pmail' => 'p1_email',
+            'parent1phone' => 'p1_phone',
+            'P1_language' => 'p1_lang',
+            'parent2name' => 'p2_name',
+            'parent2email' => 'p2_email',
+            'parent2phone' => 'p2_phone',
+            'P2_language' => 'p2_lang'
+        ];
+
+        list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+        list($fsql, $fparams) = $DB->get_in_or_equal(array_keys($fields), SQL_PARAMS_NAMED, 'sn');
+
+        $sql = "SELECT d.id, d.userid, f.shortname, d.data
+                  FROM {user_info_data} d
+                  JOIN {user_info_field} f ON f.id = d.fieldid
+                 WHERE d.userid $usql
+                   AND f.shortname $fsql";
+        
+        $params = array_merge($uparams, $fparams);
+        $records = $DB->get_records_sql($sql, $params);
+
+        $info = [];
+        foreach ($userids as $uid) {
+            $info[$uid] = (object)[
+                'p1_name' => '', 'p1_email' => '', 'p1_phone' => '', 'p1_lang' => '',
+                'p2_name' => '', 'p2_email' => '', 'p2_phone' => '', 'p2_lang' => ''
+            ];
+        }
+
+        foreach ($records as $r) {
+            if (isset($info[$r->userid]) && isset($fields[$r->shortname])) {
+                $prop = $fields[$r->shortname];
+                $info[$r->userid]->$prop = $r->data;
+            }
+        }
+
+        return $info;
     }
 }

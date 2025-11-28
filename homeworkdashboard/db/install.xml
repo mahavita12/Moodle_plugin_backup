@@ -33,5 +33,21 @@
         <INDEX NAME="quizid_idx" UNIQUE="false" FIELDS="quizid"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="local_homework_reports" COMMENT="Stores generated homework reports">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timeclose" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Due date timestamp, acts as report context"/>
+        <FIELD NAME="subject" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="content" TYPE="text" LENGTH="big" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid_timeclose_idx" UNIQUE="false" FIELDS="userid, timeclose"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>
