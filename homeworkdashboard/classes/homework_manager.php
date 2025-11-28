@@ -1330,4 +1330,41 @@ class homework_manager {
 
         return $updated;
     }
+    /**
+     * Get all distinct due dates (timeclose) from quizzes and events.
+     * Used for populating the Reports tab filter.
+     */
+    public function get_all_distinct_due_dates(): array {
+        global $DB;
+
+        // Get quiz due dates
+        $sql = "SELECT DISTINCT timeclose FROM {quiz} WHERE timeclose > 0 ORDER BY timeclose DESC";
+        $quizdates = $DB->get_fieldset_sql($sql);
+        
+        $dates = [];
+        foreach ($quizdates as $timestamp) {
+            $dates[$timestamp] = (object)[
+                'timestamp' => $timestamp,
+                'formatted' => userdate($timestamp, get_string('strftimedatetime', 'langconfig')),
+            ];
+        }
+        
+        return $dates;
+    }
+
+    /**
+     * Get all students who have attempted at least one quiz.
+     */
+    public function get_all_students_with_homework(): array {
+        global $DB;
+        
+        $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.email
+                FROM {user} u
+                JOIN {quiz_attempts} qa ON qa.userid = u.id
+                WHERE u.deleted = 0
+                ORDER BY u.lastname, u.firstname";
+        
+        $users = $DB->get_records_sql($sql);
+        return $users;
+    }
 }

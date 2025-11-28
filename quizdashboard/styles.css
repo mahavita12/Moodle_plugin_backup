@@ -98,3 +98,12 @@
 .qd-action-icon i {
     margin: 0;
 }
+
+/* Custom Table Header Color */
+.dashboard-table thead th,
+.dashboard-table thead.thead-dark th,
+table.generaltable thead th {
+    background-color: #003366 !important; /* Dark Blue */
+    color: #ffffff !important;
+    border-color: #00284d !important;
+}

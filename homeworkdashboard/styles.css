@@ -238,3 +238,17 @@
     min-width: 250px;
     width: auto;
 }
+/* Custom Table Header Color */
+.dashboard-table thead th,
+.dashboard-table thead.thead-dark th {
+    background-color: #003366 !important; /* Dark Blue */
+    color: #ffffff;
+    border-color: #00284d;
+}
+
+/* Ensure standard tables also get the color */
+table.generaltable thead th {
+    background-color: #003366 !important;
+    color: #ffffff !important;
+    border-color: #00284d !important;
+}

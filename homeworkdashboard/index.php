@@ -163,10 +163,18 @@ if ($tab === "snapshot") {
     );
 } elseif ($tab === "reports" && $canmanage) {
     // Reports Tab Logic
-    $report_start = optional_param('report_start', strtotime('-7 days', time()), PARAM_INT);
-    $report_end   = optional_param('report_end', time(), PARAM_INT);
+    $report_duedates = optional_param_array('report_duedates', [], PARAM_INT);
+    $report_duedates = array_filter($report_duedates, function($d) { return $d > 0; });
+
+    $customstart = 0;
+    $customend = 0;
     
-    // Fetch all homework in range (past and future)
+    // If no due dates selected, default to last 30 days to future
+    if (empty($report_duedates)) {
+        $customstart = strtotime('-30 days');
+        $customend = strtotime('+30 days'); 
+    }
+
     $raw_rows = $manager->get_live_homework_rows(
         $categoryid,
         $courseids,
@@ -181,11 +189,12 @@ if ($tab === "snapshot") {
         'timeclose', // Default sort by date
         'DESC',
         $excludestaff,
-        [], // No specific due dates
-        $report_start,
-        $report_end,
+        $report_duedates, // Pass selected due dates
+        $customstart,
+        $customend,
         true // Include past
     );
+    error_log("HM_DEBUG: Raw Rows Count: " . count($raw_rows));
 
     // Group by Student + Due Date
     $grouped_rows = [];
@@ -198,22 +207,23 @@ if ($tab === "snapshot") {
                 'timeclose' => $r->timeclose,
                 'courses' => [],
                 'categories' => [],
-                'classifications' => [],
+                // 'classifications' => [], // Removed column
                 'activities' => [],
                 'status' => 'Not Sent', // Placeholder
             ];
         }
         $grouped_rows[$key]->courses[$r->courseid] = $r->coursename;
         $grouped_rows[$key]->categories[$r->categoryid] = $r->categoryname;
-        if (!empty($r->classification)) {
-            $grouped_rows[$key]->classifications[$r->classification] = $r->classification;
-        }
-        $grouped_rows[$key]->activities[] = $r->quizname;
+        // Store activity with classification
+        $grouped_rows[$key]->activities[] = (object)[
+            'name' => $r->quizname,
+            'classification' => $r->classification
+        ];
     }
     $rows = array_values($grouped_rows);
-    
-    // Sort logic for grouped rows could be added here if needed
+
 } else {
+    // Live Tab Logic
     $rows = $manager->get_live_homework_rows(
         $categoryid,
         $courseids,
@@ -235,7 +245,6 @@ if ($tab === "snapshot") {
 // Populate filters based on returned data
 $uniquesections = [];
 $uniquequizzes = [];
-// $uniqueusers = []; // Populated via context now
 $uniqueuserids = [];
 $uniqueduedates = [];
 
@@ -246,10 +255,6 @@ foreach ($rows as $r) {
     if (!empty($r->quizid)) {
         $uniquequizzes[$r->quizid] = (object)['id' => $r->quizid, 'name' => $r->quizname];
     }
-    // if (!empty($r->userid)) {
-    //     $uniqueusers[$r->userid] = (object)['id' => $r->userid, 'fullname' => $r->studentname];
-    //     $uniqueuserids[$r->userid] = true;
-    // }
     if (!empty($r->timeclose)) {
         $duedatekey = $r->timeclose;
         if (!isset($uniqueduedates[$duedatekey])) {
@@ -339,108 +344,108 @@ if ($tab === 'snapshot' && $canmanage) {
                 <input type="hidden" name="filtersubmitted" value="1">
                 
                 <div class="filter-row">
-                    <div class="filter-group">
-                        <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
-                        <select name="categoryid" id="categoryid">
-                            <option value="0"><?php echo get_string('all'); ?></option>
-                            <?php foreach ($categories as $cat): ?>
-                                <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
-                                    <?php echo format_string($cat->name); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
-                        <select name="courseid[]" id="courseid" multiple="multiple">
-                            <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
-                            <?php foreach ($courses as $c): ?>
-                                <option value="<?php echo (int)$c->id; ?>" <?php echo in_array((int)$c->id, $courseids) ? 'selected' : ''; ?>>
-                                    <?php echo format_string($c->fullname); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                    <?php if ($tab !== 'reports'): ?>
+                        <div class="filter-group">
+                            <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
+                            <select name="categoryid" id="categoryid">
+                                <option value="0"><?php echo get_string('all'); ?></option>
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                        <?php echo format_string($cat->name); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
+                            <select name="courseid[]" id="courseid" multiple="multiple">
+                                <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
+                                <?php foreach ($courses as $c): ?>
+                                    <option value="<?php echo (int)$c->id; ?>" <?php echo in_array((int)$c->id, $courseids) ? 'selected' : ''; ?>>
+                                        <?php echo format_string($c->fullname); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                    <div class="filter-group">
-                        <label for="sectionid">Section</label>
-                        <select name="sectionid" id="sectionid">
-                            <option value="0"><?php echo get_string('all'); ?></option>
-                            <?php foreach ($uniquesections as $s): ?>
-                                <option value="<?php echo (int)$s->id; ?>" <?php echo ((int)$sectionid === (int)$s->id) ? 'selected' : ''; ?>>
-                                    <?php echo format_string(trim($s->coursename . ' ' . ($s->name ?? ''))); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                        <div class="filter-group">
+                            <label for="sectionid">Section</label>
+                            <select name="sectionid" id="sectionid">
+                                <option value="0"><?php echo get_string('all'); ?></option>
+                                <?php foreach ($uniquesections as $s): ?>
+                                    <option value="<?php echo (int)$s->id; ?>" <?php echo ((int)$sectionid === (int)$s->id) ? 'selected' : ''; ?>>
+                                        <?php echo format_string(trim($s->coursename . ' ' . ($s->name ?? ''))); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                    <div class="filter-group">
-                        <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
-                        <select name="quizid[]" id="quizid" multiple="multiple">
-                            <option value="0"><?php echo get_string('all'); ?></option>
-                            <?php foreach ($uniquequizzes as $q): ?>
-                                <option value="<?php echo (int)$q->id; ?>" <?php echo in_array((int)$q->id, $quizids) ? 'selected' : ''; ?>>
-                                    <?php echo format_string($q->name); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                        <div class="filter-group">
+                            <label for="quizid"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?></label>
+                            <select name="quizid[]" id="quizid" multiple="multiple">
+                                <option value="0"><?php echo get_string('all'); ?></option>
+                                <?php foreach ($uniquequizzes as $q): ?>
+                                    <option value="<?php echo (int)$q->id; ?>" <?php echo in_array((int)$q->id, $quizids) ? 'selected' : ''; ?>>
+                                        <?php echo format_string($q->name); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                    <div class="filter-group">
-                        <label for="classification"><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></label>
-                        <select name="classification" id="classification">
-                            <option value=""><?php echo get_string('all'); ?></option>
-                            <option value="New" <?php echo $classfilter === 'New' ? 'selected' : ''; ?>><?php echo get_string('classification_new', 'local_homeworkdashboard'); ?></option>
-                            <option value="Revision" <?php echo $classfilter === 'Revision' ? 'selected' : ''; ?>><?php echo get_string('classification_revision', 'local_homeworkdashboard'); ?></option>
-                        </select>
-                    </div>
+                        <div class="filter-group">
+                            <label for="classification"><?php echo get_string('filterclassification', 'local_homeworkdashboard'); ?></label>
+                            <select name="classification" id="classification">
+                                <option value=""><?php echo get_string('all'); ?></option>
+                                <option value="New" <?php echo $classfilter === 'New' ? 'selected' : ''; ?>><?php echo get_string('classification_new', 'local_homeworkdashboard'); ?></option>
+                                <option value="Revision" <?php echo $classfilter === 'Revision' ? 'selected' : ''; ?>><?php echo get_string('classification_revision', 'local_homeworkdashboard'); ?></option>
+                            </select>
+                        </div>
 
-                    <div class="filter-group">
-                        <label for="quiztype"><?php echo get_string('quiztype', 'local_homeworkdashboard'); ?></label>
-                        <select name="quiztype" id="quiztype">
-                            <option value=""><?php echo get_string('all'); ?></option>
-                            <option value="Essay" <?php echo $quiztypefilter === 'Essay' ? 'selected' : ''; ?>>Essay</option>
-                            <option value="Non-Essay" <?php echo $quiztypefilter === 'Non-Essay' ? 'selected' : ''; ?>>Non-Essay</option>
-                        </select>
-                    </div>
-                    <?php if ($canmanage): ?>
-                    <div class="filter-group">
-                        <label for="studentname"><?php echo get_string("user"); ?></label>
-                        <select name="userid[]" id="studentname" multiple="multiple">
-                            <option value="0"><?php echo get_string("all"); ?></option>
-                            <?php foreach ($uniqueusers as $u): ?>
-                                <option value="<?php echo (int)$u->id; ?>" <?php echo in_array((int)$u->id, $userids) ? "selected" : ""; ?>>
-                                    <?php echo s($u->fullname); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                        <div class="filter-group">
+                            <label for="duedate">Due date</label>
+                            <select name="duedate[]" id="duedate" multiple="multiple">
+                                <option value="0"><?php echo get_string("all"); ?></option>
+                                <?php foreach ($uniqueduedates as $dd): ?>
+                                    <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo in_array((int)$dd->timestamp, $duedates) ? "selected" : ""; ?>>
+                                        <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     <?php endif; ?>
 
+                    <?php if ($tab === 'reports' && $canmanage): ?>
+                        <div class="filter-group">
+                            <label for="studentname"><?php echo get_string("user"); ?></label>
+                            <select name="userid[]" id="studentname" multiple="multiple">
+                                <option value="0"><?php echo get_string("all"); ?></option>
+                                <?php
+                                // Populate students independently for Reports tab
+                                $report_students = $manager->get_all_students_with_homework();
+                                foreach ($report_students as $u): ?>
+                                    <option value="<?php echo (int)$u->id; ?>" <?php echo in_array((int)$u->id, $userids) ? "selected" : ""; ?>>
+                                        <?php echo s(fullname($u)); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-
-                    <div class="filter-group">
-                        <label for="status"><?php echo get_string('status'); ?></label>
-                        <select name="status" id="status">
-                            <option value=""><?php echo get_string('all'); ?></option>
-                            <option value="Completed" <?php echo $statusfilter === 'Completed' ? 'selected' : ''; ?>><?php echo get_string('badge_completed', 'local_homeworkdashboard'); ?></option>
-                            <option value="Low grade" <?php echo $statusfilter === 'Low grade' ? 'selected' : ''; ?>><?php echo get_string('badge_lowgrade', 'local_homeworkdashboard'); ?></option>
-                            <option value="No attempt" <?php echo $statusfilter === 'No attempt' ? 'selected' : ''; ?>><?php echo get_string('badge_noattempt', 'local_homeworkdashboard'); ?></option>
-                        </select>
-                    </div>
-
-                    <!-- Week filter removed -->
-                    <div class="filter-group">
-                        <label for="duedate">Due date</label>
-                        <select name="duedate[]" id="duedate" multiple="multiple">
-                            <option value="0"><?php echo get_string("all"); ?></option>
-                            <?php foreach ($uniqueduedates as $dd): ?>
-                                <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo in_array((int)$dd->timestamp, $duedates) ? "selected" : ""; ?>>
-                                    <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                        <div class="filter-group">
+                            <label for="report_duedates">Due Date:</label>
+                            <select name="report_duedates[]" id="report_duedates" multiple="multiple">
+                                <option value="0"><?php echo get_string("all"); ?></option>
+                                <?php
+                                // Populate due dates independently
+                                $all_due_dates = $manager->get_all_distinct_due_dates();
+                                $selected_duedates = optional_param_array('report_duedates', [], PARAM_INT);
+                                foreach ($all_due_dates as $dd): ?>
+                                    <option value="<?php echo $dd->timestamp; ?>" <?php echo in_array($dd->timestamp, $selected_duedates) ? "selected" : ""; ?>>
+                                        <?php echo $dd->formatted; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php endif; ?>
 
                     <?php if ($canmanage): ?>
                     <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
@@ -454,35 +459,6 @@ if ($tab === 'snapshot' && $canmanage) {
                         <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => $tab]))->out(false); ?>" class="btn btn-secondary">Reset</a>
                     </div>
                 </div>
-                
-                <?php if ($tab === 'reports'): ?>
-                <div class="filter-row" style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
-                    <div class="filter-group">
-                        <label>Report Range:</label>
-                        <input type="date" name="report_start_date" value="<?php echo date('Y-m-d', $report_start); ?>" onchange="updateTimestamp(this, 'report_start')">
-                        <input type="hidden" name="report_start" id="report_start" value="<?php echo $report_start; ?>">
-                        <span>to</span>
-                        <input type="date" name="report_end_date" value="<?php echo date('Y-m-d', $report_end); ?>" onchange="updateTimestamp(this, 'report_end')">
-                        <input type="hidden" name="report_end" id="report_end" value="<?php echo $report_end; ?>">
-                    </div>
-                    <script>
-                        function updateTimestamp(input, targetId) {
-                            var date = new Date(input.value);
-                            // Set to midnight or end of day? 
-                            // For start date: midnight. For end date: 23:59:59?
-                            // Simple approach: just timestamp of the date string (midnight UTC usually in JS, but we need server time compatibility)
-                            // Better: let PHP handle the string to timestamp conversion?
-                            // Actually, let's just submit the date string and handle it in PHP if possible, 
-                            // but existing code uses ints.
-                            // Let's just use the date string in the form and convert in PHP.
-                            // But I already wrote the PHP to expect ints.
-                            // Let's change the PHP to accept date strings if I can.
-                            // Or just use a simple JS conversion.
-                            // Assuming local browser time is roughly same as server for now, or just send Y-m-d and parse in PHP.
-                        }
-                    </script>
-                </div>
-                <?php endif; ?>
             </form>
         </div>
 
@@ -503,15 +479,25 @@ if ($tab === 'snapshot' && $canmanage) {
     <?php if ($tab === 'reports' && $canmanage): ?>
     <!-- REPORTS TABLE -->
     <div class="dashboard-table-wrapper">
-        <table class="dashboard-table table table-striped">
+        <!-- Bulk Actions -->
+        <div class="bulk-actions-container" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+            <select id="bulk-action-select" class="custom-select" style="width: auto;">
+                <option value="">With selected...</option>
+                <option value="sendreport">Send Report</option>
+            </select>
+            <button id="bulk-action-btn" class="btn btn-primary">Apply</button>
+        </div>
+
+        <table class="dashboard-table table table-striped" id="reports-table">
             <thead class="thead-dark">
                 <tr>
+                    <th style="width: 40px;"><input type="checkbox" id="select-all-reports"></th>
                     <th>Student Name</th>
                     <th>ID</th>
                     <th>Due Date</th>
                     <th>Categories</th>
                     <th>Courses</th>
-                    <th>Classifications</th>
+                    <!-- <th>Classifications</th> Removed -->
                     <th>Activities</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -523,6 +509,12 @@ if ($tab === 'snapshot' && $canmanage) {
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
+                            <td>
+                                <input type="checkbox" class="report-checkbox" 
+                                       data-userid="<?php echo $row->userid; ?>" 
+                                       data-duedate="<?php echo $row->timeclose; ?>"
+                                       data-studentname="<?php echo s($row->studentname); ?>">
+                            </td>
                             <td><?php echo s($row->studentname); ?></td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
@@ -536,23 +528,52 @@ if ($tab === 'snapshot' && $canmanage) {
                                     <span class="badge badge-info"><?php echo s($c); ?></span>
                                 <?php endforeach; ?>
                             </td>
-                            <td>
-                                <?php foreach ($row->classifications as $cls): ?>
-                                    <?php 
-                                        $clsclass = ($cls === 'New') ? 'hw-classification-new' : 'hw-classification-revision';
-                                    ?>
-                                    <span class="hw-classification-badge <?php echo $clsclass; ?>"><?php echo s($cls); ?></span>
-                                <?php endforeach; ?>
-                            </td>
+                            <!-- Classifications column removed -->
                             <td>
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown">
                                         <?php echo count($row->activities); ?> Activities
                                     </button>
                                     <div class="dropdown-menu">
-                                        <?php foreach ($row->activities as $act): ?>
-                                            <a class="dropdown-item" href="#"><?php echo s($act); ?></a>
-                                        <?php endforeach; ?>
+                                        <?php 
+                                            // Group activities by classification
+                                            $new_acts = [];
+                                            $rev_acts = [];
+                                            $other_acts = [];
+                                            
+                                            foreach ($row->activities as $act) {
+                                                if ($act->classification === 'New') {
+                                                    $new_acts[] = $act->name;
+                                                } elseif ($act->classification === 'Revision') {
+                                                    $rev_acts[] = $act->name;
+                                                } else {
+                                                    $other_acts[] = $act->name;
+                                                }
+                                            }
+                                        ?>
+                                        
+                                        <?php if (!empty($new_acts)): ?>
+                                            <h6 class="dropdown-header">New</h6>
+                                            <?php foreach ($new_acts as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($rev_acts)): ?>
+                                            <?php if (!empty($new_acts)) echo '<div class="dropdown-divider"></div>'; ?>
+                                            <h6 class="dropdown-header">Revision</h6>
+                                            <?php foreach ($rev_acts as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+
+                                        <?php if (!empty($other_acts)): ?>
+                                            <?php if (!empty($new_acts) || !empty($rev_acts)) echo '<div class="dropdown-divider"></div>'; ?>
+                                            <h6 class="dropdown-header">Other</h6>
+                                            <?php foreach ($other_acts as $aname): ?>
+                                                <a class="dropdown-item" href="#"><?php echo s($aname); ?></a>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </td>
@@ -576,6 +597,7 @@ if ($tab === 'snapshot' && $canmanage) {
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Individual Send
         document.querySelectorAll('.send-report-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var userid = this.getAttribute('data-userid');
@@ -584,37 +606,117 @@ if ($tab === 'snapshot' && $canmanage) {
                 var dateStr = this.getAttribute('data-date');
                 
                 if (confirm('Send homework report for ' + studentname + ' due on ' + dateStr + '?')) {
-                    var statusCell = document.getElementById('status-' + userid + '-' + duedate);
-                    statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
-                    
-                    // AJAX call
-                    var xhr = new XMLHttpRequest();
-                    xhr.open('POST', 'ajax.php', true);
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    xhr.onload = function() {
-                        if (xhr.status === 200) {
-                            try {
-                                var resp = JSON.parse(xhr.responseText);
-                                if (resp.success) {
-                                    statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
-                                    alert(resp.message);
-                                } else {
-                                    statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                                    alert('Error: ' + resp.message);
-                                }
-                            } catch (e) {
-                                statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                                alert('Invalid response from server.');
-                            }
-                        } else {
-                            statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                            alert('Request failed.');
-                        }
-                    };
-                    xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
+                    sendReport(userid, duedate, studentname);
                 }
             });
         });
+
+        // Select All
+        var selectAll = document.getElementById('select-all-reports');
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                var checkboxes = document.querySelectorAll('.report-checkbox');
+                for (var i = 0; i < checkboxes.length; i++) {
+                    checkboxes[i].checked = this.checked;
+                }
+            });
+        }
+
+        // Bulk Action
+        var bulkBtn = document.getElementById('bulk-action-btn');
+        if (bulkBtn) {
+            bulkBtn.addEventListener('click', function() {
+                var action = document.getElementById('bulk-action-select').value;
+                if (!action) {
+                    alert('Please select an action.');
+                    return;
+                }
+                if (action === 'sendreport') {
+                    var selected = document.querySelectorAll('.report-checkbox:checked');
+                    if (selected.length === 0) {
+                        alert('No students selected.');
+                        return;
+                    }
+                    if (confirm('Send reports to ' + selected.length + ' students?')) {
+                        // Process sequentially to avoid overwhelming server or hitting limits
+                        // Or use a bulk endpoint. Let's use sequential for now for better UI feedback.
+                        processBulkQueue(Array.from(selected), 0);
+                    }
+                }
+            });
+        }
+
+        function processBulkQueue(items, index) {
+            if (index >= items.length) {
+                alert('Bulk processing complete.');
+                return;
+            }
+            var item = items[index];
+            var userid = item.getAttribute('data-userid');
+            var duedate = item.getAttribute('data-duedate');
+            var studentname = item.getAttribute('data-studentname');
+            
+            // Update status to 'Sending...'
+            var statusCell = document.getElementById('status-' + userid + '-' + duedate);
+            if (statusCell) statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'ajax.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.success) {
+                            if (statusCell) statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
+                        } else {
+                            if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                        }
+                    } catch (e) {
+                        if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                    }
+                } else {
+                    if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                }
+                // Next item
+                processBulkQueue(items, index + 1);
+            };
+            xhr.onerror = function() {
+                 if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                 processBulkQueue(items, index + 1);
+            };
+            xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
+        }
+
+        function sendReport(userid, duedate, studentname) {
+            var statusCell = document.getElementById('status-' + userid + '-' + duedate);
+            statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'ajax.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        var resp = JSON.parse(xhr.responseText);
+                        if (resp.success) {
+                            statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
+                            alert(resp.message);
+                        } else {
+                            statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                            alert('Error: ' + resp.message);
+                        }
+                    } catch (e) {
+                        statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                        alert('Invalid response from server.');
+                    }
+                } else {
+                    statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
+                    alert('Request failed.');
+                }
+            };
+            xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
+        }
     });
     </script>
     
@@ -953,6 +1055,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         Autocomplete.enhance('#studentname', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
         Autocomplete.enhance('#duedate', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
+        
+        // Enhance Reports Tab Due Date
+        Autocomplete.enhance('#report_duedates', false, false, "<?php echo get_string('all'); ?>", false, true, "<?php echo get_string('noselection', 'form'); ?>");
     });
 });
 </script>
