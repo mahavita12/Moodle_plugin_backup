@@ -465,7 +465,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         </div>
                     <?php endif; ?>
 
-                    <?php if ($tab === 'reports' && $canmanage): ?>
+                    <?php if ($canmanage): ?>
                         <div class="filter-group">
                             <label for="studentname"><?php echo get_string("user"); ?></label>
                             <select name="userid[]" id="studentname" multiple="multiple">

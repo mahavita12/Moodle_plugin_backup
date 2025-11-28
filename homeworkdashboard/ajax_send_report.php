@@ -15,10 +15,6 @@ $manager = new \local_homeworkdashboard\homework_manager();
 
 // Check if report already exists
 $existing = $DB->get_record('local_homework_reports', ['userid' => $userid, 'timeclose' => $timeclose]);
-if ($existing) {
-    echo json_encode(['status' => 'success', 'message' => 'Report already exists']);
-    die;
-}
 
 // Fetch Data
 // 1. User Info & Parents
@@ -95,16 +91,85 @@ if (!empty($row->next_due_date)) {
 }
 
 // Generate HTML
-$html = '<h2>Homework Report</h2>';
-$html .= '<p><strong>Student:</strong> ' . fullname($user) . '</p>';
-$html .= '<p><strong>Due Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>';
+$html = '
+<style>
+    .report-table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+    .report-table th, .report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    .report-table th { background-color: #f2f2f2; font-weight: bold; }
+    .status-badge { padding: 2px 6px; border-radius: 4px; color: white; font-size: 10px; }
+    .status-done { background-color: #28a745; }
+    .status-todo { background-color: #dc3545; }
+    .status-submitted { background-color: #ffc107; color: black; }
+    .classification-new { background-color: #17a2b8; color: white; padding: 2px 4px; border-radius: 2px; }
+    .classification-revision { background-color: #ffc107; color: black; padding: 2px 4px; border-radius: 2px; }
+</style>
 
-$html .= '<h3>Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h3>';
-$html .= '<ul>';
-foreach ($activities1 as $act) {
-    $html .= '<li>' . s($act->name) . ' (' . s($act->category) . ')</li>';
+<h2>Homework Report</h2>
+<p><strong>Student:</strong> ' . fullname($user) . '</p>
+<p><strong>Due Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
+
+<h3>Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h3>
+<table class="report-table">
+    <thead>
+        <tr>
+            <th>Full Name</th>
+            <th>Course</th>
+            <th>Quiz</th>
+            <th>Status</th>
+            <th>Attempt #</th>
+            <th>Classification</th>
+            <th>Quiz Type</th>
+            <th>Due Date</th>
+            <th>Finished</th>
+            <th>Duration</th>
+            <th>Score</th>
+            <th>%</th>
+        </tr>
+    </thead>
+    <tbody>';
+
+// We need full details for Activities 1.
+// $rows contains the snapshot data for this user and date.
+foreach ($rows as $idx => $r) {
+    $statusClass = 'status-todo';
+    $statusLabel = 'To do';
+    if ($r->status == 'completed') {
+        $statusClass = 'status-done';
+        $statusLabel = 'Done';
+    } elseif ($r->status == 'submitted') {
+        $statusClass = 'status-submitted';
+        $statusLabel = 'Submitted';
+    }
+
+    $classLabel = $r->classification ?? '';
+    $classStyle = '';
+    if (strtolower($classLabel) === 'new') $classStyle = 'classification-new';
+    if (strtolower($classLabel) === 'revision') $classStyle = 'classification-revision';
+
+    $finished = $r->timefinish > 0 ? userdate($r->timefinish, get_string('strftimedatetime', 'langconfig')) : '-';
+    $duration = '-'; // Not available in snapshot currently
+    $score = $r->score !== '' ? $r->score . ' / ' . $r->maxscore : '-';
+    $percent = $r->percentage !== '' ? $r->percentage . '%' : '-';
+    $attemptno = isset($r->attemptno) ? $r->attemptno : (is_numeric($r->attempts) ? $r->attempts : 0);
+
+    $html .= '
+        <tr>
+            <td>' . s($r->studentname) . '</td>
+            <td>' . s($r->coursename) . '</td>
+            <td>' . s($r->quizname) . '</td>
+            <td><span class="status-badge ' . $statusClass . '">' . $statusLabel . '</span></td>
+            <td>' . $attemptno . '</td>
+            <td><span class="' . $classStyle . '">' . s($classLabel) . '</span></td>
+            <td>' . s($r->quiz_type) . '</td>
+            <td>' . userdate($r->timeclose, get_string('strftimedatetime', 'langconfig')) . '</td>
+            <td>' . $finished . '</td>
+            <td>' . $duration . '</td>
+            <td>' . $score . '</td>
+            <td>' . $percent . '</td>
+        </tr>';
 }
-$html .= '</ul>';
+
+$html .= '</tbody></table>';
 
 if (!empty($activities2)) {
     $html .= '<h3>Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h3>';
@@ -123,12 +188,30 @@ $record->subject = 'Homework Report - ' . userdate($timeclose, get_string('strft
 $record->content = $html;
 $record->timecreated = time();
 
-$DB->insert_record('local_homework_reports', $record);
+if ($existing) {
+    $record->id = $existing->id;
+    $DB->update_record('local_homework_reports', $record);
+} else {
+    $DB->insert_record('local_homework_reports', $record);
+}
 
-// Send Email (Mockup)
-// In a real scenario, use email_to_user
-// $email_user = new stdClass();
-// $email_user->email = $pinfo->p1_email; ...
-// email_to_user($email_user, $noreply, $record->subject, strip_tags($html), $html);
+// Send Email
+$noreply = core_user::get_noreply_user();
+$subject = $record->subject;
+$messagehtml = $html;
+$messagetext = strip_tags($html);
+
+// Recipients: Parent 1 and Parent 2
+$recipients = [];
+if (!empty($pinfo->p1_email)) {
+    $recipients[] = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1];
+}
+if (!empty($pinfo->p2_email)) {
+    $recipients[] = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1];
+}
+
+foreach ($recipients as $recipient) {
+    email_to_user($recipient, $noreply, $subject, $messagetext, $messagehtml);
+}
 
 echo json_encode(['status' => 'success']);
