@@ -567,7 +567,35 @@ class homework_manager {
                 $attempts[] = $a;
             }
 
+            // Find best attempt for duration
+            $bestattempt = null;
+            $highestgrade = -1.0;
+            foreach ($attempts as $at) {
+                $g = (float)$at->sumgrades;
+                if ($g > $highestgrade) {
+                    $highestgrade = $g;
+                    $bestattempt = $at;
+                }
+            }
 
+            $time_taken = '';
+            if ($bestattempt) {
+                $ts = (int)$bestattempt->timestart;
+                $tf = (int)$bestattempt->timefinish;
+                if ($ts > 0 && $tf > $ts) {
+                    $duration = $tf - $ts;
+                    $hours = (int)floor($duration / 3600);
+                    $minutes = (int)floor(($duration % 3600) / 60);
+                    $seconds = (int)($duration % 60);
+                    if ($hours > 0) {
+                        $time_taken = sprintf('%dh %dm %ds', $hours, $minutes, $seconds);
+                    } else if ($minutes > 0) {
+                        $time_taken = sprintf('%dm %ds', $minutes, $seconds);
+                    } else {
+                        $time_taken = sprintf('%ds', $seconds);
+                    }
+                }
+            }
 
             $rows[] = (object) [
                 'userid'       => $uid,
@@ -590,9 +618,9 @@ class homework_manager {
                 'lastattemptid'=> 0,
                 'attemptno'    => (int)$s->attempts,
                 'status'       => $hwstatus,
-                'timestart'    => 0,
+                'timestart'    => $bestattempt ? (int)$bestattempt->timestart : 0,
                 'timefinish'   => $timefinish,
-                'time_taken'   => '',
+                'time_taken'   => $time_taken,
                 'score'        => $bestscore,
                 'maxscore'     => $maxscore,
                 'percentage'   => $bestpercent,
@@ -930,7 +958,8 @@ class homework_manager {
         string $sort,
         string $dir,
         bool $excludestaff = false,
-        array $duedates = []
+        array $duedates = [],
+        bool $pastonly = false
     ): array {
         global $DB;
 
@@ -982,8 +1011,9 @@ class homework_manager {
                 $snapparams['sweekstart'] = $weekstart;
                 $snapparams['sweekend'] = $weekend;
             }
+        }
 
-            // By default, Historical Snapshots should only include past-due quizzes.
+        if ($pastonly) {
             $snapsql .= " AND s.timeclose <= :snow";
             $snapparams['snow'] = $now;
         }
@@ -1350,9 +1380,15 @@ class homework_manager {
     public function get_all_distinct_due_dates(): array {
         global $DB;
 
-        // Get quiz due dates
-        $sql = "SELECT DISTINCT timeclose FROM {quiz} WHERE timeclose > 0 ORDER BY timeclose DESC";
-        $quizdates = $DB->get_fieldset_sql($sql);
+        // Get snapshot due dates (historical only)
+        $now = time();
+        $sql = "SELECT DISTINCT timeclose 
+                  FROM {local_homework_status} 
+                 WHERE timeclose > 0 
+                   AND timeclose <= :now 
+              ORDER BY timeclose DESC";
+        
+        $quizdates = $DB->get_fieldset_sql($sql, ['now' => $now]);
         
         $dates = [];
         foreach ($quizdates as $timestamp) {
@@ -1396,7 +1432,7 @@ class homework_manager {
         list($csql, $cparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'cid');
         $params = array_merge($cparams, ['timeclose' => $timeclose]);
 
-        $sql = "SELECT q.id, q.name, cm.id AS cmid
+        $sql = "SELECT q.id, q.name, cm.id AS cmid, c.fullname AS coursename, cc.name AS categoryname
                   FROM {quiz} q
                   JOIN {course_modules} cm ON cm.instance = q.id
                   JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'

@@ -33,8 +33,34 @@ $pinfo = $parents[$userid] ?? null;
 
 // Let's get the snapshot row for this user and date.
 $rows = $manager->get_snapshot_homework_rows(
-    0, [], 0, [], [$userid], '', '', '', '', null, 'timeclose', 'DESC', false, [$timeclose]
+    0, [], 0, [], [$userid], '', '', '', '', null, 'timeclose', 'DESC', false, [$timeclose], false
 );
+
+// Sort Rows: New > Revision > Category 1 > Others
+usort($rows, function($a, $b) {
+    // 1. Classification Priority
+    $classA = strtolower($a->classification ?? '');
+    $classB = strtolower($b->classification ?? '');
+    
+    $scoreA = ($classA === 'new') ? 2 : (($classA === 'revision') ? 1 : 0);
+    $scoreB = ($classB === 'new') ? 2 : (($classB === 'revision') ? 1 : 0);
+    
+    if ($scoreA !== $scoreB) {
+        return $scoreB - $scoreA; // Higher score first
+    }
+    
+    // 2. Category Priority (Category 1 first)
+    $catA = strtolower($a->categoryname ?? '');
+    $catB = strtolower($b->categoryname ?? '');
+    $isCat1A = ($catA === 'category 1');
+    $isCat1B = ($catB === 'category 1');
+    
+    if ($isCat1A !== $isCat1B) {
+        return $isCat1A ? -1 : 1;
+    }
+    
+    return strcasecmp($a->quizname, $b->quizname);
+});
 
 if (empty($rows)) {
     echo json_encode(['status' => 'error', 'message' => 'No data found']);
@@ -78,6 +104,32 @@ if (!empty($row->next_due_date)) {
     if ($next_due_date > 0) {
         $courseids = array_keys($courses);
         $activities2 = $manager->get_quizzes_for_deadline($courseids, $next_due_date);
+
+        // Sort Activities 2: New > Revision > Category 1 > Others
+        usort($activities2, function($a, $b) {
+            // 1. Classification Priority
+            $classA = strtolower($a->classification ?? '');
+            $classB = strtolower($b->classification ?? '');
+            
+            $scoreA = ($classA === 'new') ? 2 : (($classA === 'revision') ? 1 : 0);
+            $scoreB = ($classB === 'new') ? 2 : (($classB === 'revision') ? 1 : 0);
+            
+            if ($scoreA !== $scoreB) {
+                return $scoreB - $scoreA; // Higher score first
+            }
+            
+            // 2. Category Priority (Category 1 first)
+            $catA = strtolower($a->categoryname ?? '');
+            $catB = strtolower($b->categoryname ?? '');
+            $isCat1A = ($catA === 'category 1');
+            $isCat1B = ($catB === 'category 1');
+            
+            if ($isCat1A !== $isCat1B) {
+                return $isCat1A ? -1 : 1;
+            }
+            
+            return strcasecmp($a->name, $b->name);
+        });
     }
 } else {
     $activities1 = [];
@@ -93,15 +145,16 @@ if (!empty($row->next_due_date)) {
 // Generate HTML
 $html = '
 <style>
-    .report-table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+    .report-table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 20px; }
     .report-table th, .report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     .report-table th { background-color: #f2f2f2; font-weight: bold; }
-    .status-badge { padding: 2px 6px; border-radius: 4px; color: white; font-size: 10px; }
-    .status-done { background-color: #28a745; }
-    .status-todo { background-color: #dc3545; }
-    .status-submitted { background-color: #ffc107; color: black; }
-    .classification-new { background-color: #17a2b8; color: white; padding: 2px 4px; border-radius: 2px; }
-    .classification-revision { background-color: #ffc107; color: black; padding: 2px 4px; border-radius: 2px; }
+    .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px; }
+    .status-done { background-color: #d4edda; color: #155724; }
+    .status-todo { background-color: #dc3545; color: white; }
+    .status-submitted { background-color: #fff3cd; color: #856404; }
+    .classification-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
+    .classification-new { background-color: #17a2b8; }
+    .classification-revision { background-color: #ffc107; color: white; }
 </style>
 
 <h2>Homework Report</h2>
@@ -112,18 +165,16 @@ $html = '
 <table class="report-table">
     <thead>
         <tr>
-            <th>Full Name</th>
+            <th>Name</th>
             <th>Course</th>
             <th>Quiz</th>
-            <th>Status</th>
-            <th>Attempt #</th>
+            <th>Attempt</th>
             <th>Classification</th>
-            <th>Quiz Type</th>
-            <th>Due Date</th>
             <th>Finished</th>
             <th>Duration</th>
             <th>Score</th>
             <th>%</th>
+            <th>Status</th>
         </tr>
     </thead>
     <tbody>';
@@ -132,40 +183,40 @@ $html = '
 // $rows contains the snapshot data for this user and date.
 foreach ($rows as $idx => $r) {
     $statusClass = 'status-todo';
-    $statusLabel = 'To do';
-    if ($r->status == 'completed') {
+    $statusLabel = 'Not done';
+    $st = strtolower((string)$r->status);
+
+    if ($st === 'completed') {
         $statusClass = 'status-done';
         $statusLabel = 'Done';
-    } elseif ($r->status == 'submitted') {
+    } elseif ($st === 'low grade' || $st === 'submitted') {
         $statusClass = 'status-submitted';
         $statusLabel = 'Submitted';
     }
 
     $classLabel = $r->classification ?? '';
-    $classStyle = '';
-    if (strtolower($classLabel) === 'new') $classStyle = 'classification-new';
-    if (strtolower($classLabel) === 'revision') $classStyle = 'classification-revision';
+    $classStyle = 'classification-badge';
+    if (strtolower($classLabel) === 'new') $classStyle .= ' classification-new';
+    if (strtolower($classLabel) === 'revision') $classStyle .= ' classification-revision';
 
     $finished = $r->timefinish > 0 ? userdate($r->timefinish, get_string('strftimedatetime', 'langconfig')) : '-';
-    $duration = '-'; // Not available in snapshot currently
+    $duration = isset($r->time_taken) && $r->time_taken !== '' ? $r->time_taken : '-';
     $score = $r->score !== '' ? $r->score . ' / ' . $r->maxscore : '-';
     $percent = $r->percentage !== '' ? $r->percentage . '%' : '-';
     $attemptno = isset($r->attemptno) ? $r->attemptno : (is_numeric($r->attempts) ? $r->attempts : 0);
 
     $html .= '
         <tr>
-            <td>' . s($r->studentname) . '</td>
+            <td>' . s(fullname($user)) . '</td>
             <td>' . s($r->coursename) . '</td>
             <td>' . s($r->quizname) . '</td>
-            <td><span class="status-badge ' . $statusClass . '">' . $statusLabel . '</span></td>
             <td>' . $attemptno . '</td>
             <td><span class="' . $classStyle . '">' . s($classLabel) . '</span></td>
-            <td>' . s($r->quiz_type) . '</td>
-            <td>' . userdate($r->timeclose, get_string('strftimedatetime', 'langconfig')) . '</td>
             <td>' . $finished . '</td>
             <td>' . $duration . '</td>
             <td>' . $score . '</td>
             <td>' . $percent . '</td>
+            <td><span class="status-badge ' . $statusClass . '">' . $statusLabel . '</span></td>
         </tr>';
 }
 
@@ -173,11 +224,33 @@ $html .= '</tbody></table>';
 
 if (!empty($activities2)) {
     $html .= '<h3>Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h3>';
-    $html .= '<ul>';
+    $html .= '<table class="report-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Course</th>
+                <th>Quiz</th>
+                <th>Classification</th>
+                <th>Due Date</th>
+            </tr>
+        </thead>
+        <tbody>';
+    
     foreach ($activities2 as $act) {
-        $html .= '<li>' . s($act->name) . '</li>';
+        $clLabel = $act->classification ?? '';
+        $clStyle = 'classification-badge';
+        if (strtolower($clLabel) === 'new') $clStyle .= ' classification-new';
+        if (strtolower($clLabel) === 'revision') $clStyle .= ' classification-revision';
+        
+        $html .= '<tr>
+            <td>' . s(fullname($user)) . '</td>
+            <td>' . s($act->coursename ?? '') . '</td>
+            <td>' . s($act->name) . '</td>
+            <td><span class="' . $clStyle . '">' . s($clLabel) . '</span></td>
+            <td>' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</td>
+        </tr>';
     }
-    $html .= '</ul>';
+    $html .= '</tbody></table>';
 }
 
 // Save Report

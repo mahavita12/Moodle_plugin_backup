@@ -159,12 +159,13 @@ if ($tab === "snapshot") {
         $sort,
         $dir,
         $excludestaff,
-        $duedates
+        $duedates,
+        true // pastonly
     );
 } elseif ($tab === "reports" && $canmanage) {
     // Reports Tab Logic
-    $report_duedates = optional_param_array('report_duedates', [], PARAM_INT);
-    $report_duedates = array_filter($report_duedates, function($d) { return $d > 0; });
+    // Use the main duedates variable
+    $report_duedates = array_filter($duedates, function($d) { return $d > 0; });
 
     $customstart = 0;
     $customend = 0;
@@ -189,7 +190,8 @@ if ($tab === "snapshot") {
         'timeclose', // Default sort by date
         'DESC',
         $excludestaff,
-        $report_duedates // Pass selected due dates
+        $report_duedates, // Pass selected due dates
+        true // pastonly
     );
     error_log("HM_DEBUG: Raw Rows Count: " . count($raw_rows));
 
@@ -317,6 +319,10 @@ foreach ($rows as $r) {
     }
 }
 
+if ($tab === 'reports') {
+    $uniqueduedates = $manager->get_all_distinct_due_dates();
+}
+
 // Populate User Dropdown from Context (Category/Course)
 $uniqueusers = $manager->get_users_for_filter_context($categoryid, $courseids, $excludestaff);
 
@@ -395,7 +401,7 @@ if ($tab === 'snapshot' && $canmanage) {
                 <input type="hidden" name="filtersubmitted" value="1">
                 
                 <div class="filter-row">
-                    <?php if ($tab !== 'reports'): ?>
+                    <?php if (true): ?>
                         <div class="filter-group">
                             <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
                             <select name="categoryid" id="categoryid">
@@ -452,17 +458,6 @@ if ($tab === 'snapshot' && $canmanage) {
                             </select>
                         </div>
 
-                        <div class="filter-group">
-                            <label for="duedate">Due date</label>
-                            <select name="duedate[]" id="duedate" multiple="multiple">
-                                <option value="0"><?php echo get_string("all"); ?></option>
-                                <?php foreach ($uniqueduedates as $dd): ?>
-                                    <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo in_array((int)$dd->timestamp, $duedates) ? "selected" : ""; ?>>
-                                        <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
                     <?php endif; ?>
 
                     <?php if ($canmanage): ?>
@@ -480,22 +475,22 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                    <?php endif; ?>
 
+                    <?php if (true): ?>
                         <div class="filter-group">
-                            <label for="report_duedates">Due Date:</label>
-                            <select name="report_duedates[]" id="report_duedates" multiple="multiple">
+                            <label for="duedate">Due date</label>
+                            <select name="duedate[]" id="duedate" multiple="multiple">
                                 <option value="0"><?php echo get_string("all"); ?></option>
-                                <?php
-                                // Populate due dates independently
-                                $all_due_dates = $manager->get_all_distinct_due_dates();
-                                $selected_duedates = optional_param_array('report_duedates', [], PARAM_INT);
-                                foreach ($all_due_dates as $dd): ?>
-                                    <option value="<?php echo $dd->timestamp; ?>" <?php echo in_array($dd->timestamp, $selected_duedates) ? "selected" : ""; ?>>
-                                        <?php echo $dd->formatted; ?>
+                                <?php foreach ($uniqueduedates as $dd): ?>
+                                    <option value="<?php echo (int)$dd->timestamp; ?>" <?php echo in_array((int)$dd->timestamp, $duedates) ? "selected" : ""; ?>>
+                                        <?php echo userdate($dd->timestamp, get_string("strftimedatetime", "langconfig")); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
+
+
                     <?php endif; ?>
 
                     <?php if ($canmanage): ?>
@@ -934,7 +929,7 @@ if ($tab === 'snapshot' && $canmanage) {
                 <tr>
                     <th></th> <!-- Expand -->
                     <th class="sortable-column" data-sort="userid">ID <?php echo local_homeworkdashboard_sort_arrows('userid', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="studentname"><?php echo get_string('col_studentname', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="studentname">Name <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="categoryname"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="coursename"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="quizname"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?></th>
