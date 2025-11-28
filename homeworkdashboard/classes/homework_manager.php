@@ -819,12 +819,13 @@ class homework_manager {
 
             // Roster names
             list($userinsql, $userparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'u');
-            $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname FROM {user} WHERE id $userinsql", $userparams);
+            $userrecs = $DB->get_records_sql("SELECT id, firstname, lastname, email FROM {user} WHERE id $userinsql", $userparams);
 
             foreach ($roster as $uid) {
                 $uid = (int)$uid;
                 $userdata = $userrecs[$uid] ?? null;
                 $fullname = $userdata ? ($userdata->firstname . ' ' . $userdata->lastname) : '';
+                $email = $userdata ? $userdata->email : '';
 
                 if ($studentname !== '' && $fullname !== $studentname) {
                     continue;
@@ -870,6 +871,7 @@ class homework_manager {
             $rows[] = (object) [
                     'userid'       => $uid,
                     'studentname'  => $fullname,
+                    'email'        => $email,
                     'courseid'     => (int)$qrec->courseid,
                     'coursename'   => $qrec->coursename,
                     'categoryid'   => (int)$qrec->categoryid,

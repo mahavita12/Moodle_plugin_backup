@@ -204,6 +204,7 @@ if ($tab === "snapshot") {
             $grouped_rows[$key] = (object)[
                 'userid' => $r->userid,
                 'studentname' => $r->studentname,
+                'email' => $r->email,
                 'timeclose' => $r->timeclose,
                 'courses' => [],
                 'categories' => [],
@@ -494,6 +495,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th style="width: 40px;"><input type="checkbox" id="select-all-reports"></th>
                     <th>Name</th>
                     <th>ID</th>
+                    <th>Email</th>
                     <th>Due Date</th>
                     <th>Categories</th>
                     <th>Courses</th>
@@ -505,7 +507,7 @@ if ($tab === 'snapshot' && $canmanage) {
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="9" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
+                    <tr><td colspan="10" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
@@ -517,10 +519,11 @@ if ($tab === 'snapshot' && $canmanage) {
                             </td>
                             <td><?php echo s($row->studentname); ?></td>
                             <td><?php echo (int)$row->userid; ?></td>
+                            <td><?php echo s($row->email); ?></td>
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
                             <td>
                                 <?php foreach ($row->categories as $cat): ?>
-                                    <div class="mb-1"><span class="badge badge-dark text-white"><?php echo s($cat); ?></span></div>
+                                    <div class="mb-1"><span class="badge badge-primary text-white"><?php echo s($cat); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <td>
