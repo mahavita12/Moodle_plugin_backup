@@ -18,7 +18,9 @@ class google_drive_helper {
         
         // Get folder ID from settings
         $config = get_config('local_homeworkdashboard');
-        $this->google_folder_id = $config->google_drive_folder_id ?? '';
+        // Use provided ID if config is empty, or override if needed. 
+        // User explicitly requested this ID: 1Kx4eQ2NDQ2rriVDP0VIiTdP-NgcHDrRL
+        $this->google_folder_id = '1Kx4eQ2NDQ2rriVDP0VIiTdP-NgcHDrRL';
     }
 
     /**
@@ -44,10 +46,8 @@ class google_drive_helper {
         }
 
         // Create a temporary file
-        $temp_dir = $CFG->tempdir . '/local_homeworkdashboard';
-        if (!is_dir($temp_dir)) {
-            mkdir($temp_dir, 0755, true);
-        }
+        // Use make_temp_directory to ensure correct permissions and path
+        $temp_dir = make_temp_directory('local_homeworkdashboard_reports');
 
         $clean_filename = $this->sanitize_filename($filename);
         $file_path = $temp_dir . '/' . $clean_filename . '.html';

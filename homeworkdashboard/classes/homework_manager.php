@@ -425,6 +425,7 @@ class homework_manager {
                     (SELECT MIN(q2.timeclose) FROM {quiz} q2 WHERE q2.course = s.courseid AND q2.timeclose > s.timeclose AND q2.timeclose > 0) AS next_due_date,
                     q.grade,
                     c.fullname  AS coursename,
+                    c.shortname AS courseshortname,
                     cat.id      AS categoryid,
                     cat.name    AS categoryname,
                     cm.id       AS cmid_real,
