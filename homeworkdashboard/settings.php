@@ -20,5 +20,27 @@ if ($hassiteconfig) {
         PARAM_TEXT
     ));
 
+    // Gemini API Settings
+    $settings->add(new admin_setting_configtext(
+        'local_homeworkdashboard/gemini_api_key',
+        'Gemini API Key',
+        'API Key for Google Gemini (AI Commentary).',
+        '',
+        PARAM_TEXT
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_homeworkdashboard/gemini_model',
+        'Gemini Model',
+        'Select the Gemini model to use.',
+        'gemini-3-pro-preview',
+        [
+            'gemini-3-pro-preview' => 'Gemini 3 Pro Preview (Latest)',
+            'gemini-2.0-flash' => 'Gemini 2.0 Flash (Fast & Smart)',
+            'gemini-1.5-pro' => 'Gemini 1.5 Pro (Stable)',
+            'gemini-1.5-flash' => 'Gemini 1.5 Flash (Fast)'
+        ]
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

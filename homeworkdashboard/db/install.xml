@@ -40,6 +40,8 @@
         <FIELD NAME="timeclose" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Due date timestamp, acts as report context"/>
         <FIELD NAME="subject" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="content" TYPE="text" LENGTH="big" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="ai_commentary" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Extracted AI commentary text"/>
+        <FIELD NAME="ai_raw_response" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Full JSON response from AI API"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
       </FIELDS>
       <KEYS>

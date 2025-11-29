@@ -1506,4 +1506,25 @@ class homework_manager {
 
         return $info;
     }
+
+    /**
+     * Get all attempts for a specific user and quiz.
+     * Used for AI commentary to analyze progress history.
+     *
+     * @param int $userid
+     * @param int $quizid
+     * @return array List of attempts with details
+     */
+    public function get_user_quiz_attempts(int $userid, int $quizid): array {
+        global $DB;
+
+        $sql = "SELECT qa.id, qa.attempt, qa.timestart, qa.timefinish, qa.sumgrades
+                  FROM {quiz_attempts} qa
+                 WHERE qa.quiz = :quizid
+                   AND qa.userid = :userid
+                   AND qa.state = 'finished'
+              ORDER BY qa.attempt ASC";
+
+        return $DB->get_records_sql($sql, ['quizid' => $quizid, 'userid' => $userid]);
+    }
 }

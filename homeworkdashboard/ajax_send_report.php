@@ -2,8 +2,10 @@
 define('AJAX_SCRIPT', true);
 
 require_once('../../config.php');
+error_log('GEMINI_DEBUG: ajax_send_report.php called!'); // Added top-level log
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/homework_manager.php');
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/google_drive_helper.php');
+require_once($CFG->dirroot . '/local/homeworkdashboard/classes/gemini_helper.php');
 
 $userid = required_param('userid', PARAM_INT);
 $timeclose = required_param('timeclose', PARAM_INT); // Due Date 1 timestamp
@@ -143,6 +145,50 @@ if (empty($classroom) && !empty($rows)) {
     $classroom_short = $rows[0]->courseshortname ?? $rows[0]->coursename;
 }
 
+// --- GEMINI AI INTEGRATION START ---
+$new_acts_data = [];
+$rev_acts_data = [];
+
+foreach ($rows as $r) {
+    // Fetch detailed attempts
+    // Note: $r->quizid comes from the snapshot query. Ensure it exists.
+    // The snapshot query selects q.id AS quizid.
+    if (!empty($r->quizid)) {
+        $attempts_raw = $manager->get_user_quiz_attempts($userid, $r->quizid);
+        $attempts_clean = [];
+        foreach ($attempts_raw as $att) {
+            $duration = $att->timefinish - $att->timestart;
+            $attempts_clean[] = [
+                'attempt' => $att->attempt,
+                'score' => $att->sumgrades, // Raw score
+                'duration' => $duration
+            ];
+        }
+        
+        // Get question count for AI analysis
+        $question_count = $DB->count_records('quiz_slots', ['quizid' => $r->quizid]);
+
+        $act_data = [
+            'name' => $r->quizname,
+            'maxscore' => $r->maxscore,
+            'question_count' => $question_count,
+            'attempts' => $attempts_clean
+        ];
+
+        if (strtolower($r->classification ?? '') === 'new') {
+            $new_acts_data[] = $act_data;
+        } else {
+            $rev_acts_data[] = $act_data;
+        }
+    }
+}
+
+$gemini = new \local_homeworkdashboard\gemini_helper();
+error_log('GEMINI_DEBUG: Starting generation for ' . fullname($user));
+$ai_commentary = $gemini->generate_commentary(fullname($user), $new_acts_data, $rev_acts_data);
+error_log('GEMINI_DEBUG: Generation complete. Result length: ' . strlen($ai_commentary ?? ''));
+// --- GEMINI AI INTEGRATION END ---
+
 // Generate HTML with INLINE STYLES
 // Define styles as PHP variables for cleaner concatenation
 // FIX: Use single quotes for font names inside double-quoted style attribute
@@ -159,18 +205,36 @@ $style_td = 'border: 1px solid #ddd; padding: 8px; text-align: left;';
 $style_badge = 'padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px;';
 $style_class = 'padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block;';
 
-$html = '
+// Greeting
+$html = '<div style="font-family: \'Segoe UI\', sans-serif; color: #333; margin-bottom: 20px;">';
+$html .= '<p>To ' . s($user->firstname) . '\'s parents,</p>';
+$html .= '<p>Please find ' . s($user->firstname) . '\'s progress report for the week ending ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . ' below.</p>';
+$html .= '<p>This report details ' . s($user->firstname) . '\'s progress for homework activities and outlines areas for improvement.</p>';
+$html .= '<p>Should you have any questions or require further support, please reach out to us.</p>';
+$html .= '<p>Warm regards,<br>GrowMinds Academy Team</p>';
+$html .= '</div>';
+
+$html .= '
 <div class="homework-report-container" style="' . $style_container . '">
     <div class="report-header" style="' . $style_header . '">
         <h2 style="' . $style_h2 . '">Progress Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h2>
         <div class="report-subtitle" style="' . $style_subtitle . '">GrowMinds Academy</div>
     </div>
 
-    <div class="report-info" style="' . $style_info . '">
+    <div class="report-info" style="' . $style_info . ' color: #004494;">
         <p style="' . $style_p . '"><strong>Student:</strong> ' . fullname($user) . '</p>
         <p style="' . $style_p . '"><strong>Classroom:</strong> ' . s($classroom) . '</p>
         <p style="' . $style_p . '"><strong>Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
     </div>
+
+    <!-- AI Commentary Section -->
+    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #0056b3;">GrowMinds Academy Summary</h4>
+        <div style="font-family: \'Segoe UI\', Roboto, Arial, sans-serif; color: #333; line-height: 1.6;">
+            ' . $ai_commentary . '
+        </div>
+    </div>
+    <!-- End AI Commentary -->
 
     <h4 class="section-heading" style="' . $style_section . '">Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h4>
     <table class="report-table" style="' . $style_table . '">
@@ -292,6 +356,12 @@ $record->subject = 'Progress Report - ' . fullname($user) . ' (' . $classroom_sh
 $record->content = $html;
 $record->timecreated = time();
 
+// Save AI Data
+if (!empty($ai_commentary)) {
+    $record->ai_commentary = $ai_commentary;
+    $record->ai_raw_response = $gemini->get_last_response();
+}
+
 if ($existing) {
     $record->id = $existing->id;
     $DB->update_record('local_homework_reports', $record);
@@ -327,6 +397,8 @@ if (!empty($pinfo->p2_email)) {
 
 foreach ($recipients as $recipient) {
     // Explicitly set Reply-To to overwrite Moodle's default "Do not reply"
+    // EMAIL DISABLED FOR TESTING
+    /*
     email_to_user(
         $recipient, 
         $sender, 
@@ -339,6 +411,11 @@ foreach ($recipients as $recipient) {
         'support@growminds.net', 
         'GrowMinds Support'
     );
+    */
 }
 
-echo json_encode(['status' => 'success']);
+echo json_encode([
+    'status' => 'success',
+    'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
+    'ai_error' => $gemini->get_last_error()
+]);
