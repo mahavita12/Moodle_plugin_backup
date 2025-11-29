@@ -108,7 +108,7 @@ $sent_count = 0;
 if (!empty($pinfo->p2_email)) {
     $lang = $pinfo->p2_lang;
     // Same logic
-    if ($lang === 'ko' && $report_ko) {
+    if (($lang === 'ko' || $lang === 'Korean') && $report_ko) {
         $report_to_send = $report_ko;
     } else {
         $report_to_send = $report_en;
