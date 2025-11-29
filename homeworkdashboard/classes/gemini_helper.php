@@ -106,7 +106,7 @@ class gemini_helper {
         
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
-            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
+            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국인 선생님입니다.\n";
             $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
             
             $prompt .= "[작성 규칙]\n";
@@ -117,16 +117,16 @@ class gemini_helper {
             
             $prompt .= "- **구성**:\n";
             $prompt .= "   1. **종합 요약** (첫 문단):\n";
-            $prompt .= "      - '{$student_name} 학생은 이번 주 진도 학습 {$total_new}개 중 {$completed_new}개, 복습 활동 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
+            $prompt .= "      - '{$student_name} 학생은 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 로 시작.\n";
             $prompt .= "      - 수행률에 따라 칭찬(90% 이상), 격려(70% 미만), 또는 주의(50% 미만)를 해주세요.\n";
             
             $prompt .= "   2. **상세 분석**:\n";
-            $prompt .= "      - **진도 학습 (New Topics)** 과 **복습 활동 (Revision Work)** 을 구분하여 피드백하세요.\n";
+            $prompt .= "      - **새로운 과제 (New Topics)** 와 **복습 과제 (Revision Work)** 를 구분하여 피드백하세요.\n";
             $prompt .= "      - 과목명(예: Math, English)은 영어 그대로 표기하되, 내용은 한국어로 작성하세요.\n";
-            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬하세요.\n";
+            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬해 주세요.\n";
             $prompt .= "      - **성실도 점검**:\n";
             $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
-            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Stern Warning).\n";
+            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
             
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
