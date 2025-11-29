@@ -143,54 +143,49 @@ if (empty($classroom) && !empty($rows)) {
     $classroom_short = $rows[0]->courseshortname ?? $rows[0]->coursename;
 }
 
-// Generate HTML
+// Generate HTML with INLINE STYLES
+// Define styles as PHP variables for cleaner concatenation
+// FIX: Use single quotes for font names inside double-quoted style attribute
+$style_container = "font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;";
+$style_header = 'background-color: #004494; padding: 20px; border-radius: 8px; margin-bottom: 20px;';
+$style_h2 = 'margin-top: 0; color: #ffffff;';
+$style_subtitle = 'margin-bottom: 0; color: #e3f2fd; font-size: 18px; font-weight: bold;';
+$style_info = 'margin-bottom: 20px;';
+$style_p = 'margin: 5px 0;';
+$style_section = 'color: #0056b3; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px; font-weight: bold;';
+$style_table = 'width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 20px;';
+$style_th = 'border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #0056b3 !important; color: white !important; font-weight: bold; border-color: #0056b3;';
+$style_td = 'border: 1px solid #ddd; padding: 8px; text-align: left;';
+$style_badge = 'padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px;';
+$style_class = 'padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block;';
+
 $html = '
-<style>
-    .homework-report-container { font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-    .report-header { background-color: #004494; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-    .report-header h2 { margin-top: 0; color: #ffffff; }
-    .report-subtitle { margin-bottom: 0; color: #e3f2fd; font-size: 18px; font-weight: bold; }
-    .report-info { margin-bottom: 20px; }
-    .report-info p { margin: 5px 0; }
-    .section-heading { color: #0056b3; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
-    .report-table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 20px; }
-    .report-table th, .report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    .report-table th { background-color: #0056b3 !important; color: white !important; font-weight: bold; border-color: #0056b3; }
-    .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px; }
-    .status-done { background-color: #d4edda; color: #155724; }
-    .status-todo { background-color: #dc3545; color: white; }
-    .status-submitted { background-color: #fff3cd; color: #856404; }
-    .classification-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
-    .classification-new { background-color: #17a2b8; }
-    .classification-revision { background-color: #ffc107; color: white; }
-</style>
-
-<div class="homework-report-container">
-    <div class="report-header">
-        <h2>Progress Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h2>
-        <div class="report-subtitle">GrowMinds Academy</div>
+<div class="homework-report-container" style="' . $style_container . '">
+    <div class="report-header" style="' . $style_header . '">
+        <h2 style="' . $style_h2 . '">Progress Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h2>
+        <div class="report-subtitle" style="' . $style_subtitle . '">GrowMinds Academy</div>
     </div>
 
-    <div class="report-info">
-        <p><strong>Student:</strong> ' . fullname($user) . '</p>
-        <p><strong>Classroom:</strong> ' . s($classroom) . '</p>
-        <p><strong>Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
+    <div class="report-info" style="' . $style_info . '">
+        <p style="' . $style_p . '"><strong>Student:</strong> ' . fullname($user) . '</p>
+        <p style="' . $style_p . '"><strong>Classroom:</strong> ' . s($classroom) . '</p>
+        <p style="' . $style_p . '"><strong>Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
     </div>
 
-    <h4 class="section-heading">Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h4>
-    <table class="report-table">
+    <h4 class="section-heading" style="' . $style_section . '">Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h4>
+    <table class="report-table" style="' . $style_table . '">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Course</th>
-                <th>Quiz</th>
-                <th>Attempt</th>
-                <th>Classification</th>
-                <th>Finished</th>
-                <th>Duration</th>
-                <th>Score</th>
-                <th>%</th>
-                <th>Status</th>
+                <th style="' . $style_th . '">Name</th>
+                <th style="' . $style_th . '">Course</th>
+                <th style="' . $style_th . '">Quiz</th>
+                <th style="' . $style_th . '">Attempt</th>
+                <th style="' . $style_th . '">Classification</th>
+                <th style="' . $style_th . '">Finished</th>
+                <th style="' . $style_th . '">Duration</th>
+                <th style="' . $style_th . '">Score</th>
+                <th style="' . $style_th . '">%</th>
+                <th style="' . $style_th . '">Status</th>
             </tr>
         </thead>
         <tbody>';
@@ -198,22 +193,29 @@ $html = '
 // We need full details for Activities 1.
 // $rows contains the snapshot data for this user and date.
 foreach ($rows as $idx => $r) {
-    $statusClass = 'status-todo';
+    $statusStyle = $style_badge;
     $statusLabel = 'Not done';
     $st = strtolower((string)$r->status);
 
     if ($st === 'completed') {
-        $statusClass = 'status-done';
+        $statusStyle .= ' background-color: #d4edda; color: #155724;';
         $statusLabel = 'Done';
     } elseif ($st === 'low grade' || $st === 'submitted') {
-        $statusClass = 'status-submitted';
+        $statusStyle .= ' background-color: #fff3cd; color: #856404;';
         $statusLabel = 'Low score';
+    } else {
+        $statusStyle .= ' background-color: #dc3545; color: white;'; // Todo
     }
 
     $classLabel = $r->classification ?? '';
-    $classStyle = 'classification-badge';
-    if (strtolower($classLabel) === 'new') $classStyle .= ' classification-new';
-    if (strtolower($classLabel) === 'revision') $classStyle .= ' classification-revision';
+    $classStyle = $style_class;
+    if (strtolower($classLabel) === 'new') {
+        $classStyle .= ' background-color: #17a2b8;';
+    } elseif (strtolower($classLabel) === 'revision') {
+        $classStyle .= ' background-color: #ffc107; color: white;';
+    } else {
+        $classStyle .= ' background-color: #6c757d;'; // Default gray
+    }
 
     $finished = $r->timefinish > 0 ? userdate($r->timefinish, get_string('strftimedatetime', 'langconfig')) : '-';
     $duration = isset($r->time_taken) && $r->time_taken !== '' ? $r->time_taken : '-';
@@ -223,47 +225,52 @@ foreach ($rows as $idx => $r) {
 
     $html .= '
         <tr>
-            <td>' . s(fullname($user)) . '</td>
-            <td>' . s($r->coursename) . '</td>
-            <td>' . s($r->quizname) . '</td>
-            <td>' . $attemptno . '</td>
-            <td><span class="' . $classStyle . '">' . s($classLabel) . '</span></td>
-            <td>' . $finished . '</td>
-            <td>' . $duration . '</td>
-            <td>' . $score . '</td>
-            <td>' . $percent . '</td>
-            <td><span class="status-badge ' . $statusClass . '">' . $statusLabel . '</span></td>
+            <td style="' . $style_td . '">' . s(fullname($user)) . '</td>
+            <td style="' . $style_td . '">' . s($r->coursename) . '</td>
+            <td style="' . $style_td . '">' . s($r->quizname) . '</td>
+            <td style="' . $style_td . '">' . $attemptno . '</td>
+            <td style="' . $style_td . '"><span style="' . $classStyle . '">' . s($classLabel) . '</span></td>
+            <td style="' . $style_td . '">' . $finished . '</td>
+            <td style="' . $style_td . '">' . $duration . '</td>
+            <td style="' . $style_td . '">' . $score . '</td>
+            <td style="' . $style_td . '">' . $percent . '</td>
+            <td style="' . $style_td . '"><span style="' . $statusStyle . '">' . $statusLabel . '</span></td>
         </tr>';
 }
 
 $html .= '</tbody></table>';
 
 if (!empty($activities2)) {
-    $html .= '<h4 class="section-heading">Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h4>';
-    $html .= '<table class="report-table">
+    $html .= '<h4 class="section-heading" style="' . $style_section . '">Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h4>';
+    $html .= '<table class="report-table" style="' . $style_table . '">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Course</th>
-                <th>Quiz</th>
-                <th>Classification</th>
-                <th>Due Date</th>
+                <th style="' . $style_th . '">Name</th>
+                <th style="' . $style_th . '">Course</th>
+                <th style="' . $style_th . '">Quiz</th>
+                <th style="' . $style_th . '">Classification</th>
+                <th style="' . $style_th . '">Due Date</th>
             </tr>
         </thead>
         <tbody>';
     
     foreach ($activities2 as $act) {
         $clLabel = $act->classification ?? '';
-        $clStyle = 'classification-badge';
-        if (strtolower($clLabel) === 'new') $clStyle .= ' classification-new';
-        if (strtolower($clLabel) === 'revision') $clStyle .= ' classification-revision';
+        $clStyle = $style_class;
+        if (strtolower($clLabel) === 'new') {
+            $clStyle .= ' background-color: #17a2b8;';
+        } elseif (strtolower($clLabel) === 'revision') {
+            $clStyle .= ' background-color: #ffc107; color: white;';
+        } else {
+            $clStyle .= ' background-color: #6c757d;';
+        }
         
         $html .= '<tr>
-            <td>' . s(fullname($user)) . '</td>
-            <td>' . s($act->coursename ?? '') . '</td>
-            <td>' . s($act->name) . '</td>
-            <td><span class="' . $clStyle . '">' . s($clLabel) . '</span></td>
-            <td>' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</td>
+            <td style="' . $style_td . '">' . s(fullname($user)) . '</td>
+            <td style="' . $style_td . '">' . s($act->coursename ?? '') . '</td>
+            <td style="' . $style_td . '">' . s($act->name) . '</td>
+            <td style="' . $style_td . '"><span style="' . $clStyle . '">' . s($clLabel) . '</span></td>
+            <td style="' . $style_td . '">' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</td>
         </tr>';
     }
     $html .= '</tbody></table>';
@@ -271,37 +278,17 @@ if (!empty($activities2)) {
 
 $html .= '</div>'; // Close container
 
-// Google Drive Integration
-$drive_helper = new \local_homeworkdashboard\google_drive_helper();
-if ($drive_helper->is_configured()) {
-    // Filename convention: id_name_category 1 course short name_progress report_duedate
-    // Example: 9_jamie-mun_5a-progress report_26_November_2025
-    
-    $clean_name = strtolower(str_replace(' ', '-', trim(fullname($user))));
-    $clean_classroom = strtolower(str_replace(' ', '-', trim($classroom_short)));
-    $formatted_date = userdate($timeclose, '%d_%B_%Y'); // e.g. 26_November_2025
-    
-    $filename = "{$userid}_{$clean_name}_{$clean_classroom}_progress-report_{$formatted_date}";
-    
-    // Sanitize filename further to ensure safety
-    $filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $filename);
-    $filename = preg_replace('/_+/', '_', $filename); // Remove duplicate underscores
-    $filename = trim($filename, '_-');
-
-    $drive_link = $drive_helper->upload_html_content($html, $filename);
-    
-    if ($drive_link) {
-        // Append link to the HTML content so it's saved in DB and sent in email
-        $html .= '<div style="margin-top: 20px; text-align: center;">';
-        $html .= '<a href="' . $drive_link . '" target="_blank" style="display: inline-block; background-color: #0056b3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-family: Arial, sans-serif;">View in Google Drive</a>';
-        $html .= '</div>';
-    }
-}
+// Link to GrowMinds Site
+$site_link = 'https://growminds.net';
+$html .= '<div style="margin-top: 20px; text-align: center;">';
+$html .= '<a href="' . $site_link . '" target="_blank" style="display: inline-block; background-color: #0056b3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-family: Arial, sans-serif;">Login to GrowMinds</a>';
+$html .= '</div>';
 
 $record = new stdClass();
 $record->userid = $userid;
 $record->timeclose = $timeclose;
-$record->subject = 'Homework Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig'));
+// Subject: Progress Report - Student Name (Classroom) - Date
+$record->subject = 'Progress Report - ' . fullname($user) . ' (' . $classroom_short . ') - ' . userdate($timeclose, get_string('strftimedate', 'langconfig'));
 $record->content = $html;
 $record->timecreated = time();
 
@@ -324,19 +311,34 @@ $sender->mailformat = 1;
 
 $subject = $record->subject;
 $messagehtml = $html;
-$messagetext = strip_tags($html);
+// FIX: Add explicit text message
+$messagetext = "This is the plain text version of the report. If you see this, your email client is not rendering HTML.\n\n" . strip_tags($html);
 
 // Recipients: Parent 1 and Parent 2
 $recipients = [];
 if (!empty($pinfo->p1_email)) {
-    $recipients[] = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1];
+    // FIX: Add 'mailformat' => 1 to force HTML
+    $recipients[] = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
 }
 if (!empty($pinfo->p2_email)) {
-    $recipients[] = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1];
+    // FIX: Add 'mailformat' => 1 to force HTML
+    $recipients[] = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
 }
 
 foreach ($recipients as $recipient) {
-    email_to_user($recipient, $sender, $subject, $messagetext, $messagehtml);
+    // Explicitly set Reply-To to overwrite Moodle's default "Do not reply"
+    email_to_user(
+        $recipient, 
+        $sender, 
+        $subject, 
+        $messagetext, 
+        $messagehtml, 
+        '', 
+        '', 
+        true, 
+        'support@growminds.net', 
+        'GrowMinds Support'
+    );
 }
 
 echo json_encode(['status' => 'success']);
