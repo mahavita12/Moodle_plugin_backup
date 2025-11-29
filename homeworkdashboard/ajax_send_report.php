@@ -157,6 +157,16 @@ $html = '
     .classification-revision { background-color: #ffc107; color: white; }
 </style>
 
+<style>
+    .homework-report-container {
+        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .homework-report-container table th {
+        background-color: #003366 !important;
+        color: #ffffff !important;
+    }
+</style>
+<div class="homework-report-container">
 <h2>Homework Report</h2>
 <p><strong>Student:</strong> ' . fullname($user) . '</p>
 <p><strong>Due Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
@@ -252,6 +262,8 @@ if (!empty($activities2)) {
     }
     $html .= '</tbody></table>';
 }
+
+$html .= '</div>'; // Close container
 
 // Save Report
 $record = new stdClass();
