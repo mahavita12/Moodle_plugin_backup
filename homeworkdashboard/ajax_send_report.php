@@ -9,6 +9,7 @@ require_once($CFG->dirroot . '/local/homeworkdashboard/classes/gemini_helper.php
 
 $userid = required_param('userid', PARAM_INT);
 $timeclose = required_param('timeclose', PARAM_INT); // Due Date 1 timestamp
+$lang = optional_param('lang', 'en', PARAM_ALPHA);
 
 require_login();
 $context = context_system::instance();
@@ -17,7 +18,7 @@ require_capability('local/homeworkdashboard:view', $context);
 $manager = new \local_homeworkdashboard\homework_manager();
 
 // Check if report already exists
-$existing = $DB->get_record('local_homework_reports', ['userid' => $userid, 'timeclose' => $timeclose]);
+$existing = $DB->get_record('local_homework_reports', ['userid' => $userid, 'timeclose' => $timeclose, 'lang' => $lang]);
 
 // Fetch Data
 // 1. User Info & Parents
@@ -168,11 +169,15 @@ foreach ($rows as $r) {
         // Get question count for AI analysis
         $question_count = $DB->count_records('quiz_slots', ['quizid' => $r->quizid]);
 
+        // Pass status directly (it is already 'Completed', 'Low grade', or 'No attempt')
+        $status_label = $r->status ?? 'No attempt';
+
         $act_data = [
             'name' => $r->quizname,
             'maxscore' => $r->maxscore,
             'question_count' => $question_count,
-            'attempts' => $attempts_clean
+            'attempts' => $attempts_clean,
+            'status' => $status_label
         ];
 
         if (strtolower($r->classification ?? '') === 'new') {
@@ -185,7 +190,16 @@ foreach ($rows as $r) {
 
 $gemini = new \local_homeworkdashboard\gemini_helper();
 error_log('GEMINI_DEBUG: Starting generation for ' . fullname($user));
-$ai_commentary = $gemini->generate_commentary(fullname($user), $new_acts_data, $rev_acts_data);
+// Generate AI Commentary
+$ai_commentary = $gemini->generate_commentary($user->firstname, $new_acts_data, $rev_acts_data, $lang);
+
+// Post-process AI commentary
+if (!empty($ai_commentary)) {
+    $ai_commentary = str_replace('새 진도 활동', '새로운 과제', $ai_commentary);
+    $ai_commentary = str_replace(['복습활동', '복습 활동'], '복습과제', $ai_commentary);
+    $ai_commentary = str_ireplace('Stern Warning', 'Warning', $ai_commentary);
+    $ai_commentary = str_ireplace('Warning', '<span style="color: red; font-weight: bold;">Warning</span>', $ai_commentary);
+}
 error_log('GEMINI_DEBUG: Generation complete. Result length: ' . strlen($ai_commentary ?? ''));
 // --- GEMINI AI INTEGRATION END ---
 
@@ -207,11 +221,21 @@ $style_class = 'padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weig
 
 // Greeting
 $html = '<div style="font-family: \'Segoe UI\', sans-serif; color: #333; margin-bottom: 20px;">';
-$html .= '<p>To ' . s($user->firstname) . '\'s parents,</p>';
-$html .= '<p>Please find ' . s($user->firstname) . '\'s progress report for the week ending ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . ' below.</p>';
-$html .= '<p>This report details ' . s($user->firstname) . '\'s progress for homework activities and outlines areas for improvement.</p>';
-$html .= '<p>Should you have any questions or require further support, please reach out to us.</p>';
-$html .= '<p>Warm regards,<br>GrowMinds Academy Team</p>';
+// Greeting
+if ($lang === 'ko') {
+    $date_str = userdate($timeclose, get_string('strftimedate', 'langconfig'));
+    $html .= '<p>안녕하세요</p>';
+    $html .= '<p>이번주 (' . $date_str . ') 의 ' . s($user->firstname) . ' 의 Progress Report를 보내드립니다.</p>';
+    $html .= '<p>아래 리포트는 ' . s($user->firstname) . '(이)가 얼마나 숙제를 성실하게 했는지, 잘했거나 부족한 부분이 무엇인지를 보여드리기 위해 작성했습니다.</p>';
+    $html .= '<p>질문이 있으시거나 좀 더 필요한 부분이 있으시면 말씀주세요.</p>';
+    $html .= '<p>GrowMinds Academy Team</p>';
+} else {
+    $html .= '<p>To ' . s($user->firstname) . '\'s parents,</p>';
+    $html .= '<p>Please find ' . s($user->firstname) . '\'s progress report for the week ending ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . ' below.</p>';
+    $html .= '<p>This report details ' . s($user->firstname) . '\'s progress for homework activities and outlines areas for improvement.</p>';
+    $html .= '<p>Should you have any questions or require further support, please reach out to us.</p>';
+    $html .= '<p>Warm regards,<br>GrowMinds Academy Team</p>';
+}
 $html .= '</div>';
 
 $html .= '
@@ -222,7 +246,7 @@ $html .= '
     </div>
 
     <div class="report-info" style="' . $style_info . ' color: #004494;">
-        <p style="' . $style_p . '"><strong>Student:</strong> ' . fullname($user) . '</p>
+        <p style="' . $style_p . '"><strong>Student:</strong> ' . $user->firstname . '</p>
         <p style="' . $style_p . '"><strong>Classroom:</strong> ' . s($classroom) . '</p>
         <p style="' . $style_p . '"><strong>Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
     </div>
@@ -289,7 +313,7 @@ foreach ($rows as $idx => $r) {
 
     $html .= '
         <tr>
-            <td style="' . $style_td . '">' . s(fullname($user)) . '</td>
+            <td style="' . $style_td . '">' . s($user->firstname) . '</td>
             <td style="' . $style_td . '">' . s($r->coursename) . '</td>
             <td style="' . $style_td . '">' . s($r->quizname) . '</td>
             <td style="' . $style_td . '">' . $attemptno . '</td>
@@ -330,7 +354,7 @@ if (!empty($activities2)) {
         }
         
         $html .= '<tr>
-            <td style="' . $style_td . '">' . s(fullname($user)) . '</td>
+            <td style="' . $style_td . '">' . s($user->firstname) . '</td>
             <td style="' . $style_td . '">' . s($act->coursename ?? '') . '</td>
             <td style="' . $style_td . '">' . s($act->name) . '</td>
             <td style="' . $style_td . '"><span style="' . $clStyle . '">' . s($clLabel) . '</span></td>
@@ -352,9 +376,21 @@ $record = new stdClass();
 $record->userid = $userid;
 $record->timeclose = $timeclose;
 // Subject: Progress Report - Student Name (Classroom) - Date
-$record->subject = 'Progress Report - ' . fullname($user) . ' (' . $classroom_short . ') - ' . userdate($timeclose, get_string('strftimedate', 'langconfig'));
+$record->subject = 'Progress Report - ' . $user->firstname . ' (' . $classroom_short . ') - ' . userdate($timeclose, get_string('strftimedate', 'langconfig'));
+if ($lang === 'ko') {
+    $record->subject .= ' (Korean)';
+}
 $record->content = $html;
 $record->timecreated = time();
+$record->lang = $lang;
+
+// Save to Google Drive
+$drive_helper = new \local_homeworkdashboard\google_drive_helper();
+$filename = $userid . '_' . fullname($user) . '_' . $classroom_short . '_' . date('Y-m-d', $timeclose) . '_' . $lang;
+$drive_link = $drive_helper->upload_html_content($html, $filename);
+if ($drive_link) {
+    $record->drive_link = $drive_link;
+}
 
 // Save AI Data
 if (!empty($ai_commentary)) {
@@ -365,8 +401,9 @@ if (!empty($ai_commentary)) {
 if ($existing) {
     $record->id = $existing->id;
     $DB->update_record('local_homework_reports', $record);
+    $reportid = $existing->id;
 } else {
-    $DB->insert_record('local_homework_reports', $record);
+    $reportid = $DB->insert_record('local_homework_reports', $record);
 }
 
 // Send Email
@@ -416,6 +453,7 @@ foreach ($recipients as $recipient) {
 
 echo json_encode([
     'status' => 'success',
+    'reportid' => $reportid,
     'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
     'ai_error' => $gemini->get_last_error()
 ]);

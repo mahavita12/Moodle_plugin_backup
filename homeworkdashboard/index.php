@@ -207,7 +207,7 @@ if ($tab === "snapshot") {
                 'parent1' => $r->parent1,
                 'parent2' => $r->parent2,
                 'timeclose' => $r->timeclose,
-                'reportid' => $DB->get_field('local_homework_reports', 'id', ['userid' => $r->userid, 'timeclose' => $r->timeclose]),
+                'reports' => $DB->get_records_menu('local_homework_reports', ['userid' => $r->userid, 'timeclose' => $r->timeclose], '', 'lang, id'),
                 'next_due_date' => null,
                 'courses' => [],
                 'categories' => [],
@@ -524,16 +524,22 @@ if ($tab === 'snapshot' && $canmanage) {
 
     <?php if ($tab === 'reports' && $canmanage): ?>
     <!-- REPORTS TABLE -->
-    <div class="dashboard-table-wrapper">
-        <!-- Bulk Actions -->
-        <div class="bulk-actions-container" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
-            <select id="bulk-action-select" class="custom-select" style="width: auto;">
-                <option value="">With selected...</option>
-                <option value="sendreport">Send Report</option>
-            </select>
-            <button id="bulk-action-btn" class="btn btn-primary">Apply</button>
-        </div>
+    <!-- Bulk Actions -->
+    <div class="bulk-actions-container" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+        <span class="font-weight-bold mr-2">Generate:</span>
+        <select id="report-lang-select" class="custom-select" style="width: auto;">
+            <option value="en">English</option>
+            <option value="ko">Korean</option>
+            <option value="both">Both (English & Korean)</option>
+        </select>
+        <button id="btn-generate-reports" type="button" class="btn btn-primary">Generate Reports</button>
+        
+        <span class="border-left mx-3" style="height: 24px; border-color: #ccc;"></span>
 
+        <button id="btn-send-emails" type="button" class="btn btn-success">Send Emails</button>
+    </div>
+
+    <div class="dashboard-table-wrapper">
         <table class="dashboard-table table table-striped" id="reports-table">
             <thead class="thead-dark">
                 <tr>
@@ -717,11 +723,21 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <?php endif; ?>
                             </td>
                             <td id="status-<?php echo $row->userid . '-' . $row->timeclose; ?>">
-                                <?php if (!empty($row->reportid)): ?>
-                                    <a href="view_report.php?id=<?php echo $row->reportid; ?>" class="btn btn-info btn-sm" target="_blank">View</a>
-                                <?php else: ?>
-                                    <span class="badge badge-light">Not Sent</span>
-                                <?php endif; ?>
+                                <?php
+                                $reports = $row->reports ?? [];
+                                $has_report = false;
+                                if (!empty($reports['en'])) {
+                                    echo '<a href="view_report.php?id=' . $reports['en'] . '" class="btn btn-info btn-sm" target="_blank" style="margin-right: 5px;">English</a>';
+                                    $has_report = true;
+                                }
+                                if (!empty($reports['ko'])) {
+                                    echo '<a href="view_report.php?id=' . $reports['ko'] . '" class="btn btn-success btn-sm" target="_blank">Korean</a>';
+                                    $has_report = true;
+                                }
+                                if (!$has_report) {
+                                    echo '<span class="badge badge-light">Not Sent</span>';
+                                }
+                                ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -731,191 +747,198 @@ if ($tab === 'snapshot' && $canmanage) {
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Bulk Actions
-        document.getElementById('bulk-action-btn').addEventListener('click', function() {
-            var action = document.getElementById('bulk-action-select').value;
-            if (action === 'sendreport') {
+        console.log('DOM fully loaded and parsed');
+
+        // Process Queue Function
+        var processQueue = function(queue, index) {
+            console.log('Processing queue item ' + index + ' of ' + queue.length);
+            
+            if (index >= queue.length) {
+                alert('Process completed.');
+                return;
+            }
+
+            var item = queue[index];
+            console.log('Processing item:', item);
+
+            var actionUrl = (item.action === 'sendemail') ? 'ajax_email_report.php' : 'ajax_send_report.php';
+            var statusText = (item.action === 'sendemail') ? 'Sending Email...' : 'Generating...';
+            
+            // Update UI status
+            var statusCell = document.getElementById('status-' + item.userid + '-' + item.timeclose);
+            if (statusCell) {
+                var badges = statusCell.querySelectorAll('.badge');
+                badges.forEach(function(b) { 
+                    if (b.innerText === 'Not Sent' || b.innerText === 'Error' || b.innerText === 'Email Sent') b.remove(); 
+                });
+
+                // Add status badge
+                if (!statusCell.innerHTML.includes(statusText)) {
+                        statusCell.insertAdjacentHTML('beforeend', ' <span class="badge badge-warning">' + statusText + '</span>');
+                }
+            } else {
+                console.warn('Status cell not found for user ' + item.userid);
+            }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', actionUrl, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    console.log('XHR Response Status:', xhr.status);
+                    console.log('XHR Response Text:', xhr.responseText);
+
+                    if (xhr.status === 200) {
+                        try {
+                            var resp = JSON.parse(xhr.responseText);
+                            if (resp.status === 'success') {
+                                console.log('Success for ' + item.userid);
+                                if (statusCell) {
+                                    // Remove status badge
+                                    var badges = statusCell.querySelectorAll('.badge');
+                                    badges.forEach(function(b) { 
+                                        if (b.innerText === statusText) b.remove(); 
+                                    });
+
+                                    if (item.action === 'generate') {
+                                        // Append Button
+                                        var btnClass = (item.lang === 'ko') ? 'btn-success' : 'btn-info';
+                                        var btnText = (item.lang === 'ko') ? 'Korean' : 'English';
+                                        var btnHtml = '<a href="view_report.php?id=' + resp.reportid + '" class="btn ' + btnClass + ' btn-sm" target="_blank" style="margin-right: 5px;">' + btnText + '</a>';
+                                        
+                                        if (!statusCell.innerHTML.includes('>' + btnText + '<')) {
+                                            statusCell.insertAdjacentHTML('beforeend', btnHtml);
+                                        }
+                                    } else if (item.action === 'sendemail') {
+                                        statusCell.insertAdjacentHTML('beforeend', ' <span class="badge badge-success">Email Sent</span>');
+                                    }
+                                }
+                            } else {
+                                console.error('Error for ' + item.userid + ': ' + resp.message);
+                                if (statusCell) {
+                                    var badges = statusCell.querySelectorAll('.badge');
+                                    badges.forEach(function(b) { 
+                                        if (b.innerText === statusText) b.remove(); 
+                                    });
+                                    statusCell.insertAdjacentHTML('beforeend', ' <span class="badge badge-danger">Error: ' + resp.message + '</span>');
+                                }
+                                alert('Error for user ' + item.userid + ': ' + resp.message);
+                            }
+                        } catch (e) {
+                            console.error('JSON Parse Error', e);
+                            console.error('Raw Response:', xhr.responseText);
+                            if (statusCell) {
+                                var badges = statusCell.querySelectorAll('.badge');
+                                badges.forEach(function(b) { 
+                                    if (b.innerText === statusText) b.remove(); 
+                                });
+                                statusCell.insertAdjacentHTML('beforeend', ' <span class="badge badge-danger">Error: JSON Parse</span>');
+                            }
+                            alert('JSON Parse Error for user ' + item.userid + '. Check console for details.');
+                        }
+                    } else {
+                        console.error('HTTP Error:', xhr.status);
+                        if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">HTTP Error ' + xhr.status + '</span>';
+                        alert('HTTP Error ' + xhr.status + ' for user ' + item.userid);
+                    }
+                    // Next
+                    processQueue(queue, index + 1);
+                }
+            };
+            
+            xhr.onerror = function() {
+                console.error('XHR Network Error');
+                alert('Network Error occurred.');
+                processQueue(queue, index + 1);
+            };
+
+            var params = 'userid=' + item.userid + '&timeclose=' + item.timeclose;
+            if (item.lang) {
+                params += '&lang=' + item.lang;
+            }
+            console.log('Sending request with params:', params);
+            xhr.send(params);
+        };
+
+        // Generate Reports Button
+        var btnGenerate = document.getElementById('btn-generate-reports');
+        if (btnGenerate) {
+            console.log('Generate Reports button found');
+            btnGenerate.addEventListener('click', function(e) {
+                console.log('Generate Reports button clicked');
+                e.preventDefault();
+                var lang = document.getElementById('report-lang-select').value;
+                console.log('Selected language:', lang);
+                
                 var selected = [];
                 document.querySelectorAll('.report-checkbox:checked').forEach(function(cb) {
-                    selected.push({
-                        userid: cb.dataset.userid,
-                        timeclose: cb.dataset.duedate
-                    });
+                    if (lang === 'both') {
+                        selected.push({
+                            userid: cb.dataset.userid,
+                            timeclose: cb.dataset.duedate,
+                            lang: 'en',
+                            action: 'generate'
+                        });
+                        selected.push({
+                            userid: cb.dataset.userid,
+                            timeclose: cb.dataset.duedate,
+                            lang: 'ko',
+                            action: 'generate'
+                        });
+                    } else {
+                        selected.push({
+                            userid: cb.dataset.userid,
+                            timeclose: cb.dataset.duedate,
+                            lang: lang,
+                            action: 'generate'
+                        });
+                    }
                 });
+
+                console.log('Selected items:', selected);
 
                 if (selected.length === 0) {
                     alert('Please select at least one student.');
                     return;
                 }
 
-                if (!confirm('Send report for ' + selected.length + ' students?')) {
+                alert('Starting generation for ' + selected.length + ' reports...');
+                processQueue(selected, 0);
+            });
+        } else {
+            console.error('Generate Reports button NOT found');
+        }
+
+        // Send Emails Button
+        var btnSend = document.getElementById('btn-send-emails');
+        if (btnSend) {
+            console.log('Send Emails button found');
+            btnSend.addEventListener('click', function(e) {
+                console.log('Send Emails button clicked');
+                e.preventDefault();
+                var selected = [];
+                document.querySelectorAll('.report-checkbox:checked').forEach(function(cb) {
+                    selected.push({
+                        userid: cb.dataset.userid,
+                        timeclose: cb.dataset.duedate,
+                        action: 'sendemail'
+                    });
+                });
+
+                console.log('Selected items for email:', selected);
+
+                if (selected.length === 0) {
+                    alert('Please select at least one student.');
                     return;
                 }
 
-                // Process sequentially to avoid overwhelming server
-                var processQueue = function(index) {
-                    if (index >= selected.length) {
-                        alert('Reports sent successfully.');
-                        location.reload();
-                        return;
-                    }
-
-                    var item = selected[index];
-                    var xhr = new XMLHttpRequest();
-                    xhr.open('POST', 'ajax_send_report.php', true);
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    xhr.onreadystatechange = function() {
-                        if (xhr.readyState === 4) {
-                            if (xhr.status === 200) {
-                                try {
-                                    var resp = JSON.parse(xhr.responseText);
-                                    if (resp.status === 'success') {
-                                        // Update UI row status if possible, or just continue
-                                        console.log('Success for ' + item.userid);
-                                    } else {
-                                        console.error('Error for ' + item.userid + ': ' + resp.message);
-                                    }
-                                } catch (e) {
-                                    console.error('Invalid response for ' + item.userid);
-                                }
-                            }
-                            processQueue(index + 1);
-                        }
-                    };
-                    xhr.send('userid=' + item.userid + '&timeclose=' + item.timeclose);
-                };
-
-                processQueue(0);
-            }
-        });
-
-        // Select All
-        document.getElementById('select-all-reports').addEventListener('change', function() {
-            var checked = this.checked;
-            document.querySelectorAll('.report-checkbox').forEach(function(cb) {
-                cb.checked = checked;
-            });
-        });
-
-        // Individual Send (Legacy/Removed but keeping script structure clean)
-        document.querySelectorAll('.send-report-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var userid = this.getAttribute('data-userid');
-                var duedate = this.getAttribute('data-duedate');
-                var studentname = this.getAttribute('data-studentname');
-                var dateStr = this.getAttribute('data-date');
-                
-                if (confirm('Send homework report for ' + studentname + ' due on ' + dateStr + '?')) {
-                    sendReport(userid, duedate, studentname);
+                if (confirm('Are you sure you want to send emails to ' + selected.length + ' students?')) {
+                    processQueue(selected, 0);
                 }
             });
-        });
-
-        // Select All
-        var selectAll = document.getElementById('select-all-reports');
-        if (selectAll) {
-            selectAll.addEventListener('change', function() {
-                var checkboxes = document.querySelectorAll('.report-checkbox');
-                for (var i = 0; i < checkboxes.length; i++) {
-                    checkboxes[i].checked = this.checked;
-                }
-            });
-        }
-
-        // Bulk Action
-        var bulkBtn = document.getElementById('bulk-action-btn');
-        if (bulkBtn) {
-            bulkBtn.addEventListener('click', function() {
-                var action = document.getElementById('bulk-action-select').value;
-                if (!action) {
-                    alert('Please select an action.');
-                    return;
-                }
-                if (action === 'sendreport') {
-                    var selected = document.querySelectorAll('.report-checkbox:checked');
-                    if (selected.length === 0) {
-                        alert('No students selected.');
-                        return;
-                    }
-                    if (confirm('Send reports to ' + selected.length + ' students?')) {
-                        // Process sequentially to avoid overwhelming server or hitting limits
-                        // Or use a bulk endpoint. Let's use sequential for now for better UI feedback.
-                        processBulkQueue(Array.from(selected), 0);
-                    }
-                }
-            });
-        }
-
-        function processBulkQueue(items, index) {
-            if (index >= items.length) {
-                alert('Bulk processing complete.');
-                return;
-            }
-            var item = items[index];
-            var userid = item.getAttribute('data-userid');
-            var duedate = item.getAttribute('data-duedate');
-            var studentname = item.getAttribute('data-studentname');
-            
-            // Update status to 'Sending...'
-            var statusCell = document.getElementById('status-' + userid + '-' + duedate);
-            if (statusCell) statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
-
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'ajax.php', true);
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    try {
-                        var resp = JSON.parse(xhr.responseText);
-                        if (resp.success) {
-                            if (statusCell) statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
-                        } else {
-                            if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                        }
-                    } catch (e) {
-                        if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                    }
-                } else {
-                    if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                }
-                // Next item
-                processBulkQueue(items, index + 1);
-            };
-            xhr.onerror = function() {
-                 if (statusCell) statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                 processBulkQueue(items, index + 1);
-            };
-            xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
-        }
-
-        function sendReport(userid, duedate, studentname) {
-            var statusCell = document.getElementById('status-' + userid + '-' + duedate);
-            statusCell.innerHTML = '<span class="badge badge-warning">Sending...</span>';
-            
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'ajax.php', true);
-            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    try {
-                        var resp = JSON.parse(xhr.responseText);
-                        if (resp.success) {
-                            statusCell.innerHTML = '<span class="badge badge-success">Sent</span>';
-                            alert(resp.message);
-                        } else {
-                            statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                            alert('Error: ' + resp.message);
-                        }
-                    } catch (e) {
-                        statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                        alert('Invalid response from server.');
-                    }
-                } else {
-                    statusCell.innerHTML = '<span class="badge badge-danger">Error</span>';
-                    alert('Request failed.');
-                }
-            };
-            xhr.send('userid=' + userid + '&duedate=' + duedate + '&sesskey=' + M.cfg.sesskey);
+        } else {
+            console.error('Send Emails button NOT found');
         }
     });
     </script>
