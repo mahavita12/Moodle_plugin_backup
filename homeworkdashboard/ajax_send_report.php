@@ -142,12 +142,31 @@ if (!empty($row->next_due_date)) {
     }
 }
 
+// Find Classroom (Category 1 Course)
+$classroom = '';
+foreach ($rows as $r) {
+    if (strcasecmp($r->categoryname ?? '', 'Category 1') === 0) {
+        $classroom = $r->coursename;
+        break;
+    }
+}
+// Fallback if no Category 1 found, use the first course name
+if (empty($classroom) && !empty($rows)) {
+    $classroom = $rows[0]->coursename;
+}
+
 // Generate HTML
 $html = '
 <style>
+    .report-header { background-color: #004494; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    .report-header h2 { margin-top: 0; color: #ffffff; }
+    .report-subtitle { margin-bottom: 0; color: #e3f2fd; font-size: 18px; font-weight: bold; }
+    .report-info { margin-bottom: 20px; }
+    .report-info p { margin: 5px 0; }
+    .section-heading { color: #0056b3; font-size: 1.1rem; margin-top: 20px; margin-bottom: 10px; font-weight: bold; }
     .report-table { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 20px; }
     .report-table th, .report-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    .report-table th { background-color: #f2f2f2; font-weight: bold; }
+    .report-table th { background-color: #0056b3; color: white; font-weight: bold; border-color: #0056b3; }
     .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px; }
     .status-done { background-color: #d4edda; color: #155724; }
     .status-todo { background-color: #dc3545; color: white; }
@@ -157,21 +176,18 @@ $html = '
     .classification-revision { background-color: #ffc107; color: white; }
 </style>
 
-<style>
-    .homework-report-container {
-        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    }
-    .homework-report-container table th {
-        background-color: #003366 !important;
-        color: #ffffff !important;
-    }
-</style>
-<div class="homework-report-container">
-<h2>Homework Report</h2>
-<p><strong>Student:</strong> ' . fullname($user) . '</p>
-<p><strong>Due Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
+<div class="report-header">
+    <h2>Progress Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h2>
+    <div class="report-subtitle">GrowMinds Academy</div>
+</div>
 
-<h3>Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h3>
+<div class="report-info">
+    <p><strong>Student:</strong> ' . fullname($user) . '</p>
+    <p><strong>Classroom:</strong> ' . s($classroom) . '</p>
+    <p><strong>Date:</strong> ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</p>
+</div>
+
+<h4 class="section-heading">Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h4>
 <table class="report-table">
     <thead>
         <tr>
@@ -201,7 +217,7 @@ foreach ($rows as $idx => $r) {
         $statusLabel = 'Done';
     } elseif ($st === 'low grade' || $st === 'submitted') {
         $statusClass = 'status-submitted';
-        $statusLabel = 'Submitted';
+        $statusLabel = 'Low score';
     }
 
     $classLabel = $r->classification ?? '';
@@ -233,7 +249,7 @@ foreach ($rows as $idx => $r) {
 $html .= '</tbody></table>';
 
 if (!empty($activities2)) {
-    $html .= '<h3>Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h3>';
+    $html .= '<h4 class="section-heading">Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h4>';
     $html .= '<table class="report-table">
         <thead>
             <tr>
@@ -263,9 +279,8 @@ if (!empty($activities2)) {
     $html .= '</tbody></table>';
 }
 
-$html .= '</div>'; // Close container
+$html .= '</div>'; 
 
-// Save Report
 $record = new stdClass();
 $record->userid = $userid;
 $record->timeclose = $timeclose;
