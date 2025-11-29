@@ -103,58 +103,69 @@ class gemini_helper {
      * Construct the prompt for Gemini.
      */
     private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang): string {
-        $prompt = "You are a supportive and encouraging tutor for a student named {$student_name}.\n";
         
         if ($lang === 'ko') {
-            $prompt .= "IMPORTANT: You MUST write this report in KOREAN (Hangul).\n";
-        }
-
-        $prompt .= "Analyze their homework progress for this week and write a summary report for their parents.\n\n";
-        
-        $prompt .= "[Rules]\n";
-        $prompt .= "- Use 'We' instead of 'I' (e.g., 'We noticed...', 'We encourage...').\n";
-        $prompt .= "- Refer to the student ONLY by their FIRST NAME (e.g., if name is 'Hannah Jung', use 'Hannah').\n";
-        $prompt .= "- Do NOT include any greeting or sign-off. Start directly with the summary.\n";
-        $prompt .= "- Structure:\n";
-        $prompt .= "   - **Introductory Summary** (First Paragraph):\n";
-        $prompt .= "     - State: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
-        $prompt .= "     - Evaluate completion rates SEPARATELY for New Topics and Revision Work:\n";
-        $prompt .= "       - For New Topics:\n";
-        $prompt .= "         - > 90%: Praise.\n";
-        $prompt .= "         - < 70%: Encourage.\n";
-        $prompt .= "         - < 50%: Warn.\n";
-        $prompt .= "       - For Revision Work:\n";
-        $prompt .= "         - > 90%: Praise.\n";
-        $prompt .= "         - < 70%: Encourage.\n";
-        $prompt .= "         - < 50%: Warn.\n";
-        $prompt .= "   - Section: 'New Topics'. Header: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
-        $prompt .= "   - Section: 'Revision Work'. Header: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
-        $prompt .= "- Content:\n";
-        $prompt .= "   - Group feedback by Subject (e.g., Math, English) using bullet points.\n";
-        $prompt .= "   - Highlight high scores/effort.\n";
-        $prompt .= "   - Address low scores/no attempts politely.\n";
-        $prompt .= "   - **Duration & Integrity Analysis**:\n";
-        $prompt .= "     - Minimum expected time is approx 1 minute per question.\n";
-        $prompt .= "     - If duration < (Question Count * 1 min), explicitly mention it was 'Rushed' or 'Skipped'.\n";
-        $prompt .= "     - **Revision Integrity Check**: For Revision activities, if Score is High (> 80%) BUT Duration is significantly low (e.g. < 5 mins for 10 questions), issue a **STERN WARNING**. This suggests copying answers without genuine effort.\n";
-        $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
-        $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
-        if ($lang === 'ko') {
-            $prompt .= "- **Language Rules (Korean)**:\n";
-            $prompt .= "  - Output the report in Korean (Hangul), BUT keep the Subject Names (e.g., 'Math:', 'English:') in English at the start of each bullet point.\n";
-            $prompt .= "  - Translate the commentary text following the subject name into natural Korean.\n";
-            $prompt .= "  - Do NOT translate 'STERN WARNING'. Keep it as 'Stern Warning' in English.\n";
-            $prompt .= "  - Translate the Introductory Summary (completion counts) into Korean.\n";
-            $prompt .= "  - **Natural Phrasing**:\n";
-            $prompt .= "    - Instead of literal translations like '새로운 활동' or '복습 활동', use more natural terms.\n";
-            $prompt .= "    - For 'New Activities', use terms like '이번 주 학습 진도' (This week's learning progress) or '새 진도' (New progress).\n";
-            $prompt .= "    - For 'Revision Activities', use terms like '복습' (Review) or '오답 노트' (Incorrect answer note).\n";
-            $prompt .= "    - Ensure the tone is professional yet encouraging.\n";
-        }
-
-        $prompt .= "- Length: Concise (~200 words).\n\n";
-
-        $prompt .= "[Data]\n";
+            // --- KOREAN PROMPT (Native Generation) ---
+            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
+            $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
+            
+            $prompt .= "[작성 규칙]\n";
+            $prompt .= "- **언어**: 자연스러운 한국어로 작성하세요. (번역투 지양)\n";
+            $prompt .= "- **어조**: 예의 바르면서도 따뜻하고 격려하는 어조를 사용하세요. (예: '했습니다', '보입니다', '응원합니다')\n";
+            $prompt .= "- **호칭**: 학생의 이름은 '{$student_name}'(으)로 지칭하세요.\n";
+            $prompt .= "- **인사말 생략**: '안녕하세요' 등의 인사말 없이 바로 본론으로 시작하세요.\n";
+            
+            $prompt .= "- **구성**:\n";
+            $prompt .= "   1. **종합 요약** (첫 문단):\n";
+            $prompt .= "      - '{$student_name} 학생은 이번 주 진도 학습 {$total_new}개 중 {$completed_new}개, 복습 활동 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
+            $prompt .= "      - 수행률에 따라 칭찬(90% 이상), 격려(70% 미만), 또는 주의(50% 미만)를 해주세요.\n";
+            
+            $prompt .= "   2. **상세 분석**:\n";
+            $prompt .= "      - **진도 학습 (New Topics)** 과 **복습 활동 (Revision Work)** 을 구분하여 피드백하세요.\n";
+            $prompt .= "      - 과목명(예: Math, English)은 영어 그대로 표기하되, 내용은 한국어로 작성하세요.\n";
+            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬하세요.\n";
+            $prompt .= "      - **성실도 점검**:\n";
+            $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
+            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Stern Warning).\n";
+            
+            $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
+            $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
+            
+        } else {
+            // --- ENGLISH PROMPT (Existing) ---
+            $prompt = "You are a supportive and encouraging tutor for a student named {$student_name}.\n";
+            $prompt .= "Analyze their homework progress for this week and write a summary report for their parents.\n\n";
+            
+            $prompt .= "[Rules]\n";
+            $prompt .= "- Use 'We' instead of 'I' (e.g., 'We noticed...', 'We encourage...').\n";
+            $prompt .= "- Refer to the student ONLY by their FIRST NAME (e.g., if name is '{$student_name}', use '{$student_name}').\n";
+            $prompt .= "- Do NOT include any greeting or sign-off. Start directly with the summary.\n";
+            $prompt .= "- Structure:\n";
+            $prompt .= "   - **Introductory Summary** (First Paragraph):\n";
+            $prompt .= "     - State: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
+            $prompt .= "     - Evaluate completion rates SEPARATELY for New Topics and Revision Work:\n";
+            $prompt .= "       - For New Topics:\n";
+            $prompt .= "         - > 90%: Praise.\n";
+            $prompt .= "         - < 70%: Encourage.\n";
+            $prompt .= "         - < 50%: Warn.\n";
+            $prompt .= "       - For Revision Work:\n";
+            $prompt .= "         - > 90%: Praise.\n";
+            $prompt .= "         - < 70%: Encourage.\n";
+            $prompt .= "         - < 50%: Warn.\n";
+            $prompt .= "   - Section: 'New Topics'. Header: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
+            $prompt .= "   - Section: 'Revision Work'. Header: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
+            $prompt .= "- Content:\n";
+            $prompt .= "   - Group feedback by Subject (e.g., Math, English) using bullet points.\n";
+            $prompt .= "   - Highlight high scores/effort.\n";
+            $prompt .= "   - Address low scores/no attempts politely.\n";
+            $prompt .= "   - **Duration & Integrity Analysis**:\n";
+            $prompt .= "     - Minimum expected time is approx 1 minute per question.\n";
+            $prompt .= "     - If duration < (Question Count * 1 min), explicitly mention it was 'Rushed' or 'Skipped'.\n";
+            $prompt .= "     - **Revision Integrity Check**: For Revision activities, if Score is High (> 80%) BUT Duration is significantly low (e.g. < 5 mins for 10 questions), issue a **STERN WARNING**. This suggests copying answers without genuine effort.\n";
+            $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
+            $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
+            $prompt .= "- Length: Concise (~200 words).\n\n";
+        }        $prompt .= "[Data]\n";
         
         $prompt .= "New Activities:\n";
         if (empty($new_activities)) {
