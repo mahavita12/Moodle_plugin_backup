@@ -103,6 +103,7 @@ class gemini_helper {
 
         $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang);
         error_log('GEMINI_DEBUG: Prompt constructed. Length: ' . strlen($prompt));
+
         return $this->call_api($prompt);
     }
 
@@ -110,7 +111,10 @@ class gemini_helper {
 
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
-            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
+            $prompt = "\n[Summary Statistics]\n";
+            $prompt .= "- New Topics: {$completed_new} out of {$total_new} completed.\n";
+            $prompt .= "- Revision Work: {$completed_revision} out of {$total_revision} completed.\n\n";
+            $prompt .= "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
             $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
             
             $prompt .= "[작성 규칙]\n";
@@ -139,7 +143,10 @@ class gemini_helper {
             
         } else {
             // --- ENGLISH PROMPT (Existing) ---
-            $prompt = "You are a supportive and encouraging tutor for a student named {$student_name}.\n";
+            $prompt = "\n[Summary Statistics]\n";
+            $prompt .= "- New Topics: {$completed_new} out of {$total_new} completed.\n";
+            $prompt .= "- Revision Work: {$completed_revision} out of {$total_revision} completed.\n\n";
+            $prompt .= "You are a supportive and encouraging tutor for a student named {$student_name}.\n";
             $prompt .= "Analyze their homework progress for this week and write a summary report for their parents.\n\n";
             
             $prompt .= "[Rules]\n";

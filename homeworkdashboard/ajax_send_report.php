@@ -5,7 +5,7 @@ require_once('../../config.php');
 error_log('GEMINI_DEBUG: ajax_send_report.php called!'); // Added top-level log
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/homework_manager.php');
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/google_drive_helper.php');
-require_once($CFG->dirroot . '/local/homeworkdashboard/classes/gemini_helper.php');
+require_once($CFG->dirroot . '/local/homeworkdashboard/classes/gemini_helper_v2.php');
 
 $userid = required_param('userid', PARAM_INT);
 $timeclose = required_param('timeclose', PARAM_INT); // Due Date 1 timestamp
