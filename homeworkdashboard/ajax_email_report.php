@@ -79,6 +79,15 @@ try {
     $sender->maildisplay = true;
     $sender->mailformat = 1;
 
+    // Support Recipient for BCC
+    $support_recipient = new stdClass();
+    $support_recipient->id = -99; 
+    $support_recipient->email = 'support@growminds.net';
+    $support_recipient->firstname = 'GrowMinds';
+    $support_recipient->lastname = 'Support';
+    $support_recipient->maildisplay = true;
+    $support_recipient->mailformat = 1;
+
     $sent_count = 0;
     $debug_logs = [];
 
@@ -97,6 +106,8 @@ try {
             $recipient = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
             if (send_report_email($recipient, $report_to_send, $sender)) {
                 $sent_count++;
+                // Send BCC to Support
+                send_report_email($support_recipient, $report_to_send, $sender);
             } else {
                 $debug_logs[] = "Failed to send to P1: " . $pinfo->p1_email;
             }
@@ -119,6 +130,8 @@ try {
             $recipient = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
             if (send_report_email($recipient, $report_to_send, $sender)) {
                 $sent_count++;
+                // Send BCC to Support
+                send_report_email($support_recipient, $report_to_send, $sender);
             } else {
                 $debug_logs[] = "Failed to send to P2: " . $pinfo->p2_email;
             }

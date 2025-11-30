@@ -575,8 +575,10 @@ if ($tab === 'snapshot' && $canmanage) {
                             <td><?php echo (int)$row->userid; ?></td>
                             <td><?php echo s($row->email); ?></td>
                             <td>
-                                <?php if (!empty($row->parent1) && !empty($row->parent1->name)): ?>
-                                    <div><?php echo s($row->parent1->name); ?></div>
+                                <?php if (!empty($row->parent1) && (!empty($row->parent1->name) || !empty($row->parent1->email))): ?>
+                                    <?php if (!empty($row->parent1->name)): ?>
+                                        <div><?php echo s($row->parent1->name); ?></div>
+                                    <?php endif; ?>
                                     <?php if (!empty($row->parent1->email)): ?>
                                         <div><a href="mailto:<?php echo s($row->parent1->email); ?>"><?php echo s($row->parent1->email); ?></a></div>
                                     <?php endif; ?>
@@ -591,8 +593,10 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if (!empty($row->parent2) && !empty($row->parent2->name)): ?>
-                                    <div><?php echo s($row->parent2->name); ?></div>
+                                <?php if (!empty($row->parent2) && (!empty($row->parent2->name) || !empty($row->parent2->email))): ?>
+                                    <?php if (!empty($row->parent2->name)): ?>
+                                        <div><?php echo s($row->parent2->name); ?></div>
+                                    <?php endif; ?>
                                     <?php if (!empty($row->parent2->email)): ?>
                                         <div><a href="mailto:<?php echo s($row->parent2->email); ?>"><?php echo s($row->parent2->email); ?></a></div>
                                     <?php endif; ?>
