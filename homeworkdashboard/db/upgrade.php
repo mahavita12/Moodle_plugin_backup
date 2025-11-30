@@ -7,7 +7,7 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
     $dbman = $DB->get_manager();
 
     // Bump version to trigger this block
-    if ($oldversion < 2025113000) {
+    if ($oldversion < 2025113001) {
 
         // Define table local_homework_reports
         $table = new xmldb_table('local_homework_reports');
@@ -23,6 +23,8 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
             $table->add_field('ai_commentary', XMLDB_TYPE_TEXT, null, null, null, null, null);
             $table->add_field('ai_raw_response', XMLDB_TYPE_TEXT, null, null, null, null, null);
             $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            // Add lang field for new tables
+            $table->add_field('lang', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'en');
 
             // Define keys and indexes
             $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
@@ -44,10 +46,16 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
             if (!$dbman->field_exists($table, $field2)) {
                 $dbman->add_field($table, $field2);
             }
+
+            // Add lang if missing
+            $field3 = new xmldb_field('lang', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'en', 'timecreated');
+            if (!$dbman->field_exists($table, $field3)) {
+                $dbman->add_field($table, $field3);
+            }
         }
 
         // Savepoint
-        upgrade_plugin_savepoint(true, 2025113000, 'local', 'homeworkdashboard');
+        upgrade_plugin_savepoint(true, 2025113001, 'local', 'homeworkdashboard');
     }
 
     return true;
