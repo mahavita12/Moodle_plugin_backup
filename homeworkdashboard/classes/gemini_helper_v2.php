@@ -114,7 +114,7 @@ class gemini_helper {
             $prompt = "\n[Summary Statistics]\n";
             $prompt .= "- New Topics: {$completed_new} out of {$total_new} completed.\n";
             $prompt .= "- Revision Work: {$completed_revision} out of {$total_revision} completed.\n\n";
-            $prompt .= "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
+            $prompt .= "당신은 '{$student_name}' 학생을 아끼고 격려하며 영어 라이팅, 영어 리딩, 수학, 띵킹 스킬을 가르치는 한국인 선생님입니다.\n";
             $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
             
             $prompt .= "[작성 규칙]\n";
@@ -125,18 +125,18 @@ class gemini_helper {
             
             $prompt .= "- **구성**:\n";
             $prompt .= "   1. **종합 요약** (첫 문단):\n";
-            $prompt .= "      - '{$student_name} 학생은 이번 주 진도 학습 {$total_new}개 중 {$completed_new}개, 복습 활동 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
+            $prompt .= "      - '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
             $prompt .= "      - 수행률에 따라 칭찬(90% 이상), 격려(70% 미만), 또는 주의(50% 미만)를 해주세요.\n";
             
             $prompt .= "   2. **상세 분석**:\n";
             $prompt .= "      - **섹션 구분**: 반드시 아래 HTML 헤더를 사용하여 두 섹션을 명확히 구분하세요.\n";
-            $prompt .= "        - 진도 학습: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
-            $prompt .= "        - 복습 활동: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
+            $prompt .= "        - 새로운 과제: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
+            $prompt .= "        - 복습 과제: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
             $prompt .= "      - **내용 구성**: 각 섹션 내에서 과목명(예: Math, English)을 불릿 포인트로 구분하여 작성하세요.\n";
             $prompt .= "      - 높은 점수나 노력한 부분은 칭찬하세요.\n";
             $prompt .= "      - **성실도 점검**:\n";
             $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
-            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Stern Warning).\n";
+            $prompt .= "        - 특히 복습 과제에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
             
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
