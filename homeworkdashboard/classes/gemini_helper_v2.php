@@ -50,11 +50,11 @@ class gemini_helper {
      * @param string $student_name
      * @param array $new_activities Array of activity objects with 'name', 'attempts' (array of attempt objects), 'maxscore'
      * @param array $revision_activities Array of activity objects
+     * @param string $lang Language code ('en' or 'ko')
      * @return string|null Generated commentary or null on failure
      */
     public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en'): ?string {
         if (!$this->is_configured()) {
-            error_log('GEMINI_DEBUG: API Key is missing in settings.');
             return "AI Commentary unavailable: API Key not configured.";
         }
 
@@ -63,17 +63,24 @@ class gemini_helper {
         $completed_new = 0;
         foreach ($new_activities as $act) {
             $status = $act['status'] ?? 'Unknown';
-            error_log("GEMINI_DEBUG: New Activity '{$act['name']}' Status: $status");
-            
+            $attempts_count = count($act['attempts'] ?? []);
+            error_log("GEMINI_DEBUG: New Activity '{$act['name']}' | Status: '$status' | Attempts: $attempts_count");
+
             // Use status from table logic if available
             if (isset($act['status'])) {
                 if ($act['status'] === 'Completed' || $act['status'] === 'Low grade') {
                     $completed_new++;
+                    error_log("GEMINI_DEBUG: -> Counted as COMPLETED (Status match)");
+                } else {
+                    error_log("GEMINI_DEBUG: -> NOT counted (Status is '$status')");
                 }
             } else {
                 // Fallback to attempt check (legacy)
                 if (!empty($act['attempts'])) {
                     $completed_new++;
+                    error_log("GEMINI_DEBUG: -> Counted as COMPLETED (Fallback attempts)");
+                } else {
+                    error_log("GEMINI_DEBUG: -> NOT counted (No status, no attempts)");
                 }
             }
         }
@@ -99,14 +106,11 @@ class gemini_helper {
         return $this->call_api($prompt);
     }
 
-    /**
-     * Construct the prompt for Gemini.
-     */
     private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang): string {
-        
+
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
-            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국인 선생님입니다.\n";
+            $prompt = "당신은 '{$student_name}' 학생을 아끼고 격려하는 한국어 선생님입니다.\n";
             $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
             
             $prompt .= "[작성 규칙]\n";
@@ -117,16 +121,18 @@ class gemini_helper {
             
             $prompt .= "- **구성**:\n";
             $prompt .= "   1. **종합 요약** (첫 문단):\n";
-            $prompt .= "      - '{$student_name} 학생은 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 로 시작.\n";
+            $prompt .= "      - '{$student_name} 학생은 이번 주 진도 학습 {$total_new}개 중 {$completed_new}개, 복습 활동 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
             $prompt .= "      - 수행률에 따라 칭찬(90% 이상), 격려(70% 미만), 또는 주의(50% 미만)를 해주세요.\n";
             
             $prompt .= "   2. **상세 분석**:\n";
-            $prompt .= "      - **새로운 과제 (New Topics)** 와 **복습 과제 (Revision Work)** 를 구분하여 피드백하세요.\n";
-            $prompt .= "      - 과목명(예: Math, English)은 영어 그대로 표기하되, 내용은 한국어로 작성하세요.\n";
-            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬해 주세요.\n";
+            $prompt .= "      - **섹션 구분**: 반드시 아래 HTML 헤더를 사용하여 두 섹션을 명확히 구분하세요.\n";
+            $prompt .= "        - 진도 학습: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
+            $prompt .= "        - 복습 활동: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
+            $prompt .= "      - **내용 구성**: 각 섹션 내에서 과목명(예: Math, English)을 불릿 포인트로 구분하여 작성하세요.\n";
+            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬하세요.\n";
             $prompt .= "      - **성실도 점검**:\n";
             $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
-            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
+            $prompt .= "        - 특히 복습 활동에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Stern Warning).\n";
             
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
@@ -165,8 +171,10 @@ class gemini_helper {
             $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
             $prompt .= "- Length: Concise (~200 words).\n\n";
-        }        $prompt .= "[Data]\n";
-        
+        }
+
+        $prompt .= "[Data]\n";
+
         $prompt .= "New Activities:\n";
         if (empty($new_activities)) {
             $prompt .= "- None this week.\n";
@@ -219,7 +227,7 @@ class gemini_helper {
      */
     private function call_api(string $text_prompt): ?string {
         $url = $this->api_url_base . $this->model . ':generateContent?key=' . $this->api_key;
-        
+
         $generation_config = [
             'temperature' => 0.7,
             'maxOutputTokens' => 4000,
@@ -227,13 +235,17 @@ class gemini_helper {
 
         // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
         if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3-pro') !== false) {
-            // Thinking models require higher token limits
-            // Temperature: 1.0 (Recommended for reasoning models)
-            // Max Output Tokens: Increased to 8192 to allow for thinking process + output
+            // Gemini 3 Pro / Thinking models often support/require higher token limits
+            // and specific thinking config.
+            // Note: 'thinking_config' is specific to some experimental endpoints.
+            // For standard Gemini 1.5 Pro, maxOutputTokens is higher (8192).
             
+            // Adjust for Gemini 3 Pro Preview / Thinking
+            // Max Output Tokens: Increased to 8192 to allow for thinking process + output
+
             $generation_config['temperature'] = 1.0;
             $generation_config['maxOutputTokens'] = 8192;
-            
+
             // Note: thinking_level defaults to 'high' if not specified.
             // We explicitly set it to ensure deep reasoning.
             $generation_config['thinking_config'] = [
@@ -257,9 +269,9 @@ class gemini_helper {
         $options = [
             'CURLOPT_HTTPHEADER' => ['Content-Type: application/json']
         ];
-        
+
         $response = $curl->post($url, json_encode($payload), $options);
-        
+
         $this->last_response = $response; // Store raw response
         error_log('GEMINI_DEBUG: Raw API Response: ' . substr($response, 0, 500)); // Log first 500 chars
 
@@ -270,7 +282,7 @@ class gemini_helper {
         }
 
         $data = json_decode($response, true);
-        
+
         if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
             return $data['candidates'][0]['content']['parts'][0]['text'];
         } else {
