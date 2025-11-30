@@ -42,6 +42,8 @@
         <FIELD NAME="content" TYPE="text" LENGTH="big" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="ai_commentary" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Extracted AI commentary text"/>
         <FIELD NAME="ai_raw_response" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Full JSON response from AI API"/>
+        <FIELD NAME="lang" TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="en"/>
+        <FIELD NAME="drive_link" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Google Drive Link"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
       </FIELDS>
       <KEYS>
