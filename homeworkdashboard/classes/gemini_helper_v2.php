@@ -137,6 +137,9 @@ class gemini_helper {
             $prompt .= "      - **성실도 점검**:\n";
             $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
             $prompt .= "        - 특히 복습 과제에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
+            $prompt .= "        - 만약 학생의 점수가 낮다면 (예: 30% 미만), 단순히 격려만 하지 말고 따끔하게 지적해주세요. 내용 이해가 부족해 보이니 다시 복습하라고 강력하게 권고해야 합니다.\n";
+            $prompt .= "        - 'New' 과제 중 코스 이름에 'Selective Trial Test'가 포함된 경우, 45분 풀이 시간을 준수해야 합니다. 40분 미만이라면 너무 빨리 풀었다고 지적하세요.\n";
+            $prompt .= "        - 'New' 과제 중 코스 이름에 'OC Trial Test'가 포함된 경우: 과제 이름에 'Math'가 있으면 40분, 'Reading'이나 'Thinking'이 있으면 30분을 준수해야 합니다. 이보다 5분 이상 빨리 끝냈다면 지적하세요.\n";
             
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
@@ -176,6 +179,9 @@ class gemini_helper {
             $prompt .= "     - If duration < (Question Count * 1 min), explicitly mention it was 'Rushed' or 'Skipped'.\n";
             $prompt .= "     - **Revision Integrity Check**: For Revision activities, if Score is High (> 80%) BUT Duration is significantly low (e.g. < 5 mins for 10 questions), issue a **STERN WARNING**. This suggests copying answers without genuine effort.\n";
             $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
+            $prompt .= "     - If a student's score is low (e.g., < 30%), do not just be supportive. Explicitly mention the low score and express serious concern. Tell them they need to put in more effort to understand the material.\n";
+            $prompt .= "     - For 'New' activities, if the Course Name includes 'Selective Trial Test', the expected duration is 45 minutes. If completed in less than 40 minutes, warn them that they rushed.\n";
+            $prompt .= "     - If Course Name includes 'OC Trial Test': For 'Math', expected is 40 mins. For 'Reading'/'Thinking', expected is 30 mins. Warn if completed > 5 mins too fast.\n";
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
             $prompt .= "- Length: Concise (~200 words).\n\n";
         }
@@ -188,7 +194,9 @@ class gemini_helper {
         } else {
             foreach ($new_activities as $act) {
                 $q_count = $act['question_count'] ?? 'Unknown';
-                $prompt .= "- Activity: {$act['name']} (Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
+                $status_str = $act['status'] ?? 'Unknown';
+                $course_str = $act['coursename'] ?? 'Unknown';
+                $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
                 if (empty($act['attempts'])) {
                     $prompt .= "  - No attempts made.\n";
                 } else {
@@ -210,7 +218,9 @@ class gemini_helper {
         } else {
             foreach ($revision_activities as $act) {
                 $q_count = $act['question_count'] ?? 'Unknown';
-                $prompt .= "- Activity: {$act['name']} (Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
+                $status_str = $act['status'] ?? 'Unknown';
+                $course_str = $act['coursename'] ?? 'Unknown';
+                $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
                 if (empty($act['attempts'])) {
                     $prompt .= "  - No attempts made.\n";
                 } else {

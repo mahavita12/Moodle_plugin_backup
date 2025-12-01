@@ -174,6 +174,7 @@ foreach ($rows as $r) {
 
         $act_data = [
             'name' => $r->quizname,
+            'coursename' => $r->coursename,
             'maxscore' => $r->maxscore,
             'question_count' => $question_count,
             'attempts' => $attempts_clean,
