@@ -30,7 +30,7 @@ class auto_reset_defaults extends scheduled_task {
         }
 
         foreach ($jobs as $job) {
-            $quiz = $DB->get_record('quiz', ['id' => $job->quizid], 'id, course, timeclose', \core\invalid_record_exception::IGNORE_MISSING);
+            $quiz = $DB->get_record('quiz', ['id' => $job->quizid], 'id, course, timeclose', IGNORE_MISSING);
             if (!$quiz) {
                 $job->status = 'cancelled';
                 $job->timemodified = $now;

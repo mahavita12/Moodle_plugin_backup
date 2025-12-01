@@ -1530,4 +1530,154 @@ class homework_manager {
 
         return $DB->get_records_sql($sql, ['quizid' => $quizid, 'userid' => $userid]);
     }
+
+    /**
+     * Compute snapshots for quizzes that have recently closed.
+     * Called by scheduled task.
+     */
+    public function compute_due_snapshots() {
+        global $DB;
+
+        // 1. Find quizzes that closed in the last 24 hours (or since last run).
+        // For robustness, we look back 2 days to ensure we don't miss anything if cron failed.
+        $now = time();
+        $since = $now - (2 * 24 * 60 * 60);
+
+        $sql = "SELECT q.id, q.course, q.timeclose, q.grade, cm.id as cmid
+                  FROM {quiz} q
+                  JOIN {course_modules} cm ON cm.instance = q.id
+                  JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                 WHERE q.timeclose > :since
+                   AND q.timeclose <= :now";
+        
+        $quizzes = $DB->get_records_sql($sql, ['since' => $since, 'now' => $now]);
+        
+        if (empty($quizzes)) {
+            mtrace("No quizzes closed in the last 48 hours.");
+            return;
+        }
+
+        $inserted = 0;
+        foreach ($quizzes as $qrec) {
+            $quizid = (int)$qrec->id;
+            $courseid = (int)$qrec->course;
+            $timeclose = (int)$qrec->timeclose;
+            $cmid = (int)$qrec->cmid;
+
+            mtrace("Processing quiz $quizid (Course $courseid, Close $timeclose)...");
+
+            // Get roster
+            $roster = $this->get_course_roster($courseid);
+            if (empty($roster)) {
+                continue;
+            }
+
+            // Get existing snapshots for this quiz
+            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'userid, id');
+            
+            // Filter roster to only those who DON'T have a snapshot
+            $roster = array_diff($roster, array_keys($existing));
+            
+            if (empty($roster)) {
+                continue;
+            }
+
+            // Calculate window
+            $windowdays = $this->get_course_window_days($courseid);
+            $windowstart = $timeclose - ($windowdays * 24 * 60 * 60);
+            $windowend = $timeclose;
+
+            // Bulk fetch attempts for remaining users
+            list($insql, $inparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
+            $apparams = $inparams;
+            $apparams['quizid'] = $quizid;
+            $apparams['start'] = $windowstart;
+            $apparams['end'] = $windowend;
+
+            $attemptsql = "SELECT qa.id, qa.userid, qa.sumgrades, qa.timefinish
+                             FROM {quiz_attempts} qa
+                            WHERE qa.quiz = :quizid
+                              AND qa.state = 'finished'
+                              AND qa.userid $insql
+                              AND qa.timefinish BETWEEN :start AND :end";
+            
+            $attempts = $DB->get_records_sql($attemptsql, $apparams);
+
+            // Group by user
+            $peruser = [];
+            $grade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
+
+            foreach ($attempts as $a) {
+                $uid = (int)$a->userid;
+                if (!isset($peruser[$uid])) {
+                    $peruser[$uid] = [
+                        'attempts' => 0,
+                        'bestpercent' => 0.0,
+                        'firstfinish' => 0,
+                        'lastfinish' => 0
+                    ];
+                }
+                $peruser[$uid]['attempts']++;
+                
+                $tf = (int)$a->timefinish;
+                if ($peruser[$uid]['firstfinish'] === 0 || $tf < $peruser[$uid]['firstfinish']) {
+                    $peruser[$uid]['firstfinish'] = $tf;
+                }
+                if ($tf > $peruser[$uid]['lastfinish']) {
+                    $peruser[$uid]['lastfinish'] = $tf;
+                }
+
+                if ($grade > 0.0 && $a->sumgrades !== null) {
+                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                    if ($pct > $peruser[$uid]['bestpercent']) {
+                        $peruser[$uid]['bestpercent'] = $pct;
+                    }
+                }
+            }
+
+            $classification = $this->get_activity_classification($cmid);
+            $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
+
+            foreach ($roster as $uid) {
+                $uid = (int)$uid;
+                $summary = $peruser[$uid] ?? [
+                    'attempts' => 0,
+                    'bestpercent' => 0.0,
+                    'firstfinish' => 0,
+                    'lastfinish' => 0,
+                ];
+
+                if ($summary['attempts'] === 0) {
+                    $status = 'noattempt';
+                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
+                    $status = 'completed';
+                } else {
+                    $status = 'lowgrade';
+                }
+
+                $record = (object) [
+                    'userid'       => $uid,
+                    'courseid'     => $courseid,
+                    'cmid'         => $cmid,
+                    'quizid'       => $quizid,
+                    'timeclose'    => $timeclose,
+                    'windowdays'   => $windowdays,
+                    'windowstart'  => $windowstart,
+                    'attempts'     => $summary['attempts'],
+                    'bestpercent'  => (int)round($summary['bestpercent']),
+                    'firstfinish'  => $summary['firstfinish'] ?: null,
+                    'lastfinish'   => $summary['lastfinish'] ?: null,
+                    'status'       => $status,
+                    'classification' => $classification ?: null,
+                    'quiztype'       => $quiztype ?: null,
+                    'computedat'   => $now,
+                ];
+
+                $DB->insert_record('local_homework_status', $record);
+                $inserted++;
+            }
+        }
+        mtrace("Inserted $inserted new snapshot records.");
+        return $inserted;
+    }
 }
