@@ -421,6 +421,7 @@ class homework_manager {
                     s.classification,
                     s.quiztype,
                     s.computedat,
+                    lhr.timeemailsent,
                     q.name      AS quizname,
                     (SELECT MIN(q2.timeclose) FROM {quiz} q2 WHERE q2.course = s.courseid AND q2.timeclose > s.timeclose AND q2.timeclose > 0) AS next_due_date,
                     q.grade,
@@ -439,6 +440,7 @@ class homework_manager {
                 JOIN {course_modules} cm ON cm.id = s.cmid
                 JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
                 JOIN {course_sections} cs ON cs.id = cm.section
+                LEFT JOIN {local_homework_reports} lhr ON lhr.userid = s.userid AND lhr.timeclose = s.timeclose
                WHERE s.quizid = :quizid AND s.timeclose = :timeclose";
 
         if ($categoryid > 0) {
@@ -627,6 +629,7 @@ class homework_manager {
                 'percentage'   => $bestpercent,
                 'quiz_type'    => $s->quiztype ?? '',
                 'timeclose'    => (int)$s->timeclose,
+                'timeemailsent'=> (int)($s->timeemailsent ?? 0),
                 'attempts'     => $attempts,
             ];
         }

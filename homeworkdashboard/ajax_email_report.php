@@ -106,6 +106,11 @@ try {
             $recipient = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
             if (send_report_email($recipient, $report_to_send, $sender)) {
                 $sent_count++;
+                
+                // Update timeemailsent
+                $report_to_send->timeemailsent = time();
+                $DB->update_record('local_homework_reports', $report_to_send);
+
                 // Send BCC to Support
                 send_report_email($support_recipient, $report_to_send, $sender);
             } else {
@@ -130,6 +135,11 @@ try {
             $recipient = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
             if (send_report_email($recipient, $report_to_send, $sender)) {
                 $sent_count++;
+                
+                // Update timeemailsent
+                $report_to_send->timeemailsent = time();
+                $DB->update_record('local_homework_reports', $report_to_send);
+
                 // Send BCC to Support
                 send_report_email($support_recipient, $report_to_send, $sender);
             } else {

@@ -406,6 +406,11 @@ if ($existing) {
     $reportid = $DB->insert_record('local_homework_reports', $record);
 }
 
+// Update timeemailsent
+$record->id = $reportid;
+$record->timeemailsent = time();
+$DB->update_record('local_homework_reports', $record);
+
 // Send Email
 // Custom sender: support@growminds.net
 $sender = new stdClass();
@@ -454,6 +459,7 @@ foreach ($recipients as $recipient) {
 echo json_encode([
     'status' => 'success',
     'reportid' => $reportid,
+    'timeemailsent' => $record->timeemailsent,
     'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
     'ai_error' => $gemini->get_last_error()
 ]);

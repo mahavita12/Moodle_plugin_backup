@@ -214,6 +214,7 @@ if ($tab === "snapshot") {
                 // 'classifications' => [], // Removed column
                 'activities' => [],
                 'status' => 'Not Sent', // Placeholder
+                'emailsent' => $r->timeemailsent ?? 0,
             ];
         }
         $grouped_rows[$key]->courses[$r->courseid] = ['name' => $r->coursename, 'category' => $r->categoryname];
@@ -738,7 +739,9 @@ if ($tab === 'snapshot' && $canmanage) {
                                     echo '<a href="view_report.php?id=' . $reports['ko'] . '" class="btn btn-success btn-sm" target="_blank">Korean</a>';
                                     $has_report = true;
                                 }
-                                if (!$has_report) {
+                                if (!empty($row->emailsent) && $row->emailsent > 0) {
+                                    echo ' <span class="badge badge-success">Email Sent</span>';
+                                } elseif (!$has_report) {
                                     echo '<span class="badge badge-light">Not Sent</span>';
                                 }
                                 ?>

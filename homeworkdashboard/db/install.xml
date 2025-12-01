@@ -17,11 +17,7 @@
         <FIELD NAME="attempts" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Finished attempts in window"/>
         <FIELD NAME="bestpercent" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Best percentage grade in window"/>
         <FIELD NAME="firstfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="First finished attempt time within window"/>
-        <FIELD NAME="lastfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last finished attempt time within window"/>
-        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="noattempt|completed|lowgrade"/>
-        <FIELD NAME="classification" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="New or Revision snapshot"/>
-        <FIELD NAME="quiztype" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Essay or Non-Essay"/>
-        <FIELD NAME="computedat" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When this snapshot was computed"/>
+        <FIELD NAME="classification" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="New, Revision, or null"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
@@ -45,6 +41,7 @@
         <FIELD NAME="lang" TYPE="char" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="en"/>
         <FIELD NAME="drive_link" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Google Drive Link"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timeemailsent" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Timestamp when email was sent"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

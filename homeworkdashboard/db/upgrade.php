@@ -7,7 +7,7 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
     $dbman = $DB->get_manager();
 
     // Bump version to trigger this block
-    if ($oldversion < 2025113002) {
+    if ($oldversion < 2025113003) {
 
         // Define table local_homework_reports
         $table = new xmldb_table('local_homework_reports');
@@ -27,6 +27,8 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
             $table->add_field('lang', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'en');
             // Add drive_link field for new tables
             $table->add_field('drive_link', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            // Add timeemailsent field for new tables
+            $table->add_field('timeemailsent', XMLDB_TYPE_INTEGER, '10', null, null, null, null);
 
             // Define keys and indexes
             $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
@@ -60,10 +62,16 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
             if (!$dbman->field_exists($table, $field4)) {
                 $dbman->add_field($table, $field4);
             }
+
+            // Add timeemailsent if missing
+            $field5 = new xmldb_field('timeemailsent', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'drive_link');
+            if (!$dbman->field_exists($table, $field5)) {
+                $dbman->add_field($table, $field5);
+            }
         }
 
         // Savepoint
-        upgrade_plugin_savepoint(true, 2025113002, 'local', 'homeworkdashboard');
+        upgrade_plugin_savepoint(true, 2025113003, 'local', 'homeworkdashboard');
     }
 
     return true;
