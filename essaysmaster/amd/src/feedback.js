@@ -1858,6 +1858,37 @@ define([], function () {
             let round = 0;
             let processing = false;
 
+            // RESUME PROGRESS: Fetch current state from server
+            try {
+                const sesskey = M.cfg.sesskey;
+                const stateUrl = M.cfg.wwwroot + '/local/essaysmaster/get_feedback.php?attemptid=' + attemptId + '&round=0&sesskey=' + sesskey + '&action=get_state';
+                
+                fetch(stateUrl)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success && data.current_level > 0) {
+                            console.log('Essays Master: Resuming from round', data.current_level);
+                            round = data.current_level;
+                            
+                            // Update button text based on round
+                            const buttonTexts = { 1: "Proofread", 3: "Use better expression", 5: "Polish & Perfect" };
+                            if (buttonTexts[round + 1]) {
+                                btn.value = buttonTexts[round + 1];
+                            } else if (round >= 6) {
+                                btn.value = "Submit Final Essay";
+                            }
+                            
+                            // If completed, maybe show final submission state immediately?
+                            if (data.status === 'completed' || round >= 6) {
+                                btn.value = "Submit Final Essay";
+                            }
+                        }
+                    })
+                    .catch(e => console.warn('Essays Master: Failed to resume progress', e));
+            } catch (e) {
+                console.warn('Essays Master: Resume logic error', e);
+            }
+
             btn.addEventListener('click', async function handle(e) {
                 // If 6 rounds completed → final submission
                 if (round >= 6) {

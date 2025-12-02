@@ -120,7 +120,7 @@ $current_anthropic_model = get_config('local_quizdashboard', 'anthropic_model') 
 $current_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
 $current_openai_model = get_config('local_quizdashboard', 'openai_model') ?: 'gpt-5';
 // Similarity current values with defaults
-$cfg_similarity_threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+$cfg_similarity_threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 90);
 $cfg_similarity_autozero = (int)(get_config('local_quizdashboard', 'similarity_autozero') ?? 1);
 $cfg_similarity_warning_text = get_config('local_quizdashboard', 'similarity_warning_text');
 if ($cfg_similarity_warning_text === false || $cfg_similarity_warning_text === null || $cfg_similarity_warning_text === '') {

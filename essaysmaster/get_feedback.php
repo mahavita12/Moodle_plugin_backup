@@ -11,9 +11,10 @@ if (!defined('AJAX_SCRIPT')) {
 
 // Get parameters - 6-ROUND SYSTEM SUPPORT
 $attemptid = required_param('attemptid', PARAM_INT);
-$round = required_param('round', PARAM_INT);
+$round = optional_param('round', 1, PARAM_INT); // Made optional for get_state
 $sesskey = required_param('sesskey', PARAM_RAW);
 $nonce = optional_param('nonce', null, PARAM_ALPHANUMEXT); // 🔍 PROBE B: Client nonce
+$action = optional_param('action', 'feedback', PARAM_ALPHA); // NEW: Action parameter
 
 // NEW: Get current text from frontend
 $current_text = optional_param('current_text', '', PARAM_RAW);
@@ -39,6 +40,33 @@ header('Content-Type: application/json');
 try {
     // Get attempt details
     $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid], '*', MUST_EXIST);
+
+    // HANDLE STATE RETRIEVAL
+    if ($action === 'get_state') {
+        $session = $DB->get_record('local_essaysmaster_sessions', [
+            'attempt_id' => $attemptid,
+            'user_id' => $USER->id
+        ]);
+
+        if ($session) {
+            echo json_encode([
+                'success' => true,
+                'current_level' => (int)$session->current_level,
+                'feedback_rounds_completed' => (int)$session->feedback_rounds_completed,
+                'status' => $session->status,
+                'final_submission_allowed' => (int)$session->final_submission_allowed
+            ]);
+        } else {
+            echo json_encode([
+                'success' => true,
+                'current_level' => 0, // No session yet
+                'feedback_rounds_completed' => 0,
+                'status' => 'new',
+                'final_submission_allowed' => 0
+            ]);
+        }
+        exit;
+    }
 
     // Check if user owns this attempt or has permission
     if ($attempt->userid != $USER->id && !has_capability('mod/quiz:viewreports', context_system::instance())) {

@@ -915,7 +915,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
             // 11) Similarity check before save; enforce settings
             $similarity = $this->detect_revision_copying($current_essay_data, $previous_grading);
-            $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+            $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 90);
             $autozero = (int)(get_config('local_quizdashboard', 'similarity_autozero') ?? 1);
             if ($similarity['is_copy'] && $autozero) {
                 return $this->handle_copy_penalty(
@@ -1299,7 +1299,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         similar_text($normalized_current, $normalized_previous, $similarity_percent);
         error_log("DEBUG: Similarity percentage calculated: " . $similarity_percent . "%");
 
-        $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 70);
+        $threshold = (int)(get_config('local_quizdashboard', 'similarity_threshold') ?: 90);
         error_log("DEBUG: Similarity threshold from config: " . $threshold . "%");
         
         $is_violation = ($similarity_percent >= $threshold);
