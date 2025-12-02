@@ -5,6 +5,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/quiz/lib.php');
 require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+require_once($CFG->dirroot . '/course/lib.php');
 
 class preset_helper {
     public static function preset_names(): array {
@@ -62,7 +63,7 @@ class preset_helper {
         ];
     }
 
-    public static function apply_to_quiz(int $quizid, string $preset = 'default', ?int $timeclose = null, ?int $timelimitminutes = null, string $mode = 'full', bool $applyTimelimit = true): bool {
+    public static function apply_to_quiz(int $quizid, string $preset = 'default', ?int $timeclose = null, ?int $timelimitminutes = null, string $mode = 'full', bool $applyTimelimit = true, bool $rebuildcache = true): bool {
         global $DB;
         $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', \MUST_EXIST);
         $cfg = self::get_preset($preset, $timelimitminutes ?? 45);
@@ -127,7 +128,9 @@ class preset_helper {
         }
 
         \set_coursemodule_visible($cm->id, 1);
-        \rebuild_course_cache($quiz->course, true);
+        if ($rebuildcache) {
+            \rebuild_course_cache($quiz->course, true);
+        }
         return true;
     }
 }
