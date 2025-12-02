@@ -14,7 +14,7 @@ $attemptid = required_param('attemptid', PARAM_INT);
 $round = optional_param('round', 1, PARAM_INT); // Made optional for get_state
 $sesskey = required_param('sesskey', PARAM_RAW);
 $nonce = optional_param('nonce', null, PARAM_ALPHANUMEXT); // 🔍 PROBE B: Client nonce
-$action = optional_param('action', 'feedback', PARAM_ALPHA); // NEW: Action parameter
+$action = optional_param('action', 'feedback', PARAM_ALPHANUMEXT); // NEW: Action parameter
 
 // NEW: Get current text from frontend
 $current_text = optional_param('current_text', '', PARAM_RAW);
@@ -22,6 +22,7 @@ $original_text = optional_param('original_text', '', PARAM_RAW);
 $question_prompt = optional_param('question_prompt', '', PARAM_RAW);
 
 // Debug logging for text flow
+error_log("Essays Master: Action: $action");
 error_log("Essays Master: Received round $round with current_text length: " . strlen($current_text));
 error_log("Essays Master: Received original_text length: " . strlen($original_text));
 
@@ -514,6 +515,7 @@ try {
                 error_log("Essays Master: Could not update session: " . $e->getMessage());
             }
         }
+        }
 
         // Log the feedback activity
         error_log("Essays Master: Provided feedback round $round for attempt $attemptid to user {$USER->id}");
@@ -529,7 +531,7 @@ try {
                 // Mark requirements as complete based on feedback
                 // This is a simplified integration - ideally we parse feedback for specific improvements
                 // For now, we assume if they got feedback, they made progress
-                $tracker->update_progress($round, ['feedback_received' => true]);
+                $tracker->update_progress($round, ['feedback_received' => true], $original_text, $current_text);
                 error_log("Essays Master: Updated progress for session {$session->id} round $round");
             } catch (Exception $e) {
                 error_log("Essays Master: Progress tracking error: " . $e->getMessage());
@@ -554,7 +556,9 @@ try {
         ]);
 
     } finally {
-        $lock->release();
+        if (isset($lock)) {
+            $lock->release();
+        }
     }
 
 } catch (Exception $e) {
@@ -570,4 +574,3 @@ try {
     error_log("Essays Master feedback error: " . json_encode($error_details));
     echo json_encode(['success' => false, 'error' => 'An error occurred: ' . $e->getMessage()]);
 }
-?>
