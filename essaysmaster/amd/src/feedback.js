@@ -1870,6 +1870,12 @@ define([], function () {
                             console.log('Essays Master: Resuming from round', data.current_level);
                             round = data.current_level;
                             
+                            // \u2705 RESUME FIX: Render previous feedback if available
+                            if (data.feedback) {
+                                console.log('Essays Master: Restoring previous feedback');
+                                renderRound(panel, round, data.feedback);
+                            }
+                            
                             // Update button text based on round
                             const buttonTexts = { 1: "Proofread", 3: "Use better expression", 5: "Polish & Perfect" };
                             if (buttonTexts[round + 1]) {

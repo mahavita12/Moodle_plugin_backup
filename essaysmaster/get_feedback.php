@@ -50,12 +50,38 @@ try {
         ]);
 
         if ($session) {
+            // \u2705 RESUME FIX: Fetch actual feedback content if available
+            $feedback_data = null;
+            $current_round = (int)$session->current_level;
+            
+            // Only fetch feedback for odd rounds (1, 3, 5) which are feedback rounds
+            if ($current_round % 2 !== 0) {
+                // Try to find feedback for this round
+                // We check both version_id (ideal) and attempt_id (fallback for older data)
+                $feedback_record = $DB->get_record_sql(
+                    "SELECT * FROM {local_essaysmaster_feedback} 
+                     WHERE (attempt_id = ? AND round_number = ?) 
+                     OR (version_id = ? AND level_type = ?)
+                     ORDER BY id DESC",
+                    [$attemptid, $current_round, $attemptid, "round_$current_round"]
+                );
+                
+                if ($feedback_record) {
+                    $feedback_data = [
+                        'feedback' => $feedback_record->feedback_html,
+                        // We can also include highlights if needed, but renderRound mainly needs the text
+                        // 'improvements' are embedded in the text
+                    ];
+                }
+            }
+
             echo json_encode([
                 'success' => true,
-                'current_level' => (int)$session->current_level,
+                'current_level' => $current_round,
                 'feedback_rounds_completed' => (int)$session->feedback_rounds_completed,
                 'status' => $session->status,
-                'final_submission_allowed' => (int)$session->final_submission_allowed
+                'final_submission_allowed' => (int)$session->final_submission_allowed,
+                'feedback' => $feedback_data // Return the feedback object
             ]);
         } else {
             echo json_encode([
@@ -280,6 +306,7 @@ try {
                     $ai_result = $ai_helper->generate_validation($round, $original_text, $essay_text, $question_prompt, $previous_feedback_text, $student_name);
 
                     // Save version snapshot (rounds 1-5) right after sending to AI
+                    $new_version_id = 0; // Initialize variable
                     if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {
                         try {
                             $max_version = $DB->get_field_sql(
@@ -300,8 +327,8 @@ try {
                             $version->is_initial = ($next_version === 1) ? 1 : 0;
                             $version->timecreated = time();
 
-                            $DB->insert_record('local_essaysmaster_versions', $version);
-                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}");
+                            $new_version_id = $DB->insert_record('local_essaysmaster_versions', $version);
+                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}, ID: $new_version_id");
                         } catch (Exception $e) {
                             error_log("Essays Master: Failed to save version snapshot - " . $e->getMessage());
                         }
@@ -343,6 +370,7 @@ try {
                     $ai_result = $ai_helper->generate_feedback($round, $essay_text, $question_prompt, $student_name);
 
                     // Save version snapshot (rounds 1-5) right after sending to AI
+                    $new_version_id = 0; // Initialize variable
                     if ($round >= 1 && $round <= 5 && !empty($session) && !empty($session->id)) {
                         try {
                             $max_version = $DB->get_field_sql(
@@ -364,8 +392,8 @@ try {
                             $version->is_initial = ($next_version === 1) ? 1 : 0;
                             $version->timecreated = time();
 
-                            $DB->insert_record('local_essaysmaster_versions', $version);
-                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}");
+                            $new_version_id = $DB->insert_record('local_essaysmaster_versions', $version);
+                            error_log("Essays Master: Saved version snapshot v{$next_version} for session {$session->id}, round {$round}, ID: $new_version_id");
                         } catch (Exception $e) {
                             error_log("Essays Master: Failed to save version snapshot - " . $e->getMessage());
                         }
@@ -413,38 +441,43 @@ try {
             }
         }
 
-        // ✅ STORE/UPDATE FEEDBACK RECORD: Overwrite existing records to allow re-attempts
+        // \u2705 STORE/UPDATE FEEDBACK RECORD: Overwrite existing records to allow re-attempts
         try {
             // Check if feedback record already exists
+            // We check by attempt_id and round_number as primary identifiers
             $existing_record = $DB->get_record('local_essaysmaster_feedback', [
-                'version_id' => $attemptid,
-                'level_type' => "round_$round"
+                'attempt_id' => $attemptid,
+                'round_number' => $round
             ]);
             
             if ($existing_record) {
                 // UPDATE existing record
-                $existing_record->attempt_id = $attemptid; // FIXED: Ensure required field is set
-                $existing_record->round_number = $round; // FIXED: Update round number
+                $existing_record->attempt_id = $attemptid; // Ensure required field is set
+                $existing_record->round_number = $round; // Update round number
+                // Update version_id if we have a new one, otherwise keep existing
+                if ($new_version_id > 0) {
+                    $existing_record->version_id = $new_version_id;
+                }
                 $existing_record->feedback_html = $nonce ? $feedback_text . "\n<!-- nonce:$nonce -->" : $feedback_text;
                 $existing_record->highlighted_areas = json_encode($highlights_array);
                 // Use actual AI score instead of hardcoded value
                 $existing_record->completion_score = isset($ai_result['score']) ? floatval($ai_result['score']) : 50.0;
                 $existing_record->feedback_generated_time = time();
                 $existing_record->api_response_time = 0.5; // Default response time
-                // Removed timemodified - not in table structure
                 
                 $DB->update_record('local_essaysmaster_feedback', $existing_record);
                 error_log("Essays Master: Updated existing feedback record for attempt $attemptid, round $round (re-attempt)");
             } else {
                 // INSERT new record
                 $feedback_record = new stdClass();
-                $feedback_record->version_id = $attemptid; // Using attemptid as version_id for now
+                // Use the captured version ID if available, otherwise fallback to attemptid (though less ideal)
+                $feedback_record->version_id = ($new_version_id > 0) ? $new_version_id : $attemptid;
                 $feedback_record->attempt_id = $attemptid; // FIXED: Missing required field
                 $feedback_record->question_attempt_id = 0; // Default value
                 $feedback_record->round_number = $round; // FIXED: Set round number properly
                 $feedback_record->level_type = "round_$round";
                 
-                // 🔍 PROBE B: Include nonce in feedback for tracking
+                // \ud83d\udd0d PROBE B: Include nonce in feedback for tracking
                 if ($nonce) {
                     $feedback_record->feedback_html = $feedback_text . "\n<!-- nonce:$nonce -->";
                     error_log("Essays Master: Storing feedback with nonce: $nonce");
@@ -453,15 +486,12 @@ try {
                 }
                 
                 $feedback_record->highlighted_areas = json_encode($highlights_array);
-                // Use actual AI score instead of hardcoded value
                 $feedback_record->completion_score = isset($ai_result['score']) ? floatval($ai_result['score']) : 50.0;
                 $feedback_record->feedback_generated_time = time();
-                $feedback_record->api_response_time = 0.5; // Default response time
+                $feedback_record->api_response_time = 0.5;
                 $feedback_record->timecreated = time();
-                // Removed timemodified for insert - not in table structure
                 
-                $DB->insert_record('local_essaysmaster_feedback', $feedback_record);
-                error_log("Essays Master: Stored new feedback record for attempt $attemptid, round $round");
+                $DB->insert_record('local_essaysmaster_feedback', $feedback_record);                error_log("Essays Master: Stored new feedback record for attempt $attemptid, round $round");
             }
         } catch (Exception $e) {
             error_log("Essays Master: Could not store/update feedback record: " . $e->getMessage());
