@@ -661,6 +661,32 @@ define([], function () {
     // Get current essay content from textarea with DEBUG logging
     function getCurrentEssayContent() {
         console.log('🔍 DEBUG: Looking for essay textarea...');
+
+        // SYNC EDITORS FIRST
+        // 1. Atto
+        if (typeof Y !== 'undefined' && Y.M && Y.M.editor_atto) {
+            try {
+                Y.all('.editor_atto_content').each(function(node) {
+                    var elementid = node.getAttribute('id');
+                    if (elementid && Y.M.editor_atto.get_editor(elementid)) {
+                        console.log('🔍 DEBUG: Syncing Atto editor:', elementid);
+                        Y.M.editor_atto.get_editor(elementid).save();
+                    }
+                });
+            } catch (e) {
+                console.warn('🔍 DEBUG: Atto sync failed:', e);
+            }
+        }
+        
+        // 2. TinyMCE
+        if (typeof tinyMCE !== 'undefined') {
+            try {
+                tinyMCE.triggerSave();
+                console.log('🔍 DEBUG: Synced TinyMCE editors');
+            } catch (e) {
+                console.warn('🔍 DEBUG: TinyMCE sync failed:', e);
+            }
+        }
         
         // Try multiple selectors to find the textarea
         let textarea = document.querySelector('textarea[name*="answer"]');

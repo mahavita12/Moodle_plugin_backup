@@ -441,10 +441,14 @@ try {
 
         // ✅ UPDATE SESSION: Allow re-attempts and track current round
         if ($session->id > 0) {
-            try {
-                // Always update session to reflect current round, allow re-attempts
-                $update_sql = "UPDATE {local_essaysmaster_sessions} 
-                            SET current_level = ?, 
+            // ERROR HANDLING: Do not update session if feedback contains error
+            if (strpos($feedback_text, 'ERROR:') === 0) {
+                error_log("Essays Master: Skipping session update due to feedback error: " . substr($feedback_text, 0, 50));
+            } else {
+                try {
+                    // Always update session to reflect current round, allow re-attempts
+                    $update_sql = "UPDATE {local_essaysmaster_sessions} 
+                                SET current_level = ?, 
                                 feedback_rounds_completed = GREATEST(feedback_rounds_completed, ?),
                                 session_end_time = ?,
                                 timemodified = ?,
@@ -485,7 +489,25 @@ try {
 
         // Log the feedback activity
         error_log("Essays Master: Provided feedback round $round for attempt $attemptid to user {$USER->id}");
-        
+
+        // PROGRESS TRACKING INTEGRATION
+        if (strpos($feedback_text, 'ERROR:') !== 0) {
+            try {
+                require_once($CFG->dirroot . '/local/essaysmaster/classes/progress_tracker.php');
+                $tracker = new \local_essaysmaster\progress_tracker($session);
+                // Map round to level for progress tracking
+                $tracker->initialize_level_progress($round);
+                
+                // Mark requirements as complete based on feedback
+                // This is a simplified integration - ideally we parse feedback for specific improvements
+                // For now, we assume if they got feedback, they made progress
+                $tracker->update_progress($round, ['feedback_received' => true]);
+                error_log("Essays Master: Updated progress for session {$session->id} round $round");
+            } catch (Exception $e) {
+                error_log("Essays Master: Progress tracking error: " . $e->getMessage());
+            }
+        }
+
         // Debug logging
         error_log("Essays Master: Created " . count($highlights_array) . " highlights for highlighting");
 
