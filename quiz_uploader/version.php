@@ -9,7 +9,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_quiz_uploader';
-$plugin->version = 2025112100;
+$plugin->version = 2025112102;
 $plugin->requires = 2022041900; // Moodle 4.0+
 $plugin->maturity = MATURITY_STABLE;
 $plugin->release = '1.1';

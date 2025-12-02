@@ -105,7 +105,7 @@ class settings_service {
             return;
         }
 
-        $resetat = $timeclose + 30 * 60;
+        $resetat = $timeclose + 5 * 60;
         $now = time();
 
         $existing = $DB->get_record('local_quiz_uploader_autoreset', ['quizid' => $quizid]);
