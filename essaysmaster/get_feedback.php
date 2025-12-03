@@ -54,25 +54,23 @@ try {
             $feedback_data = null;
             $current_round = (int)$session->current_level;
             
-            // Only fetch feedback for odd rounds (1, 3, 5) which are feedback rounds
-            if ($current_round % 2 !== 0) {
-                // Try to find feedback for this round
-                // We check both version_id (ideal) and attempt_id (fallback for older data)
-                $feedback_record = $DB->get_record_sql(
-                    "SELECT * FROM {local_essaysmaster_feedback} 
-                     WHERE (attempt_id = ? AND round_number = ?) 
-                     OR (version_id = ? AND level_type = ?)
-                     ORDER BY id DESC",
-                    [$attemptid, $current_round, $attemptid, "round_$current_round"]
-                );
-                
-                if ($feedback_record) {
-                    $feedback_data = [
-                        'feedback' => $feedback_record->feedback_html,
-                        // We can also include highlights if needed, but renderRound mainly needs the text
-                        // 'improvements' are embedded in the text
-                    ];
-                }
+            // Fetch feedback for ANY round (odd or even)
+            // Try to find feedback for this round
+            // We check both version_id (ideal) and attempt_id (fallback for older data)
+            $feedback_record = $DB->get_record_sql(
+                "SELECT * FROM {local_essaysmaster_feedback} 
+                 WHERE (attempt_id = ? AND round_number = ?) 
+                 OR (version_id = ? AND level_type = ?)
+                 ORDER BY id DESC",
+                [$attemptid, $current_round, $attemptid, "round_$current_round"]
+            );
+            
+            if ($feedback_record) {
+                $feedback_data = [
+                    'feedback' => $feedback_record->feedback_html,
+                    // We can also include highlights if needed, but renderRound mainly needs the text
+                    // 'improvements' are embedded in the text
+                ];
             }
 
             echo json_encode([
@@ -81,7 +79,14 @@ try {
                 'feedback_rounds_completed' => (int)$session->feedback_rounds_completed,
                 'status' => $session->status,
                 'final_submission_allowed' => (int)$session->final_submission_allowed,
-                'feedback' => $feedback_data // Return the feedback object
+                'feedback' => $feedback_data, // Return the feedback object
+                'debug' => [
+                    'attemptid' => $attemptid,
+                    'current_round' => $current_round,
+                    'feedback_found' => $feedback_record ? true : false,
+                    'feedback_id' => $feedback_record ? $feedback_record->id : null,
+                    'sql_params' => [$attemptid, $current_round, $attemptid, "round_$current_round"]
+                ]
             ]);
         } else {
             echo json_encode([

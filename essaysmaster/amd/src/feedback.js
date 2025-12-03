@@ -1541,9 +1541,15 @@ define([], function () {
                 // 1. AI Feedback text first
                 content += `<div class="feedback-text">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
                 
-                // 2. Originalâ†’improved examples second
-                if (feedback.improvements && feedback.improvements.length > 0) {
-                    content += formatImprovements(feedback.improvements);
+                // 2. Original->improved examples second
+                let improvements = feedback.improvements;
+                if (!improvements && improvementSection) {
+                    // Fallback: Parse improvements from text if not provided in object
+                    improvements = parseImprovements(improvementSection);
+                }
+                
+                if (improvements && improvements.length > 0) {
+                    content += formatImprovements(improvements);
                 }
                 
                 content += `</div>`;
@@ -1568,9 +1574,70 @@ define([], function () {
             }
         } else {
             // Validation rounds (2, 4, 6)
-            content += `<div class="ai-feedback-content">
-                <div class="feedback-text">GrowMinds Academy is validating your improvements...</div>
-            </div>`;
+            if (feedback && feedback.feedback) {
+                console.log('Essays Master: Rendering validation round', round);
+                console.log('Essays Master: Raw feedback:', feedback.feedback);
+                
+                // Parse validation response
+                const cleanedResponse = cleanAIResponse(feedback.feedback);
+                const parsed = parseAIValidationResponse(cleanedResponse);
+                console.log('Essays Master: Parsed validation:', parsed);
+                
+                content += `<div class="ai-feedback-content">`;
+                
+                // Score Section
+                const scoreColor = parsed.passed ? '#28a745' : '#dc3545';
+                const statusText = parsed.passed ? 'Passed' : 'Failed';
+                content += `
+                    <div class="validation-score" style="border-bottom:1px solid #eee;padding-bottom:10px;margin-bottom:10px;">
+                        <strong>Validation Score: <span style="color:${scoreColor}">${parsed.score}/100 ${statusText}</span></strong>
+                    </div>
+                `;
+                
+                // Analysis Section
+                if (parsed.analysis) {
+                    content += `
+                        <div class="validation-analysis" style="margin-bottom:10px;font-style:italic;color:#666;">
+                            ${parsed.analysis}
+                        </div>
+                    `;
+                }
+                
+                // Feedback Section
+                // Extract main feedback text (everything before improvements)
+                const feedbackLines = parsed.feedback.split('\n');
+                let mainFeedback = '';
+                let improvementSection = '';
+                let inImprovements = false;
+                
+                feedbackLines.forEach(line => {
+                    if (line.includes('=>') || inImprovements) {
+                        inImprovements = true;
+                        improvementSection += line + '\n';
+                    } else {
+                        mainFeedback += line + '\n';
+                    }
+                });
+
+                const feedbackColor = parsed.passed ? '#28a745' : '#dc3545';
+                content += `<div class="feedback-text" style="color:${feedbackColor};">${formatFeedbackParagraphs(mainFeedback, round)}</div>`;
+                
+                // Improvements Section
+                let improvements = parsed.improvements;
+                if ((!improvements || improvements.length === 0) && improvementSection) {
+                     improvements = parseImprovements(improvementSection);
+                }
+                
+                if (improvements && improvements.length > 0) {
+                    content += formatImprovements(improvements);
+                }
+                
+                content += `</div>`;
+            } else {
+                content += `<div class="ai-feedback-content">
+                    <div class="feedback-text">GrowMinds Academy is validating your improvements...</div>
+                </div>`;
+            }
         }
 
         content += `
@@ -1594,30 +1661,56 @@ define([], function () {
 
     // Parse AI validation response with scoring
     function parseAIValidationResponse(aiResponse) {
-        const lines = aiResponse.split('\n');
+        // Normalize text
+        const text = aiResponse.trim();
+        
+        // Default values
         let score = 0;
         let status = 'FAIL';
-        let analysis = '';
+        let analysis = text; // Default to full text if parsing fails
         let feedback = '';
         
-        lines.forEach(line => {
-            if (line.startsWith('Score:')) {
-                score = parseInt(line.replace('Score:', '').trim()) || 0;
-            } else if (line.startsWith('Status:')) {
-                status = line.replace('Status:', '').trim();
-            } else if (line.startsWith('Analysis:')) {
-                analysis = line.replace('Analysis:', '').trim();
-            } else if (line.startsWith('Feedback:')) {
-                feedback = lines.slice(lines.indexOf(line)).join('\n').replace('Feedback:', '').trim();
-            }
-        });
+        // 1. Extract Score
+        // Matches: "Score: 85", "Validation Score: 85/100", "Score: 85/100"
+        const scoreMatch = text.match(/(?:Validation )?Score:\s*(\d+)/i);
+        if (scoreMatch) {
+            score = parseInt(scoreMatch[1]);
+        }
+        
+        // 2. Extract Status
+        // Matches: "Status: PASS", "Status: FAIL", or infers from score
+        const statusMatch = text.match(/Status:\s*(PASS|FAIL)/i);
+        if (statusMatch) {
+            status = statusMatch[1].toUpperCase();
+        } else {
+            // Infer status if not explicit
+            status = (score >= 50) ? 'PASS' : 'FAIL';
+        }
+        
+        // 3. Extract Analysis/Feedback
+        // If we have "Analysis:" and "Feedback:" sections, use them
+        const analysisMatch = text.match(/Analysis:\s*([\s\S]*?)(?=Feedback:|$)/i);
+        const feedbackMatch = text.match(/Feedback:\s*([\s\S]*)/i);
+        
+        if (analysisMatch) {
+            analysis = analysisMatch[1].trim();
+        }
+        if (feedbackMatch) {
+            feedback = feedbackMatch[1].trim();
+        } else if (!analysisMatch) {
+            // If no sections found, try to strip the header (Score/Status) and use the rest
+            // Remove "Validation Score: ... Failed" or similar prefixes
+            analysis = text.replace(/^(?:Validation )?Score:.*?(?:Failed|Passed)?\s*/i, '')
+                           .replace(/^Status:.*?\s*/i, '')
+                           .trim();
+        }
         
         return {
             score: score,
             passed: status === 'PASS' || score >= 50,
             analysis: analysis,
-            feedback: feedback,
-            improvements: parseImprovements(feedback)
+            feedback: feedback || analysis, // Fallback
+            improvements: parseImprovements(feedback || analysis)
         };
     }
 
@@ -1866,6 +1959,10 @@ define([], function () {
                 fetch(stateUrl)
                     .then(r => r.json())
                     .then(data => {
+                        console.log('Essays Master: Full resume data:', data);
+                        if (data.debug) {
+                            console.log('Essays Master: Server Debug Info:', JSON.stringify(data.debug, null, 2));
+                        }
                         if (data.success && data.current_level > 0) {
                             console.log('Essays Master: Resuming from round', data.current_level);
                             round = data.current_level;
@@ -1976,7 +2073,7 @@ define([], function () {
                     });
                     
                 } else if (isValidationRound) {
-{{ ... }}
+                    console.log('Essays Master: Starting validation round', round);
                     renderRound(panel, round, null);
                     
                     const previousRound = round - 1;
