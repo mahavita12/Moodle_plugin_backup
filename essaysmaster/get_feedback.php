@@ -73,7 +73,18 @@ try {
                 ];
             }
 
+            // ✅ HISTORY FIX: Fetch essay history to repopulate frontend storage
+            $essay_history = [];
+            $versions = $DB->get_records('local_essaysmaster_versions', ['session_id' => $session->id], 'level_number ASC');
+            error_log("Essays Master: Found " . count($versions) . " versions for session " . $session->id);
+            foreach ($versions as $v) {
+                $key = 'round' . $v->level_number;
+                $essay_history[$key] = $v->original_text;
+                error_log("Essays Master: Added history key $key with length " . strlen($v->original_text));
+            }
+
             echo json_encode([
+                'essay_history' => $essay_history, // Return history for frontend storage
                 'success' => true,
                 'current_level' => $current_round,
                 'feedback_rounds_completed' => (int)$session->feedback_rounds_completed,
@@ -281,6 +292,30 @@ try {
         if ($is_validation_round) {
             // VALIDATION ROUNDS (2, 4, 6) - Real AI validation
             error_log("Essays Master: Calling AI validation for round $round");
+
+            // ✅ ROBUSTNESS FIX: If original_text is missing (client resume error), fetch from DB history
+            if (empty($original_text) && $session) {
+                $previous_round = $round - 1;
+                error_log("Essays Master: DEBUG - Entering fallback logic. Round: $round, Prev: $previous_round, Session: " . $session->id);
+                
+                try {
+                    $prev_version = $DB->get_record('local_essaysmaster_versions', [
+                        'session_id' => $session->id, 
+                        'level_number' => $previous_round
+                    ], '*', IGNORE_MISSING);
+                    
+                    error_log("Essays Master: DEBUG - DB query completed. Found: " . ($prev_version ? 'Yes' : 'No'));
+
+                    if ($prev_version && !empty($prev_version->original_text)) {
+                        $original_text = $prev_version->original_text;
+                        error_log("Essays Master: Successfully recovered original text from DB (length: " . strlen($original_text) . ")");
+                    } else {
+                        error_log("Essays Master: Failed to recover original text from DB for Round $previous_round");
+                    }
+                } catch (Exception $e) {
+                    error_log("Essays Master: CRITICAL ERROR in fallback logic: " . $e->getMessage());
+                }
+            }
             
             // CONTEXT AWARENESS: Retrieve previous feedback round to avoid contradictions
             $previous_feedback_text = '';

@@ -1638,7 +1638,7 @@ class homework_manager {
             $classification = $this->get_activity_classification($cmid);
             $quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
 
-            foreach ($roster as $uid) {
+            foreach ($users_to_process as $uid) {
                 $uid = (int)$uid;
                 $summary = $peruser[$uid] ?? [
                     'attempts' => 0,
@@ -1673,7 +1673,12 @@ class homework_manager {
                     'computedat'   => $now,
                 ];
 
-                $DB->insert_record('local_homework_status', $record);
+                if (isset($existing[$uid])) {
+                    $record->id = $existing[$uid]->id;
+                    $DB->update_record('local_homework_status', $record);
+                } else {
+                    $DB->insert_record('local_homework_status', $record);
+                }
                 $inserted++;
             }
         }

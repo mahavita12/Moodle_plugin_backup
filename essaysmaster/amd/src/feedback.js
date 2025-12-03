@@ -1509,7 +1509,7 @@ define([], function () {
     }
 
     // 🎯 Render feedback or validation round with amber highlighting
-    function renderRound(panel, round, feedback) {
+    function renderRound(panel, round, feedback, isLoading = false) {
         panel.style.display = 'block';
         addImprovementStyles();
         
@@ -1517,6 +1517,17 @@ define([], function () {
         
         let content = `<h3 style="color:#0f6cbf;margin-top:0;font-size:18px;">${config.title}</h3>`;
         content += `<div id="em-feedback-render">`;
+
+        // ✅ LOADING STATE: Show analyzing message if loading
+        if (isLoading) {
+            content += `<div class="ai-feedback-content">
+                <div class="feedback-text">GrowMinds Academy is analyzing your essay for ${config.focus.toLowerCase()}...</div>
+            </div>`;
+            content += `</div>`;
+            panel.innerHTML = content;
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return;
+        }
 
         if (config.type === 'feedback') {
             // AI Feedback rounds (1, 3, 5) - Show essay with amber highlights
@@ -1574,15 +1585,16 @@ define([], function () {
             }
         } else {
             // Validation rounds (2, 4, 6)
+            let parsed = null;
             if (feedback && feedback.feedback) {
                 console.log('Essays Master: Rendering validation round', round);
-                console.log('Essays Master: Raw feedback:', feedback.feedback);
-                
                 // Parse validation response
                 const cleanedResponse = cleanAIResponse(feedback.feedback);
-                const parsed = parseAIValidationResponse(cleanedResponse);
+                parsed = parseAIValidationResponse(cleanedResponse);
                 console.log('Essays Master: Parsed validation:', parsed);
-                
+            }
+
+            if (parsed) {
                 content += `<div class="ai-feedback-content">`;
                 
                 // Score Section
@@ -1634,8 +1646,14 @@ define([], function () {
                 
                 content += `</div>`;
             } else {
+                // RESUME STATE: No feedback found OR feedback was malformed (parsed is null)
+                // This handles both "missing data" and "corrupted data" scenarios gracefully.
+                
                 content += `<div class="ai-feedback-content">
-                    <div class="feedback-text">GrowMinds Academy is validating your improvements...</div>
+                    <div class="feedback-text" style="text-align:center; padding: 20px;">
+                        <p><strong>Welcome back!</strong></p>
+                        <p>To view your feedback for Round ${round}, please click the button above.</p>
+                    </div>
                 </div>`;
             }
         }
@@ -1664,21 +1682,20 @@ define([], function () {
         // Normalize text
         const text = aiResponse.trim();
         
-        // Default values
-        let score = 0;
-        let status = 'FAIL';
-        let analysis = text; // Default to full text if parsing fails
-        let feedback = '';
-        
-        // 1. Extract Score
+        // 1. Extract Score - CRITICAL: If no score, treat as malformed/missing
         // Matches: "Score: 85", "Validation Score: 85/100", "Score: 85/100"
         const scoreMatch = text.match(/(?:Validation )?Score:\s*(\d+)/i);
-        if (scoreMatch) {
-            score = parseInt(scoreMatch[1]);
+        if (!scoreMatch) {
+            // If we can't even find a score, this is likely garbage or raw text dump.
+            // Return null to trigger the "Welcome back" fallback.
+            return null;
         }
+        
+        let score = parseInt(scoreMatch[1]);
         
         // 2. Extract Status
         // Matches: "Status: PASS", "Status: FAIL", or infers from score
+        let status = 'FAIL';
         const statusMatch = text.match(/Status:\s*(PASS|FAIL)/i);
         if (statusMatch) {
             status = statusMatch[1].toUpperCase();
@@ -1689,6 +1706,9 @@ define([], function () {
         
         // 3. Extract Analysis/Feedback
         // If we have "Analysis:" and "Feedback:" sections, use them
+        let analysis = '';
+        let feedback = '';
+        
         const analysisMatch = text.match(/Analysis:\s*([\s\S]*?)(?=Feedback:|$)/i);
         const feedbackMatch = text.match(/Feedback:\s*([\s\S]*)/i);
         
@@ -1698,8 +1718,7 @@ define([], function () {
         if (feedbackMatch) {
             feedback = feedbackMatch[1].trim();
         } else if (!analysisMatch) {
-            // If no sections found, try to strip the header (Score/Status) and use the rest
-            // Remove "Validation Score: ... Failed" or similar prefixes
+            // Fallback: strip headers
             analysis = text.replace(/^(?:Validation )?Score:.*?(?:Failed|Passed)?\s*/i, '')
                            .replace(/^Status:.*?\s*/i, '')
                            .trim();
@@ -1743,6 +1762,10 @@ define([], function () {
                 // Parse the backend response for validation
                 const cleanedResponse = cleanAIResponse(data.feedback);
                 const parsed = parseAIValidationResponse(cleanedResponse);
+                
+                if (!parsed) {
+                    throw new Error('Could not parse AI validation response');
+                }
                 
                 return {
                     success: parsed.passed,
@@ -1954,7 +1977,11 @@ define([], function () {
             // RESUME PROGRESS: Fetch current state from server
             try {
                 const sesskey = M.cfg.sesskey;
-                const stateUrl = M.cfg.wwwroot + '/local/essaysmaster/get_feedback.php?attemptid=' + attemptId + '&round=0&sesskey=' + sesskey + '&action=get_state';
+                console.log('Essays Master: About to fetch state. Attempt:', attemptId, 'Sesskey:', sesskey);
+                
+                // Add timestamp to prevent caching of state response
+                const stateUrl = M.cfg.wwwroot + '/local/essaysmaster/get_feedback.php?attemptid=' + attemptId + '&round=0&sesskey=' + sesskey + '&action=get_state&_t=' + new Date().getTime();
+                console.log('Essays Master: State URL:', stateUrl);
                 
                 fetch(stateUrl)
                     .then(r => r.json())
@@ -1968,17 +1995,31 @@ define([], function () {
                             round = data.current_level;
                             
                             // \u2705 RESUME FIX: Render previous feedback if available
-                            if (data.feedback) {
-                                console.log('Essays Master: Restoring previous feedback');
-                                renderRound(panel, round, data.feedback);
-                            }
+                            // ✅ RESUME FIX: Render previous feedback OR show guidance
+                            console.log('Essays Master: Resuming round state');
+                            renderRound(panel, round, data.feedback);
                             
                             // Update button text based on round
                             const buttonTexts = { 1: "Proofread", 3: "Use better expression", 5: "Polish & Perfect" };
-                            if (buttonTexts[round + 1]) {
-                                btn.value = buttonTexts[round + 1];
-                            } else if (round >= 6) {
-                                btn.value = "Submit Final Essay";
+                            
+                            // CRITICAL FIX: If resuming at a validation round (2, 4, 6), we must decrement round
+                            // so that the "Next" click triggers the validation for THIS round, not the next one.
+                            if ([2, 4, 6].includes(round)) {
+                                console.log('Essays Master: Resuming at validation round, rewinding counter to trigger correct action');
+                                round = round - 1;
+                                // Set button text for the UPCOMING validation action
+                                if (buttonTexts[round]) {
+                                    btn.value = buttonTexts[round];
+                                } else if (round >= 5) {
+                                     btn.value = "Polish & Perfect"; // Round 5->6
+                                }
+                            } else {
+                                // Feedback rounds (1, 3, 5)
+                                if (buttonTexts[round + 1]) {
+                                    btn.value = buttonTexts[round + 1];
+                                } else if (round >= 6) {
+                                    btn.value = "Submit Final Essay";
+                                }
                             }
                             
                             // If completed, maybe show final submission state immediately?
@@ -2041,7 +2082,7 @@ define([], function () {
 
                 if (isFeedbackRound) {
                     // 📝 FEEDBACK ROUNDS (1, 3, 5)
-                    renderRound(panel, round, null);
+                    renderRound(panel, round, null, true); // Set isLoading=true
                     
                     // Store essay content for validation
                     essayStorage[`round${round}`] = getCurrentEssayContent();
@@ -2074,7 +2115,7 @@ define([], function () {
                     
                 } else if (isValidationRound) {
                     console.log('Essays Master: Starting validation round', round);
-                    renderRound(panel, round, null);
+                    renderRound(panel, round, null, true); // Set isLoading=true
                     
                     const previousRound = round - 1;
                     handleValidation(panel, round, previousRound, btn, attemptId);
