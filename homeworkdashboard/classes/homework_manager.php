@@ -812,7 +812,7 @@ class homework_manager {
                 }
             }
 
-            list($insql, $inparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'uid');
+            list($insql, $inparams) = $DB->get_in_or_equal($users_to_process, \SQL_PARAMS_NAMED, 'uid');
             $apparams = $inparams;
             $apparams['quizid'] = (int)$qrec->quizid;
             $apparams['start'] = $windowstart;
@@ -1573,12 +1573,25 @@ class homework_manager {
             }
 
             // Get existing snapshots for this quiz
-            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'userid, id');
+            $existing = $DB->get_records('local_homework_status', ['quizid' => $quizid, 'timeclose' => $timeclose], '', 'userid, id, computedat');
             
-            // Filter roster to only those who DON'T have a snapshot
-            $roster = array_diff($roster, array_keys($existing));
+            // Filter roster: keep users who DON'T have a snapshot OR have a STALE snapshot.
+            $users_to_process = [];
+            foreach ($roster as $uid) {
+                if (!isset($existing[$uid])) {
+                    // No snapshot exists -> Process
+                    $users_to_process[] = $uid;
+                } else {
+                    // Snapshot exists. Check if it's stale.
+                    // If computedat < timeclose, it means the snapshot was taken before the quiz closed (e.g. due date extended).
+                    $rec = $existing[$uid];
+                    if ((int)$rec->computedat < $timeclose) {
+                        $users_to_process[] = $uid;
+                    }
+                }
+            }
             
-            if (empty($roster)) {
+            if (empty($users_to_process)) {
                 continue;
             }
 
@@ -1588,7 +1601,7 @@ class homework_manager {
             $windowend = $timeclose;
 
             // Bulk fetch attempts for remaining users
-            list($insql, $inparams) = $DB->get_in_or_equal($roster, SQL_PARAMS_NAMED, 'uid');
+            list($insql, $inparams) = $DB->get_in_or_equal($users_to_process, SQL_PARAMS_NAMED, 'uid');
             $apparams = $inparams;
             $apparams['quizid'] = $quizid;
             $apparams['start'] = $windowstart;
