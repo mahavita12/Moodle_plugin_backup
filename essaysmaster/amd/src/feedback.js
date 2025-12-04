@@ -1997,7 +1997,12 @@ define([], function () {
                             // \u2705 RESUME FIX: Render previous feedback if available
                             // ✅ RESUME FIX: Render previous feedback OR show guidance
                             console.log('Essays Master: Resuming round state');
-                            renderRound(panel, round, data.feedback);
+                            
+                            // FORCE WELCOME BACK for validation rounds (2, 4, 6)
+                            // This prevents showing stale/broken feedback and forces user to click button to re-validate
+                            // We use parseInt to ensure we are comparing numbers
+                            const feedbackToRender = [2, 4, 6].includes(parseInt(round)) ? null : data.feedback;
+                            renderRound(panel, round, feedbackToRender);
                             
                             // Update button text based on round
                             const buttonTexts = { 1: "Proofread", 3: "Use better expression", 5: "Polish & Perfect" };

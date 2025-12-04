@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_essaysmaster';
-$plugin->version = 2024092520; // ✅ UPDATED: Fix loading state message 
+$plugin->version = 2024092522; // ✅ UPDATED: Retry force welcome back 
 $plugin->requires = 2024042200; // Moodle 4.4
 $plugin->maturity = MATURITY_ALPHA;
 $plugin->release = '1.1.1'; // ✅ UPDATED: Migrated legacy before_footer callback to hook system
