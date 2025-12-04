@@ -523,6 +523,24 @@ if ($tab === 'snapshot' && $canmanage) {
         </div>
     <?php endif; ?>
 
+    <?php if ($tab === 'snapshot' && $canmanage): ?>
+    <!-- Bulk Actions Section -->
+    <div class="bulk-actions-container" style="margin-bottom: 15px;">
+        <div class="bulk-actions-row" style="display: flex; align-items: center; gap: 10px;">
+            <div class="bulk-actions-group" style="display: flex; gap: 5px;">
+                <select id="bulk-action-select" class="custom-select" style="width: auto;">
+                    <option value="">With selected...</option>
+                    <option value="delete">Delete Permanently</option>
+                </select>
+                <button type="button" class="btn btn-secondary" onclick="executeBulkAction()" disabled id="apply-bulk-action">Apply</button>
+            </div>
+            <div class="selected-count">
+                <span id="selected-count" class="text-muted">0 items selected</span>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <?php if ($tab === 'reports' && $canmanage): ?>
     <!-- REPORTS TABLE -->
     <!-- Bulk Actions -->
@@ -562,7 +580,7 @@ if ($tab === 'snapshot' && $canmanage) {
             </thead>
             <tbody>
                 <?php if (empty($rows)): ?>
-                    <tr><td colspan="14" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
+                    <tr><td colspan="15" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td></tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
@@ -957,6 +975,9 @@ if ($tab === 'snapshot' && $canmanage) {
 
             <thead class="thead-dark">
                 <tr>
+                    <th class="bulk-select-header">
+                        <input type="checkbox" id="select-all" onchange="toggleAllCheckboxes(this)">
+                    </th>
                     <th></th> <!-- Expand -->
                     <th class="sortable-column" data-sort="userid">ID <?php echo local_homeworkdashboard_sort_arrows('userid', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="studentname">Name <?php echo local_homeworkdashboard_sort_arrows('studentname', $sort, $dir); ?></th>
@@ -977,7 +998,7 @@ if ($tab === 'snapshot' && $canmanage) {
             <tbody>
                 <?php if (empty($rows)): ?>
                     <tr>
-                        <td colspan="14" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
+                        <td colspan="15" class="no-data"><?php echo get_string('nothingtodisplay'); ?></td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
@@ -1009,6 +1030,9 @@ if ($tab === 'snapshot' && $canmanage) {
                             $parentid = 'parent_' . $rowkey;
                         ?>
                         <tr class="hw-main-row" id="<?php echo $parentid; ?>">
+                            <td>
+                                <input type="checkbox" class="row-checkbox" value="<?php echo $row->id; ?>" onchange="updateSelectedCount()">
+                            </td>
                             <td>
                                 <a href="#" class="hw-expand-toggle" data-target="<?php echo $childid; ?>">+</a>
                             </td>
@@ -1113,7 +1137,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         </tr>
                         <!-- Expansion row -->
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="14">
+                            <td colspan="15">
                                 <?php
                                     // Sort attempts by attempt number ASC to match production layout.
                                     $attempts = $row->attempts ?? [];
@@ -1292,5 +1316,102 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<script>
+// Bulk Action Functions
+function toggleAllCheckboxes(masterCheckbox) {
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+    const count = checkboxes.length;
+    const selectedCountSpan = document.getElementById('selected-count');
+    const applyButton = document.getElementById('apply-bulk-action');
+    
+    if (selectedCountSpan) {
+        selectedCountSpan.textContent = count + (count === 1 ? ' item selected' : ' items selected');
+    }
+    if (applyButton) {
+        applyButton.disabled = count === 0;
+    }
+    
+    // Update master checkbox state
+    const masterCheckbox = document.getElementById('select-all');
+    const allCheckboxes = document.querySelectorAll('.row-checkbox');
+    if (masterCheckbox) {
+        masterCheckbox.checked = count > 0 && count === allCheckboxes.length;
+        masterCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
+    }
+}
+
+function executeBulkAction() {
+    const actionSelect = document.getElementById('bulk-action-select');
+    const selectedAction = actionSelect.value;
+    const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+    
+    if (!selectedAction || checkboxes.length === 0) {
+        alert('Please select an action and at least one item.');
+        return;
+    }
+    
+    const snapshotIds = Array.from(checkboxes).map(cb => cb.value);
+    let confirmMessage = '';
+    
+    if (selectedAction === 'delete') {
+        confirmMessage = `⚠️ WARNING: This will permanently delete ${snapshotIds.length} snapshot(s) and their associated reports.\n\nThe actual quiz attempts will NOT be deleted.\n\nAre you sure you want to proceed?`;
+    } else {
+        return; // Unknown action
+    }
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    const button = document.getElementById('apply-bulk-action');
+    const originalText = button.textContent;
+    button.textContent = 'Processing...';
+    button.disabled = true;
+    
+    const formData = new FormData();
+    formData.append('snapshotids', snapshotIds.join(','));
+    formData.append('sesskey', M.cfg.sesskey);
+
+    fetch('ajax_delete_snapshot.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            // Remove deleted rows from UI
+            checkboxes.forEach(cb => {
+                const row = cb.closest('tr');
+                const nextRow = row.nextElementSibling;
+                row.remove();
+                if (nextRow && nextRow.classList.contains('hw-attempts-row')) {
+                    nextRow.remove();
+                }
+            });
+            // Reset UI
+            document.getElementById('select-all').checked = false;
+            updateSelectedCount();
+            actionSelect.value = '';
+        } else {
+            alert('Error: ' + data.message);
+        }
+        button.textContent = originalText;
+        button.disabled = false;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred.');
+        button.textContent = originalText;
+        button.disabled = false;
+    });
+}
+</script>
 <?php
 echo $OUTPUT->footer();

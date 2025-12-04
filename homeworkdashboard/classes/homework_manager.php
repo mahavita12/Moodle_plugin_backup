@@ -601,6 +601,7 @@ class homework_manager {
             }
 
             $rows[] = (object) [
+                'id'           => (int)$s->id,
                 'userid'       => $uid,
                 'studentname'  => $fullname,
                 'email'        => $email,
@@ -1690,12 +1691,45 @@ class homework_manager {
                     $record->id = $existing[$uid]->id;
                     $DB->update_record('local_homework_status', $record);
                 } else {
-                    $DB->insert_record('local_homework_status', $record);
+                    $record->id = $DB->insert_record('local_homework_status', $record);
                 }
                 $inserted++;
             }
         }
         mtrace("Inserted $inserted new snapshot records.");
         return $inserted;
+    }
+
+    /**
+     * Delete a snapshot record and its associated reports.
+     *
+     * @param int $snapshotid
+     * @return bool
+     */
+    public function delete_snapshot(int $snapshotid): bool {
+        global $DB;
+
+        $snapshot = $DB->get_record('local_homework_status', ['id' => $snapshotid]);
+        if (!$snapshot) {
+            return false;
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            // Delete associated reports (child rows)
+            $DB->delete_records('local_homework_reports', [
+                'userid' => $snapshot->userid,
+                'timeclose' => $snapshot->timeclose
+            ]);
+
+            // Delete the snapshot itself
+            $DB->delete_records('local_homework_status', ['id' => $snapshotid]);
+
+            $transaction->allow_commit();
+            return true;
+        } catch (\Exception $e) {
+            $transaction->rollback($e);
+            return false;
+        }
     }
 }
