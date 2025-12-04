@@ -18,6 +18,9 @@
         <FIELD NAME="bestpercent" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" DEFAULT="0" COMMENT="Best percentage grade in window"/>
         <FIELD NAME="firstfinish" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="First finished attempt time within window"/>
         <FIELD NAME="classification" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="New, Revision, or null"/>
+        <FIELD NAME="quizgrade" TYPE="number" LENGTH="10" DECIMALS="2" NOTNULL="true" SEQUENCE="false" DEFAULT="0.00" COMMENT="Max score of the quiz at snapshot time"/>
+        <FIELD NAME="points" TYPE="number" LENGTH="10" DECIMALS="2" NOTNULL="true" SEQUENCE="false" DEFAULT="0.00" COMMENT="Calculated points at snapshot time"/>
+        <FIELD NAME="score" TYPE="number" LENGTH="10" DECIMALS="2" NOTNULL="true" SEQUENCE="false" DEFAULT="0.00" COMMENT="Raw score achieved at snapshot time"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

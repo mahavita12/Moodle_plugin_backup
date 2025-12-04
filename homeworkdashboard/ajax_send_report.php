@@ -407,60 +407,13 @@ if ($existing) {
     $reportid = $DB->insert_record('local_homework_reports', $record);
 }
 
-// Update timeemailsent
-$record->id = $reportid;
-$record->timeemailsent = time();
-$DB->update_record('local_homework_reports', $record);
-
-// Send Email
-// Custom sender: support@growminds.net
-$sender = new stdClass();
-$sender->id = -99; // Virtual user
-$sender->email = 'support@growminds.net';
-$sender->firstname = 'GrowMinds';
-$sender->lastname = 'Support';
-$sender->maildisplay = true;
-$sender->mailformat = 1;
-
-$subject = $record->subject;
-$messagehtml = $html;
-// FIX: Add explicit text message
-$messagetext = "This is the plain text version of the report. If you see this, your email client is not rendering HTML.\n\n" . strip_tags($html);
-
-// Recipients: Parent 1 and Parent 2
-$recipients = [];
-if (!empty($pinfo->p1_email)) {
-    // FIX: Add 'mailformat' => 1 to force HTML
-    $recipients[] = (object)['email' => $pinfo->p1_email, 'firstname' => $pinfo->p1_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
-}
-if (!empty($pinfo->p2_email)) {
-    // FIX: Add 'mailformat' => 1 to force HTML
-    $recipients[] = (object)['email' => $pinfo->p2_email, 'firstname' => $pinfo->p2_name, 'lastname' => '', 'id' => -1, 'maildisplay' => 1, 'mailformat' => 1];
-}
-
-foreach ($recipients as $recipient) {
-    // Explicitly set Reply-To to overwrite Moodle's default "Do not reply"
-    // EMAIL DISABLED FOR TESTING
-    /*
-    email_to_user(
-        $recipient, 
-        $sender, 
-        $subject, 
-        $messagetext, 
-        $messagehtml, 
-        '', 
-        '', 
-        true, 
-        'support@growminds.net', 
-        'GrowMinds Support'
-    );
-    */
-}
+// NOTE: Email sending is handled by ajax_email_report.php. 
+// This script ONLY generates the report.
 
 echo json_encode([
     'status' => 'success',
     'reportid' => $reportid,
-    'timeemailsent' => $record->timeemailsent,
+    'timeemailsent' => $existing ? $existing->timeemailsent : 0,
     'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
     'ai_error' => $gemini->get_last_error()
 ]);

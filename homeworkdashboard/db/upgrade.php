@@ -74,5 +74,29 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025113003, 'local', 'homeworkdashboard');
     }
 
+    if ($oldversion < 2025120401) {
+        $table = new xmldb_table('local_homework_status');
+
+        // Add quizgrade field
+        $field = new xmldb_field('quizgrade', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0.00', 'classification');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Add points field
+        $field = new xmldb_field('points', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0.00', 'quizgrade');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Add score field
+        $field = new xmldb_field('score', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0.00', 'points');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2025120401, 'local', 'homeworkdashboard');
+    }
+
     return true;
 }

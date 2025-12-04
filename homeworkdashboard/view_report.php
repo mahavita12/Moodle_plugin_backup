@@ -25,7 +25,22 @@ echo '<div class="container mt-4">';
 echo '<div class="card">';
 // Header removed as requested
 echo '<div class="card-body">';
-echo $report->content;
+
+$content = $report->content;
+$canmanage = has_capability('local/homeworkdashboard:manage', $context) || is_siteadmin();
+
+if (!$canmanage) {
+    // Remove greeting for students
+    // If the report has the modern container, strip everything before it (which contains the greeting)
+    if (strpos($content, '<div class="homework-report-container"') !== false) {
+        $content = strstr($content, '<div class="homework-report-container"');
+    } else {
+        // Fallback for older reports: try to strip the greeting block using regex
+        $content = preg_replace('/<p>To .*?\'s parents,<\/p>.*?GrowMinds Academy Team<\/p>/s', '', $content);
+    }
+}
+
+echo $content;
 echo '</div>';
 echo '</div>';
 echo '<div class="mt-3">';

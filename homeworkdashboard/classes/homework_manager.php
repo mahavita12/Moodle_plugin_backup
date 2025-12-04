@@ -175,7 +175,8 @@ class homework_manager {
     private function build_window(int $timeclose, int $windowdays): array {
         $days = max(1, $windowdays);
         $end = $timeclose;
-        $start = $timeclose - ($days * 24 * 60 * 60) + 60;
+        // Add 2 hours offset to avoid overlap with previous week's close time
+        $start = $timeclose - ($days * 24 * 60 * 60) + 7200;
         return [$start, $end];
     }
 
@@ -420,6 +421,9 @@ class homework_manager {
                     s.status,
                     s.classification,
                     s.quiztype,
+                    s.quizgrade,
+                    s.points,
+                    s.score,
                     s.computedat,
                     lhr.timeemailsent,
                     q.name      AS quizname,
@@ -529,11 +533,29 @@ class homework_manager {
 
             $timefinish = $s->lastfinish ? (int)$s->lastfinish : 0;
 
-            $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
-            $bestpercent = (float)$s->bestpercent;
-            $bestscore = 0.0;
-            if ($maxscore > 0.0 && $bestpercent > 0.0) {
-                $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
+            // Use frozen values if available, otherwise fallback to live calculation
+            if (!empty($s->quizgrade) && $s->quizgrade > 0) {
+                $maxscore = (float)$s->quizgrade;
+                $points = (float)$s->points;
+                $bestscore = (float)$s->score;
+                $bestpercent = (float)$s->bestpercent;
+            } else {
+                // Fallback for old snapshots
+                $maxscore = ($s->grade > 0.0) ? (float)$s->grade : 0.0;
+                
+                // Calculate Points based on Status
+                $points = 0.0;
+                if ($hwstatus === 'Completed') {
+                    $points = $maxscore;
+                } elseif ($hwstatus === 'Low grade') {
+                    $points = $maxscore * 0.5;
+                }
+
+                $bestpercent = (float)$s->bestpercent;
+                $bestscore = 0.0;
+                if ($maxscore > 0.0 && $bestpercent > 0.0) {
+                    $bestscore = round(($bestpercent / 100.0) * $maxscore, 2);
+                }
             }
 
             $windowstart = (int)$s->windowstart;
@@ -564,17 +586,31 @@ class homework_manager {
                     continue;
                 }
                 $duration = $afinish - $timestart;
-                if ($duration < 180) {
-                    continue;
-                }
+                // Removed duration check here so ALL attempts are displayed
+                // if ($duration < 180) { continue; }
                 $attempts[] = $a;
             }
 
-            // Find best attempt for duration
+            // Find best attempt (only consider attempts >= 180s AND score > 10%)
             $bestattempt = null;
             $highestgrade = -1.0;
+            // Use $maxscore which was set earlier from $s->grade or $s->quizgrade
+            $qgrade = ($maxscore > 0.0) ? (float)$maxscore : 0.0;
+
             foreach ($attempts as $at) {
+                $dur = (int)$at->timefinish - (int)$at->timestart;
+                if ($dur < 180) {
+                    continue;
+                }
+                
                 $g = (float)$at->sumgrades;
+                $pct = ($qgrade > 0.0) ? ($g / $qgrade) * 100.0 : 0.0;
+                
+                // Filter: Ignore if score <= 10%
+                if ($pct <= 10.0) {
+                    continue;
+                }
+
                 if ($g > $highestgrade) {
                     $highestgrade = $g;
                     $bestattempt = $at;
@@ -627,6 +663,7 @@ class homework_manager {
                 'time_taken'   => $time_taken,
                 'score'        => $bestscore,
                 'maxscore'     => $maxscore,
+                'points'       => $points,
                 'percentage'   => $bestpercent,
                 'quiz_type'    => $s->quiztype ?? '',
                 'timeclose'    => (int)$s->timeclose,
@@ -837,25 +874,32 @@ class homework_manager {
                     continue;
                 }
                 $duration = $timefinish - $timestart;
-                if ($duration < 180) {
-                    continue;
-                }
+                // Removed duration check here so ALL attempts are displayed
+                // if ($duration < 180) { continue; }
 
                 $uid = (int)$a->userid;
                 if (!isset($peruser[$uid])) {
                     $peruser[$uid] = [
                         'attempts' => [],
+                        'valid_attempts' => 0,
                         'bestpercent' => 0.0,
                         'best' => null,
                     ];
                 }
                 $peruser[$uid]['attempts'][] = $a;
 
-                if ($grade > 0.0 && $a->sumgrades !== null) {
-                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                    if ($pct > $peruser[$uid]['bestpercent']) {
-                        $peruser[$uid]['bestpercent'] = $pct;
-                        $peruser[$uid]['best'] = $a;
+                // Only consider attempts with duration >= 180s AND score > 10% for status/best score
+                if ($duration >= 180) {
+                    if ($grade > 0.0 && $a->sumgrades !== null) {
+                        $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                        // Filter: Ignore if score <= 10%
+                        if ($pct > 10.0) {
+                            $peruser[$uid]['valid_attempts']++;
+                            if ($pct > $peruser[$uid]['bestpercent']) {
+                                $peruser[$uid]['bestpercent'] = $pct;
+                                $peruser[$uid]['best'] = $a;
+                            }
+                        }
                     }
                 }
             }
@@ -874,13 +918,17 @@ class homework_manager {
                     continue;
                 }
 
-                $summary = $peruser[$uid] ?? ['attempts' => [], 'bestpercent' => 0.0, 'best' => null];
+                $summary = $peruser[$uid] ?? ['attempts' => [], 'valid_attempts' => 0, 'bestpercent' => 0.0, 'best' => null];
                 $best = $summary['bestpercent'];
                 $bestattempt = $summary['best'];
 
-                if (empty($summary['attempts'])) {
-                    $hwstatus = 'No attempt';
-                } else if ($best >= self::COMPLETION_PERCENT_THRESHOLD) {
+                // Status logic:
+                // 1. No valid attempts (attempts <= 10% or < 180s) -> 'To do'
+                // 2. Best score > 30% -> 'Completed'
+                // 3. Otherwise (10% < score <= 30%) -> 'Low grade' (Retry)
+                if ($summary['valid_attempts'] === 0) {
+                    $hwstatus = 'To do';
+                } else if ($best > self::COMPLETION_PERCENT_THRESHOLD) {
                     $hwstatus = 'Completed';
                 } else {
                     $hwstatus = 'Low grade';
@@ -909,6 +957,14 @@ class homework_manager {
 
                 $lastscore = $bestattempt && $bestattempt->sumgrades !== null ? (float)$bestattempt->sumgrades : 0.0;
 
+                // Calculate Points based on Status
+                $points = 0.0;
+                if ($hwstatus === 'Completed') {
+                    $points = $grade;
+                } elseif ($hwstatus === 'Low grade') {
+                    $points = $grade * 0.5;
+                }
+
     
 
             $rows[] = (object) [
@@ -935,6 +991,7 @@ class homework_manager {
                     'time_taken'   => $time_taken,
                     'score'        => $lastscore,
                     'maxscore'     => $grade,
+                    'points'       => $points,
                     'percentage'   => ($grade > 0.0 && $lastscore > 0.0) ? round(($lastscore / $grade) * 100.0, 2) : 0.0,
                     'quiz_type'    => $quiztype,
                     'timeclose'    => $qtimeclose,
@@ -1307,8 +1364,12 @@ class homework_manager {
                 $windowdays = (int)$snap->windowdays;
                 
                 // Recalculate window based on stored windowdays
-                $windowstart = $timeclose - ($windowdays * 24 * 60 * 60);
+                // Add 2 hours offset to avoid overlap with previous week's close time
+                $windowstart = $timeclose - ($windowdays * 24 * 60 * 60) + 7200;
                 $windowend = $timeclose;
+                
+                // Update windowstart in the object to ensure it's saved
+                $snap->windowstart = $windowstart;
 
                 // Fetch attempts in window
                 $params = [
@@ -1318,7 +1379,7 @@ class homework_manager {
                     'end'    => $windowend
                 ];
 
-                $sql = "SELECT qa.id, qa.sumgrades, qa.timefinish
+                $sql = "SELECT qa.id, qa.sumgrades, qa.timefinish, qa.timestart
                           FROM {quiz_attempts} qa
                          WHERE qa.quiz = :quizid
                            AND qa.userid = :userid
@@ -1332,6 +1393,7 @@ class homework_manager {
                 $bestpercent = 0.0;
                 $firstfinish = 0;
                 $lastfinish = 0;
+                $valid_attempts = 0;
 
                 // We need the quiz grade to calculate percentage
                 $quizgrade = $DB->get_field('quiz', 'grade', ['id' => $quizid]);
@@ -1339,6 +1401,7 @@ class homework_manager {
 
                 foreach ($attempts as $a) {
                     $timefinish = (int)$a->timefinish;
+                    $timestart = (int)$a->timestart; // Assuming timestart is selected in SQL
                     
                     if ($firstfinish === 0 || $timefinish < $firstfinish) {
                         $firstfinish = $timefinish;
@@ -1347,20 +1410,42 @@ class homework_manager {
                         $lastfinish = $timefinish;
                     }
 
+                    // Calculate duration
+                    $duration = $timefinish - $timestart;
+
                     if ($grade > 0.0 && $a->sumgrades !== null) {
                         $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                        if ($pct > $bestpercent) {
-                            $bestpercent = $pct;
+                        
+                        // Filter: Only consider attempts with duration >= 180s AND score > 10%
+                        if ($duration >= 180 && $pct > 10.0) {
+                            $valid_attempts++;
+                            if ($pct > $bestpercent) {
+                                $bestpercent = $pct;
+                            }
                         }
                     }
                 }
 
-                if ($attempts_count === 0) {
+                if ($valid_attempts === 0) {
                     $status = 'noattempt';
-                } else if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
+                } else if ($bestpercent > self::COMPLETION_PERCENT_THRESHOLD) {
                     $status = 'completed';
                 } else {
                     $status = 'lowgrade';
+                }
+
+                // Calculate Points and Score for Snapshot
+                $snap_points = 0.0;
+                $snap_score = 0.0;
+
+                if ($status === 'completed') {
+                    $snap_points = $grade;
+                } elseif ($status === 'lowgrade') {
+                    $snap_points = $grade * 0.5;
+                }
+
+                if ($grade > 0.0 && $bestpercent > 0.0) {
+                    $snap_score = round(($bestpercent / 100.0) * $grade, 2);
                 }
 
                 // Update the existing record
@@ -1370,6 +1455,9 @@ class homework_manager {
                 $snap->lastfinish = $lastfinish ?: null;
                 $snap->status = $status;
                 $snap->computedat = $now;
+                $snap->quizgrade = $grade;
+                $snap->points = $snap_points;
+                $snap->score = $snap_score;
                 
                 $DB->update_record('local_homework_status', $snap);
                 $updated++;
@@ -1598,7 +1686,8 @@ class homework_manager {
 
             // Calculate window
             $windowdays = $this->get_course_window_days($courseid);
-            $windowstart = $timeclose - ($windowdays * 24 * 60 * 60);
+            // Add 2 hours offset to avoid overlap with previous week's close time
+            $windowstart = $timeclose - ($windowdays * 24 * 60 * 60) + 7200;
             $windowend = $timeclose;
 
             // Bulk fetch attempts for remaining users
@@ -1608,7 +1697,7 @@ class homework_manager {
             $apparams['start'] = $windowstart;
             $apparams['end'] = $windowend;
 
-            $attemptsql = "SELECT qa.id, qa.userid, qa.sumgrades, qa.timefinish
+            $attemptsql = "SELECT qa.id, qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
                              FROM {quiz_attempts} qa
                             WHERE qa.quiz = :quizid
                               AND qa.state = 'finished'
@@ -1626,6 +1715,7 @@ class homework_manager {
                 if (!isset($peruser[$uid])) {
                     $peruser[$uid] = [
                         'attempts' => 0,
+                        'valid_attempts' => 0,
                         'bestpercent' => 0.0,
                         'firstfinish' => 0,
                         'lastfinish' => 0
@@ -1634,6 +1724,9 @@ class homework_manager {
                 $peruser[$uid]['attempts']++;
                 
                 $tf = (int)$a->timefinish;
+                $ts = (int)$a->timestart;
+                $duration = $tf - $ts;
+
                 if ($peruser[$uid]['firstfinish'] === 0 || $tf < $peruser[$uid]['firstfinish']) {
                     $peruser[$uid]['firstfinish'] = $tf;
                 }
@@ -1641,10 +1734,17 @@ class homework_manager {
                     $peruser[$uid]['lastfinish'] = $tf;
                 }
 
-                if ($grade > 0.0 && $a->sumgrades !== null) {
-                    $pct = ((float)$a->sumgrades / $grade) * 100.0;
-                    if ($pct > $peruser[$uid]['bestpercent']) {
-                        $peruser[$uid]['bestpercent'] = $pct;
+                // Only consider attempts with duration >= 180s AND score > 10% for best score/status
+                if ($duration >= 180) {
+                    if ($grade > 0.0 && $a->sumgrades !== null) {
+                        $pct = ((float)$a->sumgrades / $grade) * 100.0;
+                        // Filter: Ignore if score <= 10%
+                        if ($pct > 10.0) {
+                            $peruser[$uid]['valid_attempts']++;
+                            if ($pct > $peruser[$uid]['bestpercent']) {
+                                $peruser[$uid]['bestpercent'] = $pct;
+                            }
+                        }
                     }
                 }
             }
@@ -1656,17 +1756,37 @@ class homework_manager {
                 $uid = (int)$uid;
                 $summary = $peruser[$uid] ?? [
                     'attempts' => 0,
+                    'valid_attempts' => 0,
                     'bestpercent' => 0.0,
                     'firstfinish' => 0,
                     'lastfinish' => 0,
                 ];
 
-                if ($summary['attempts'] === 0) {
+                // Status logic:
+                // 1. No valid attempts (attempts <= 10% or < 180s) -> 'noattempt' (To do)
+                // 2. Best score > 30% -> 'completed' (Done)
+                // 3. Otherwise (10% < score <= 30%) -> 'lowgrade' (Retry)
+                if ($summary['valid_attempts'] === 0) {
                     $status = 'noattempt';
-                } else if ($summary['bestpercent'] >= self::COMPLETION_PERCENT_THRESHOLD) {
+                } else if ($summary['bestpercent'] > self::COMPLETION_PERCENT_THRESHOLD) {
                     $status = 'completed';
                 } else {
                     $status = 'lowgrade';
+                }
+
+                // Calculate Points and Score for Snapshot
+                $snap_points = 0.0;
+                $snap_score = 0.0;
+                $qgrade = ($qrec->grade > 0.0) ? (float)$qrec->grade : 0.0;
+
+                if ($status === 'completed') {
+                    $snap_points = $qgrade;
+                } elseif ($status === 'lowgrade') {
+                    $snap_points = $qgrade * 0.5;
+                }
+
+                if ($qgrade > 0.0 && $summary['bestpercent'] > 0) {
+                    $snap_score = ($summary['bestpercent'] / 100.0) * $qgrade;
                 }
 
                 $record = (object) [
@@ -1684,7 +1804,10 @@ class homework_manager {
                     'status'       => $status,
                     'classification' => $classification ?: null,
                     'quiztype'       => $quiztype ?: null,
-                    'computedat'   => $now,
+                    'quizgrade'      => $qgrade,
+                    'points'         => $snap_points,
+                    'score'          => $snap_score,
+                    'computedat'     => $now,
                 ];
 
                 if (isset($existing[$uid])) {

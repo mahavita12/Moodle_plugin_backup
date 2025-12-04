@@ -162,7 +162,7 @@ if ($tab === "snapshot") {
         $duedates,
         true // pastonly
     );
-} elseif ($tab === "reports" && $canmanage) {
+} elseif ($tab === "reports") {
     // Reports Tab Logic
     // Use the main duedates variable
     $report_duedates = array_filter($duedates, function($d) { return $d > 0; });
@@ -364,11 +364,13 @@ echo $OUTPUT->header();
 // TABS
 $tabs = [
     new tabobject('live', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'live']), 'Live Homework'),
-    new tabobject('snapshot', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'snapshot']), 'Historical Snapshots'),
 ];
+
 if ($canmanage) {
-    $tabs[] = new tabobject('reports', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'reports']), 'Homework Reports');
+    $tabs[] = new tabobject('snapshot', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'snapshot']), 'Historical Snapshots');
 }
+
+$tabs[] = new tabobject('reports', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'reports']), 'Homework Reports');
 echo $OUTPUT->tabtree($tabs, $tab);
 
 // BACKFILL UI (Only for snapshots tab and managers)
@@ -402,7 +404,7 @@ if ($tab === 'snapshot' && $canmanage) {
                 <input type="hidden" name="filtersubmitted" value="1">
                 
                 <div class="filter-row">
-                    <?php if (true): ?>
+                    <?php if ($tab !== 'reports'): ?>
                         <div class="filter-group">
                             <label for="categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
                             <select name="categoryid" id="categoryid">
@@ -541,9 +543,10 @@ if ($tab === 'snapshot' && $canmanage) {
     </div>
     <?php endif; ?>
 
-    <?php if ($tab === 'reports' && $canmanage): ?>
+    <?php if ($tab === 'reports'): ?>
     <!-- REPORTS TABLE -->
     <!-- Bulk Actions -->
+    <?php if ($canmanage): ?>
     <div class="bulk-actions-container" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
         <span class="font-weight-bold mr-2">Generate:</span>
         <select id="report-lang-select" class="custom-select" style="width: auto;">
@@ -557,25 +560,37 @@ if ($tab === 'snapshot' && $canmanage) {
 
         <button id="btn-send-emails" type="button" class="btn btn-success">Send Emails</button>
     </div>
+    <?php endif; ?>
 
     <div class="dashboard-table-wrapper">
         <table class="dashboard-table table table-striped" id="reports-table">
             <thead class="thead-dark">
                 <tr>
+                    <?php if ($canmanage): ?>
                     <th style="width: 40px;"><input type="checkbox" id="select-all-reports"></th>
+                    <?php endif; ?>
                     <th>Name</th>
                     <th>ID</th>
+                    <?php if ($canmanage): ?>
                     <th>Email</th>
                     <th>Parent 1</th>
                     <th>Parent 2</th>
-                    <th>Due Date 1</th>
+                    <?php endif; ?>
+                    <th>Due Date</th>
+                    <?php if ($canmanage): ?>
                     <th>Due Date 2</th>
                     <th>Categories</th>
+                    <?php endif; ?>
                     <th>Courses</th>
                     <!-- <th>Classifications</th> Removed -->
+                    <?php if ($canmanage): ?>
                     <th>Activities 1</th>
                     <th>Activities 2</th>
-                    <th>Status</th>
+                    <?php endif; ?>
+                    <th>Reports</th>
+                    <?php if ($tab !== 'reports'): ?>
+                    <th>Points</th>
+                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -584,14 +599,17 @@ if ($tab === 'snapshot' && $canmanage) {
                 <?php else: ?>
                     <?php foreach ($rows as $row): ?>
                         <tr>
+                            <?php if ($canmanage): ?>
                             <td>
                                 <input type="checkbox" class="report-checkbox" 
                                        data-userid="<?php echo $row->userid; ?>" 
                                        data-duedate="<?php echo $row->timeclose; ?>"
                                        data-studentname="<?php echo s($row->studentname); ?>">
                             </td>
+                            <?php endif; ?>
                             <td><?php echo s($row->studentname); ?></td>
                             <td><?php echo (int)$row->userid; ?></td>
+                            <?php if ($canmanage): ?>
                             <td><?php echo s($row->email); ?></td>
                             <td>
                                 <?php if (!empty($row->parent1) && (!empty($row->parent1->name) || !empty($row->parent1->email))): ?>
@@ -611,6 +629,8 @@ if ($tab === 'snapshot' && $canmanage) {
                                     -
                                 <?php endif; ?>
                             </td>
+                            <?php endif; ?>
+                            <?php if ($canmanage): ?>
                             <td>
                                 <?php if (!empty($row->parent2) && (!empty($row->parent2->name) || !empty($row->parent2->email))): ?>
                                     <?php if (!empty($row->parent2->name)): ?>
@@ -629,7 +649,9 @@ if ($tab === 'snapshot' && $canmanage) {
                                     -
                                 <?php endif; ?>
                             </td>
+                            <?php endif; ?>
                             <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
+                            <?php if ($canmanage): ?>
                             <td>
                                 <?php echo !empty($row->next_due_date) ? userdate($row->next_due_date, get_string('strftimedate', 'langconfig')) : '-'; ?>
                             </td>
@@ -638,13 +660,16 @@ if ($tab === 'snapshot' && $canmanage) {
                                     <div class="mb-1"><span class="badge badge-primary text-white"><?php echo s($cat); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
+                            <?php endif; ?>
                             <td>
                                 <?php foreach ($row->courses as $c): ?>
                                     <div class="mb-1"><span class="badge badge-info"><?php echo s($c['name']); ?></span></div>
                                 <?php endforeach; ?>
                             </td>
                             <!-- Classifications column removed -->
+                            <?php if ($canmanage): ?>
                             <td>
+                                <?php if (!empty($row->activities)): ?>
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown">
                                         <?php echo count($row->activities); ?> Activities
@@ -691,6 +716,9 @@ if ($tab === 'snapshot' && $canmanage) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
+                                <?php else: ?>
+                                    -
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <!-- Activities 2 Column -->
@@ -745,6 +773,7 @@ if ($tab === 'snapshot' && $canmanage) {
                                     -
                                 <?php endif; ?>
                             </td>
+                            <?php endif; ?>
                             <td id="status-<?php echo $row->userid . '-' . $row->timeclose; ?>">
                                 <?php
                                 $reports = $row->reports ?? [];
@@ -757,13 +786,20 @@ if ($tab === 'snapshot' && $canmanage) {
                                     echo '<a href="view_report.php?id=' . $reports['ko'] . '" class="btn btn-success btn-sm" target="_blank">Korean</a>';
                                     $has_report = true;
                                 }
-                                if (!empty($row->emailsent) && $row->emailsent > 0) {
-                                    echo ' <span class="badge badge-success">Email Sent</span>';
-                                } elseif (!$has_report) {
-                                    echo '<span class="badge badge-light">Not Sent</span>';
+                                if ($canmanage) {
+                                    if (!empty($row->emailsent) && $row->emailsent > 0) {
+                                        echo ' <span class="badge badge-success">Email Sent</span>';
+                                    } elseif (!$has_report) {
+                                        echo '<span class="badge badge-light">Not Sent</span>';
+                                    }
                                 }
                                 ?>
                             </td>
+                            <?php if ($tab !== 'reports'): ?>
+                            <td>
+                                <?php echo isset($row->points) ? number_format($row->points, 1) : '-'; ?>
+                            </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -985,6 +1021,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th class="sortable-column" data-sort="coursename"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('coursename', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="quizname"><?php echo get_string('col_quiz', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('quizname', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="status"><?php echo get_string('status'); ?> <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?></th>
+                    <th>Points</th>
                     <th class="sortable-column" data-sort="attemptno"><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="classification">Activity classification <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="quiz_type">Quiz type <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?></th>
@@ -1076,12 +1113,15 @@ if ($tab === 'snapshot' && $canmanage) {
                                     } else if ($st === "Low grade") {
                                         $badgeclass = "hw-badge-lowgrade";
                                         $badgetext = "Retry";
-                                    } else if ($st === "No attempt") {
+                                    } else if ($st === "No attempt" || $st === "To do") {
                                         $badgeclass = "hw-badge-noattempt";
                                         $badgetext = "To do";
                                     }
                                     echo '<span class="hw-badge ' . $badgeclass . '">' . s($badgetext) . '</span>';
                                 ?>
+                            </td>
+                            <td>
+                                <?php echo isset($row->points) ? number_format($row->points, 1) : '-'; ?>
                             </td>
                             <td><?php echo (int)$row->attemptno; ?></td>
                             <td>
@@ -1137,7 +1177,7 @@ if ($tab === 'snapshot' && $canmanage) {
                         </tr>
                         <!-- Expansion row -->
                         <tr class="hw-attempts-row" id="<?php echo $childid; ?>" style="display:none;">
-                            <td colspan="15">
+                            <td colspan="16">
                                 <?php
                                     // Sort attempts by attempt number ASC to match production layout.
                                     $attempts = $row->attempts ?? [];
