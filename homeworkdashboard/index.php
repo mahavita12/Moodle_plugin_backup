@@ -363,6 +363,7 @@ echo $OUTPUT->header();
 
 // TABS
 $tabs = [
+    new tabobject('leaderboard', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'leaderboard']), 'Leaderboard'),
     new tabobject('live', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'live']), 'Live Homework'),
 ];
 
@@ -372,6 +373,122 @@ if ($canmanage) {
 
 $tabs[] = new tabobject('reports', new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'reports']), 'Homework Reports');
 echo $OUTPUT->tabtree($tabs, $tab);
+
+if ($tab === 'leaderboard') {
+    // --- LEADERBOARD TAB LOGIC ---
+    $manager = new \local_homeworkdashboard\homework_manager();
+    $rows = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff);
+
+    echo html_writer::start_div('container-fluid mt-3');
+
+    // Filter form (simplified for leaderboard)
+    echo html_writer::start_div('card mb-3');
+    echo html_writer::start_div('card-body');
+    echo html_writer::tag('h5', 'Filter Leaderboard', ['class' => 'card-title']);
+    echo '<form method="get" action="index.php" class="form-inline">';
+    echo html_writer::input_hidden_params(new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'leaderboard']));
+    
+    // Category Select
+    echo '<div class="form-group mr-2">';
+    echo '<label for="cat_select" class="mr-1">Category:</label>';
+    // Fix: Convert array of stdClass objects to array of id => name strings
+    $cat_options = [];
+    foreach ($categories as $cat) {
+        $cat_options[$cat->id] = $cat->name;
+    }
+    echo html_writer::select($cat_options, 'categoryid', $categoryid, ['0' => 'All Categories'], ['class' => 'form-control', 'id' => 'cat_select']);
+    echo '</div>';
+
+    // Course Select (if category selected or just all)
+    // Simplified course list logic from above
+    $courselist = [];
+    foreach($courses as $c) { $courselist[$c->id] = format_string($c->fullname); }
+    
+    echo '<div class="form-group mr-2">';
+    echo '<label for="course_select" class="mr-1">Course:</label>';
+    echo html_writer::select($courselist, 'courseid[]', $courseids[0] ?? 0, ['0' => 'All Courses'], ['class' => 'form-control', 'id' => 'course_select']);
+    echo '</div>';
+
+    // Exclude Staff Checkbox
+    echo '<div class="form-group mr-2 form-check">';
+    echo html_writer::checkbox('excludestaff', 1, $excludestaff, 'Exclude Staff', ['class' => 'form-check-input', 'id' => 'excludestaff']);
+    echo '</div>';
+
+    echo '<button type="submit" class="btn btn-primary">Update</button>';
+    echo '</form>';
+    echo html_writer::end_div(); // card-body
+    echo html_writer::end_div(); // card
+
+    // Matrix Table
+    echo html_writer::start_div('table-responsive');
+    echo '<table class="table table-bordered table-striped table-hover">';
+    echo '<thead class="thead-dark">';
+    echo '<tr>';
+    echo '<th>Student</th>';
+    echo '<th>ID Number</th>';
+    echo '<th>Courses</th>';
+    echo '<th>Latest Due Date</th>';
+    echo '<th class="text-center">Live Points</th>';
+    echo '<th class="text-center">2 Weeks</th>';
+    echo '<th class="text-center">4 Weeks</th>';
+    echo '<th class="text-center">10 Weeks</th>';
+    echo '<th class="text-center">All Time</th>';
+    echo '</tr>';
+    echo '</thead>';
+    echo '<tbody>';
+
+    if (empty($rows)) {
+        echo '<tr><td colspan="9" class="text-center">No data found for current filters.</td></tr>';
+    } else {
+        foreach ($rows as $row) {
+            echo '<tr>';
+            
+            // Name
+            echo '<td>';
+            $userurl = new moodle_url('/user/view.php', ['id' => $row->userid, 'course' => 1]); // Profile link
+            echo html_writer::link($userurl, $row->fullname);
+            echo '</td>';
+
+            // ID
+            echo '<td>' . s($row->idnumber) . '</td>';
+
+            // Courses (Badges)
+            echo '<td>';
+            foreach ($row->courses as $cid) {
+                // Try to find course name in pre-fetched list or fetch simplistic
+                $cname = $courselist[$cid] ?? "Course $cid"; 
+                echo html_writer::span($cname, 'badge badge-info mr-1');
+            }
+            echo '</td>';
+
+            // Latest Due Date
+            echo '<td>';
+            if ($row->latest_due_date > 0) {
+                echo userdate($row->latest_due_date, get_string('strftimedate'));
+            } else {
+                echo '-';
+            }
+            echo '</td>';
+
+            // Points Columns
+            echo '<td class="text-center font-weight-bold text-success">' . format_float($row->points_live, 0) . '</td>';
+            echo '<td class="text-center">' . format_float($row->points_2w, 0) . '</td>';
+            echo '<td class="text-center">' . format_float($row->points_4w, 0) . '</td>';
+            echo '<td class="text-center">' . format_float($row->points_10w, 0) . '</td>';
+            echo '<td class="text-center font-weight-bold text-primary">' . format_float($row->points_all, 0) . '</td>';
+
+            echo '</tr>';
+        }
+    }
+
+    echo '</tbody>';
+    echo '</table>';
+    echo html_writer::end_div(); // table-responsive
+    echo html_writer::end_div(); // container
+
+    echo $OUTPUT->footer();
+    exit; // Stop processing to isolate tab
+}
 
 // BACKFILL UI (Only for snapshots tab and managers)
 if ($tab === 'snapshot' && $canmanage) {

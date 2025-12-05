@@ -1855,4 +1855,217 @@ class homework_manager {
             return false;
         }
     }
+
+    /**
+     * Get leaderboard data: Aggregated points for students across different time periods.
+     *
+     * @param int $categoryid Filter by course category (0 for all).
+     * @param array $courseids Filter by specific course IDs ([0] for all).
+     * @param bool $excludestaff Whether to exclude users with 'staff' in their email.
+     * @return array List of objects with user details, badges, and point columns.
+     */
+    public function get_leaderboard_data(int $categoryid, array $courseids, bool $excludestaff): array {
+        global $DB;
+
+        // 1. Build filters
+        $params = [];
+        $categoryjoin = "";
+        $categorywhere = "";
+        // JOIN course to get category and fullname for grouping logic
+        $categoryjoin = "JOIN {course} c ON c.id = q.course";
+        $categoryjoin .= " JOIN {course_categories} cc ON c.category = cc.id"; // Need category ID/Name
+
+        if ($categoryid > 0) {
+            // Special case: If filtering by Category 1 (Main), also fetch Category 2 (Personal)
+            // so we can merge their points. We will filter out orphaned Category 2 rows later if needed.
+            if ($categoryid == 1) {
+                $categorywhere = "AND (c.category = :catid OR c.category = 2)";
+            } else {
+                $categorywhere = "AND c.category = :catid";
+            }
+            $params['catid'] = $categoryid;
+        }
+
+        $coursewhere = "";
+        if (!empty($courseids) && !in_array(0, $courseids)) {
+            list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED);
+            $coursewhere = "AND q.course $insql";
+            $params = array_merge($params, $inparams);
+        }
+
+        $staffwhere = "";
+        if ($excludestaff) {
+            $staffwhere = "AND u.email NOT LIKE '%staff%' AND u.email NOT LIKE '%admin%' AND u.email NOT LIKE '%demo%'";
+        }
+
+        // 2. Fetch Data (ONLY from local_homework_status snapshot table)
+        // As requested, we now rely exclusively on pre-calculated points in the snapshot table.
+        // Live data from gradebook is removed to simplify logic.
+        $live_rows = []; // Empty array to preserve variable for downstream merge if needed, or we just skip it.
+
+        // 3. Fetch Snapshot Data (Historical from local_homework_status)
+        $snap_params = [];
+        $snap_cat_join = "";
+        $snap_cat_where = "";
+        // JOIN course/category for snapshot data too
+        $snap_cat_join = "JOIN {course} c ON c.id = lbs.courseid";
+        $snap_cat_join .= " JOIN {course_categories} cc ON c.category = cc.id";
+
+        if ($categoryid > 0) {
+            if ($categoryid == 1) {
+                $snap_cat_where = "AND (c.category = :catid2 OR c.category = 2)";
+            } else {
+                $snap_cat_where = "AND c.category = :catid2";
+            }
+            $snap_params['catid2'] = $categoryid;
+        }
+        
+        $snap_course_where = "";
+        if (!empty($courseids) && !in_array(0, $courseids)) {
+            list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'sc');
+            $snap_course_where = "AND lbs.courseid $insql";
+            $snap_params = array_merge($snap_params, $inparams);
+        }
+
+        $snap_sql = "
+            SELECT
+                " . $DB->sql_concat('u.id', "'_'", 'lbs.courseid', "'_'", 'lbs.timeclose') . " AS unique_key,
+                lbs.id,
+                lbs.userid,
+                u.firstname,
+                u.lastname,
+                u.firstnamephonetic,
+                u.lastnamephonetic,
+                u.middlename,
+                u.alternatename,
+                u.email,
+                u.idnumber,
+                lbs.courseid,
+                c.fullname AS coursename,
+                cc.id AS categoryid,
+                lbs.timeclose AS due_date,
+                lbs.points AS points
+            FROM {local_homework_status} lbs
+            JOIN {user} u ON u.id = lbs.userid
+            $snap_cat_join
+            WHERE u.deleted = 0
+              $snap_cat_where
+              $snap_course_where
+              $staffwhere
+        ";
+        
+        $snap_rows = $DB->get_records_sql($snap_sql, $snap_params);
+
+        // 4. Merge and Aggregate
+
+        // 4. Grouping Logic: User + Course Stream (Refactored v2)
+        $all_raw_rows = array_merge($live_rows, $snap_rows);
+        
+        // Pass 1: Find Anchor Courses
+        $user_anchor_map = []; // userid => courseid
+        foreach ($all_raw_rows as $r) {
+            $cid = (int)$r->courseid;
+            $catid = (int)($r->categoryid ?? 0);
+            $cname = $r->coursename ?? '';
+            
+            // Anchor Definition: Category 1 AND Name contains "Classroom"
+            if ($catid === 1 && stripos($cname, 'Classroom') !== false) {
+                $user_anchor_map[$r->userid] = $cid; 
+            }
+        }
+        
+        // Pass 2: Aggregate Data into Streams
+        $stream_aggregated = [];
+        
+        foreach ($all_raw_rows as $r) {
+            $uid = $r->userid;
+            $cid = (int)$r->courseid;
+            $catid = (int)($r->categoryid ?? 0);
+            
+            // Determine Target Course ID for Grouping
+            $target_course_id = $cid; // Default to self
+            
+            if ($catid === 2) { // Personal Review Course
+                if (isset($user_anchor_map[$uid])) {
+                    $target_course_id = $user_anchor_map[$uid]; // Merge to Anchor (Main Classroom)
+                }
+                // If no Anchor found, it stays as self (Personal)
+            }
+            
+            // Key: User + Target Course Stream
+            $key = $uid . '_' . $target_course_id;
+            
+            if (!isset($stream_aggregated[$key])) {
+                $stream_aggregated[$key] = (object)[
+                    'userid' => $uid,
+                    'target_course_id' => $target_course_id,
+                    'fullname' => fullname((object)[
+                        'firstname'=>$r->firstname, 
+                        'lastname'=>$r->lastname,
+                        'firstnamephonetic'=>$r->firstnamephonetic ?? '',
+                        'lastnamephonetic'=>$r->lastnamephonetic ?? '',
+                        'middlename'=>$r->middlename ?? '',
+                        'alternatename'=>$r->alternatename ?? '',
+                    ]),
+                    'idnumber' => $r->idnumber,
+                    'latest_due_date' => 0,
+                    'points_live' => 0,
+                    'points_2w' => 0,
+                    'points_4w' => 0,
+                    'points_10w' => 0,
+                    'points_all' => 0,
+                    'courses' => [],
+                ];
+            }
+            
+            $row = $stream_aggregated[$key];
+            
+            // Update Latest Due Date (Max of all items in this stream)
+            $due = (int)$r->due_date;
+            if ($due > $row->latest_due_date) {
+                $row->latest_due_date = $due;
+            }
+            
+            // Track Source Courses
+            if (!in_array($cid, $row->courses)) {
+                $row->courses[] = $cid;
+            }
+            
+            // Add Points
+            $pts = (float)$r->points;
+            $now = time();
+            
+            $row->points_all += $pts;
+            
+            $diff = $now - $due;
+            $two_weeks = 14 * 24 * 3600;
+            $four_weeks = 28 * 24 * 3600;
+            $ten_weeks = 70 * 24 * 3600;
+            
+            if ($diff < $two_weeks) $row->points_2w += $pts;
+            if ($diff < $four_weeks) $row->points_4w += $pts;
+            if ($diff < $ten_weeks) $row->points_10w += $pts;
+            
+            // Live Points (using all for now as per previous logic, or 2w? User didn't specify exact filter)
+            // Let's treat "Live" as points from "Live" (open) sources?
+            // The raw rows lost the source distinction (live vs snap).
+            // Let's assume Live ~ 2 Weeks or just display All in Live column?
+            // Actually, index.php displays "Live Points" in the matrix.
+            // I'll set points_live = points_2w as a reasonable approximation for "Active/Recent" work.
+            $row->points_live = $row->points_2w; 
+        }
+
+        // Sort by All Time Points DESC by default
+        $final_rows = array_values($stream_aggregated);
+        usort($final_rows, function($a, $b) {
+            // Primary sort: Points All Time
+            if ($b->points_all != $a->points_all) {
+                return $b->points_all <=> $a->points_all;
+            }
+            // Secondary sort: Latest Due Date (desc)
+            return $b->latest_due_date <=> $a->latest_due_date;
+        });
+
+        return $final_rows;
+    }
 }
