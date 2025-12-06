@@ -542,6 +542,66 @@ if ($tab === 'leaderboard') {
             </form>
         </div>
 
+        <!-- Load Chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        
+        <!-- Charts Section (Always Visible) -->
+        <div id="leaderboardCharts" style="margin-bottom: 20px;">
+            <!-- Top Row: Course/Category Level -->
+            <div class="row">
+                <!-- Course Level: Students Points (Live, 2wk, 4wk) -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <strong>Course Level: Student Points (Live / 2wk / 4wk)</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="courseStudentPointsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Course Level: All Time & Class Level -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <strong>Course Level: All Time Points & Class Level</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="courseAllTimeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Bottom Row: User Level (Aggregated) -->
+            <div class="row">
+                <!-- User Level: Students Points (Live, 2wk, 4wk) -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-warning text-dark">
+                            <strong>User Level: Student Points (Live / 2wk / 4wk)</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="userStudentPointsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Level: Intellect Points & Level -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-info text-white">
+                            <strong>User Level: Intellect Points & Level</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="userIntellectChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Leaderboard Table -->
         <div class="table-responsive">
             <table class="table dashboard-table">
@@ -553,6 +613,7 @@ if ($tab === 'leaderboard') {
                         <th class="sortable-column text-center" data-sort="intellect_point" style="cursor:pointer;">Intellect Point <?php echo local_homeworkdashboard_sort_arrows('intellect_point', $sort, $dir); ?></th>
                         <th class="sortable-column" data-sort="categoryname" style="cursor:pointer;">CATEGORY <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?></th>
                         <th>COURSES</th>
+                        <th class="text-center">CLASS LEVEL</th>
                         <th>LIVE DUE DATE</th>
                         <th class="sortable-column" data-sort="latest_due_date" style="cursor:pointer;">LATEST DUE DATE <?php echo local_homeworkdashboard_sort_arrows('latest_due_date', $sort, $dir); ?></th>
                         <th class="text-center">LIVE POINTS</th>
@@ -564,7 +625,7 @@ if ($tab === 'leaderboard') {
                 </thead>
                 <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="13" class="text-center">No data found for current filters.</td></tr>
+                        <tr><td colspan="14" class="text-center">No data found for current filters.</td></tr>
                     <?php else: ?>
                         <?php foreach ($rows as $row): ?>
                             <tr>
@@ -579,8 +640,9 @@ if ($tab === 'leaderboard') {
                                 <td><?php echo !empty($row->idnumber) ? s($row->idnumber) : $row->userid; ?></td>
                                 
                                 <?php 
+                                    // Intellect Point = sum of All Time values (already divided by 10 for display)
                                     $raw_points = isset($intellect_points[$row->userid]) ? $intellect_points[$row->userid] : 0;
-                                    $ip = $raw_points / 10; // IP = raw points / 10
+                                    $ip = $raw_points / 10; // IP = sum of all time / 10 (matches All Time column)
                                     $level = ceil($ip / 100); // Level = IP / 100, rounded up
                                     if ($level < 1) $level = 1; // Minimum level 1
                                 ?>
@@ -588,7 +650,7 @@ if ($tab === 'leaderboard') {
                                 <td class="text-center font-weight-bold" style="color: #fd7e14;">
                                     <?php echo $level; ?>
                                 </td>
-                                <!-- Intellect Points (raw / 10, 1 decimal) -->
+                                <!-- Intellect Points = sum of All Time (divided by 10, 1 decimal) -->
                                 <td class="text-center font-weight-bold" style="color: #6f42c1;">
                                     <?php echo number_format($ip, 1); ?>
                                 </td>
@@ -652,6 +714,15 @@ if ($tab === 'leaderboard') {
                                     <?php endforeach; ?>
                                 </td>
                                 
+                                <!-- Class Level (All Time / 100, rounded up) -->
+                                <td class="text-center font-weight-bold" style="color: #17a2b8;">
+                                    <?php 
+                                        $class_level = ceil(($row->points_all / 10) / 100);
+                                        if ($class_level < 1) $class_level = 1;
+                                        echo $class_level;
+                                    ?>
+                                </td>
+                                
                                 <!-- Live Due Date -->
                                 <td>
                                     <?php echo $row->live_due_date > 0 ? userdate($row->live_due_date, get_string('strftimedatetime')) : '-'; ?>
@@ -679,36 +750,36 @@ if ($tab === 'leaderboard') {
                                 // Create unique row key for JavaScript data storage
                                 $row_key = $row->userid . '_' . $row->categoryid;
                                 ?>
-                                <!-- Live Points (clickable + tooltip) -->
+                                <!-- Live Points (clickable + tooltip) - divided by 10 -->
                                 <td class="text-center font-weight-bold text-success">
                                     <a href="#" class="points-link" 
                                        onclick="showBreakdown('<?php echo s($row->fullname); ?>', 'Live', '<?php echo $row_key; ?>_live'); return false;"
                                        title="Due dates: <?php echo s($tooltip_live); ?>">
-                                        <?php echo format_float($row->points_live, 0); ?>
+                                        <?php echo number_format($row->points_live / 10, 1); ?>
                                     </a>
                                 </td>
-                                <!-- 2 Weeks (clickable + tooltip) -->
+                                <!-- 2 Weeks (clickable + tooltip) - divided by 10 -->
                                 <td class="text-center">
                                     <a href="#" class="points-link"
                                        onclick="showBreakdown('<?php echo s($row->fullname); ?>', '2 Weeks', '<?php echo $row_key; ?>_2w'); return false;"
                                        title="Due dates: <?php echo s($tooltip_2w); ?>">
-                                        <?php echo format_float($row->points_2w, 0); ?>
+                                        <?php echo number_format($row->points_2w / 10, 1); ?>
                                     </a>
                                 </td>
-                                <!-- 4 Weeks (clickable + tooltip) -->
+                                <!-- 4 Weeks (clickable + tooltip) - divided by 10 -->
                                 <td class="text-center">
                                     <a href="#" class="points-link"
                                        onclick="showBreakdown('<?php echo s($row->fullname); ?>', '4 Weeks', '<?php echo $row_key; ?>_4w'); return false;"
                                        title="Due dates: <?php echo s($tooltip_4w); ?>">
-                                        <?php echo format_float($row->points_4w, 0); ?>
+                                        <?php echo number_format($row->points_4w / 10, 1); ?>
                                     </a>
                                 </td>
-                                <!-- 10 Weeks (tooltip only) -->
+                                <!-- 10 Weeks (tooltip only) - divided by 10 -->
                                 <td class="text-center" title="Due dates: <?php echo s($tooltip_10w); ?>" style="cursor: help;">
-                                    <?php echo format_float($row->points_10w, 0); ?>
+                                    <?php echo number_format($row->points_10w / 10, 1); ?>
                                 </td>
-                                <!-- All Time (no tooltip/modal) -->
-                                <td class="text-center font-weight-bold text-primary"><?php echo format_float($row->points_all, 0); ?></td>
+                                <!-- All Time (no tooltip/modal) - divided by 10 -->
+                                <td class="text-center font-weight-bold text-primary"><?php echo number_format($row->points_all / 10, 1); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -914,7 +985,388 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = url.toString();
         });
     });
+    
+    // Initialize charts if Chart.js is available
+    initLeaderboardCharts();
 });
+
+
+
+// Chart data from PHP
+var leaderboardChartData = {
+    // Course Level: Students with Live, 2wk, 4wk points (per category row)
+    courseStudentPoints: <?php 
+        $course_data = [];
+        foreach ($rows as $row) {
+            $course_data[] = [
+                'name' => $row->fullname,
+                'category' => $row->categoryname ?? 'Unknown',
+                'live' => round(($row->points_live ?? 0) / 10, 1),
+                'w2' => round(($row->points_2w ?? 0) / 10, 1),
+                'w4' => round(($row->points_4w ?? 0) / 10, 1),
+                'all_time' => round(($row->points_all ?? 0) / 10, 1),
+                'class_level' => max(1, ceil(($row->points_all / 10) / 100))
+            ];
+        }
+        // Sort by live points desc and take top 10
+        usort($course_data, function($a, $b) { return $b['live'] <=> $a['live']; });
+        $course_data = array_slice($course_data, 0, 10);
+        echo json_encode($course_data);
+    ?>,
+    
+    // User Level: Aggregated points across all courses
+    userStudentPoints: <?php
+        $user_agg = [];
+        foreach ($rows as $row) {
+            $uid = $row->userid;
+            if (!isset($user_agg[$uid])) {
+                $user_agg[$uid] = [
+                    'name' => $row->fullname,
+                    'live' => 0,
+                    'w2' => 0,
+                    'w4' => 0,
+                    'intellect_points' => 0,
+                    'level' => 1
+                ];
+            }
+            $user_agg[$uid]['live'] += ($row->points_live ?? 0) / 10;
+            $user_agg[$uid]['w2'] += ($row->points_2w ?? 0) / 10;
+            $user_agg[$uid]['w4'] += ($row->points_4w ?? 0) / 10;
+        }
+        // Add intellect points and level
+        foreach ($user_agg as $uid => &$u) {
+            $raw = isset($intellect_points[$uid]) ? $intellect_points[$uid] : 0;
+            $u['intellect_points'] = round($raw / 10, 1);
+            $u['level'] = max(1, ceil(($raw / 10) / 100));
+            $u['live'] = round($u['live'], 1);
+            $u['w2'] = round($u['w2'], 1);
+            $u['w4'] = round($u['w4'], 1);
+        }
+        unset($u);
+        $user_list = array_values($user_agg);
+        // Sort by live points desc and take top 10
+        usort($user_list, function($a, $b) { return $b['live'] <=> $a['live']; });
+        $user_list = array_slice($user_list, 0, 10);
+        echo json_encode($user_list);
+    ?>,
+    
+    // Average/Max levels for gauge display
+    avgClassLevel: <?php
+        $total_class_level = 0;
+        $count = 0;
+        foreach ($rows as $row) {
+            $total_class_level += max(1, ceil(($row->points_all / 10) / 100));
+            $count++;
+        }
+        echo $count > 0 ? round($total_class_level / $count, 1) : 1;
+    ?>,
+    maxClassLevel: <?php
+        $max_cl = 1;
+        foreach ($rows as $row) {
+            $cl = max(1, ceil(($row->points_all / 10) / 100));
+            if ($cl > $max_cl) $max_cl = $cl;
+        }
+        echo $max_cl;
+    ?>,
+    avgUserLevel: <?php
+        $user_levels_arr = [];
+        foreach ($rows as $row) {
+            $uid = $row->userid;
+            if (!isset($user_levels_arr[$uid])) {
+                $raw = isset($intellect_points[$uid]) ? $intellect_points[$uid] : 0;
+                $user_levels_arr[$uid] = max(1, ceil(($raw / 10) / 100));
+            }
+        }
+        $avg = count($user_levels_arr) > 0 ? array_sum($user_levels_arr) / count($user_levels_arr) : 1;
+        echo round($avg, 1);
+    ?>,
+    maxUserLevel: <?php
+        $max_ul = 1;
+        foreach ($rows as $row) {
+            $uid = $row->userid;
+            $raw = isset($intellect_points[$uid]) ? $intellect_points[$uid] : 0;
+            $ul = max(1, ceil(($raw / 10) / 100));
+            if ($ul > $max_ul) $max_ul = $ul;
+        }
+        echo $max_ul;
+    ?>
+};
+
+var chartsInitialized = false;
+
+function initLeaderboardCharts() {
+    console.log('initLeaderboardCharts called, chartsInitialized:', chartsInitialized);
+    if (chartsInitialized) return;
+    
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js not loaded!');
+        return;
+    }
+    
+    console.log('Chart.js available, rendering charts...');
+    renderCharts();
+}
+
+function renderCharts() {
+    console.log('renderCharts called');
+    console.log('Chart data:', leaderboardChartData);
+    chartsInitialized = true;
+    
+    // Color palette
+    var colors = {
+        live: 'rgba(25, 135, 84, 0.8)',      // Green for live
+        w2: 'rgba(13, 110, 253, 0.8)',       // Blue for 2 weeks
+        w4: 'rgba(111, 66, 193, 0.8)',       // Purple for 4 weeks
+        allTime: 'rgba(253, 126, 20, 0.8)' // Orange for all time
+    };
+    
+    // Level badge colors (different color per level)
+    var levelColors = [
+        '#6c757d', // Level 0 (fallback) - Gray
+        '#17a2b8', // Level 1 - Teal/Cyan
+        '#6f42c1', // Level 2 - Purple
+        '#28a745', // Level 3 - Green
+        '#fd7e14', // Level 4 - Orange
+        '#dc3545', // Level 5 - Red
+        '#007bff', // Level 6 - Blue
+        '#e83e8c', // Level 7 - Pink
+        '#20c997', // Level 8 - Teal Green
+        '#ffc107', // Level 9 - Yellow
+        '#343a40'  // Level 10+ - Dark
+    ];
+    
+    function getLevelColor(level) {
+        if (level >= levelColors.length) return levelColors[levelColors.length - 1];
+        return levelColors[level] || levelColors[0];
+    }
+    
+    // 1. Course Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar
+    var courseStudentCtx = document.getElementById('courseStudentPointsChart');
+    if (courseStudentCtx && leaderboardChartData.courseStudentPoints && leaderboardChartData.courseStudentPoints.length > 0) {
+        new Chart(courseStudentCtx, {
+            type: 'bar',
+            data: {
+                labels: leaderboardChartData.courseStudentPoints.map(function(s) { return s.name + ' (' + s.category + ')'; }),
+                datasets: [
+                    {
+                        label: 'Live',
+                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.live; }),
+                        backgroundColor: colors.live,
+                        borderWidth: 1
+                    },
+                    {
+                        label: '2 Weeks',
+                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.w2; }),
+                        backgroundColor: colors.w2,
+                        borderWidth: 1
+                    },
+                    {
+                        label: '4 Weeks',
+                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.w4; }),
+                        backgroundColor: colors.w4,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { beginAtZero: true, stacked: false, title: { display: true, text: 'Points' } }
+                }
+            }
+        });
+    }
+    
+    // 2. Course Level: All Time Points (Bar) + Class Level (Gauge)
+    var courseAllTimeCtx = document.getElementById('courseAllTimeChart');
+    if (courseAllTimeCtx && leaderboardChartData.courseStudentPoints && leaderboardChartData.courseStudentPoints.length > 0) {
+        var courseData = leaderboardChartData.courseStudentPoints;
+        new Chart(courseAllTimeCtx, {
+            type: 'bar',
+            data: {
+                labels: courseData.map(function(s) { return s.name; }),
+                datasets: [{
+                    label: 'All Time Points',
+                    data: courseData.map(function(s) { return s.all_time; }),
+                    backgroundColor: colors.allTime,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { beginAtZero: true, title: { display: true, text: 'All Time Points' } },
+                    y: {
+                        ticks: {
+                            callback: function(value, index) {
+                                return courseData[index].name;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [{
+                id: 'levelBadges',
+                afterDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var yAxis = chart.scales.y;
+                    var xAxis = chart.scales.x;
+                    
+                    courseData.forEach(function(item, index) {
+                        var y = yAxis.getPixelForValue(index);
+                        var barEnd = xAxis.getPixelForValue(item.all_time);
+                        
+                        // Draw level badge after bar with level-based color
+                        ctx.save();
+                        ctx.font = 'bold 10px Arial';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        
+                        // Badge background with level-specific color
+                        var badgeText = 'Lvl ' + item.class_level;
+                        var textWidth = ctx.measureText(badgeText).width;
+                        var badgeX = barEnd + 5;
+                        var badgeY = y;
+                        var padding = 6;
+                        
+                        ctx.fillStyle = getLevelColor(item.class_level);
+                        ctx.beginPath();
+                        ctx.roundRect(badgeX, badgeY - 10, textWidth + padding * 2, 20, 4);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(badgeText, badgeX + padding, badgeY);
+                        ctx.restore();
+                    });
+                }
+            }]
+        });
+    }
+    
+    
+    // 3. User Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar
+    var userStudentCtx = document.getElementById('userStudentPointsChart');
+    if (userStudentCtx && leaderboardChartData.userStudentPoints && leaderboardChartData.userStudentPoints.length > 0) {
+        new Chart(userStudentCtx, {
+            type: 'bar',
+            data: {
+                labels: leaderboardChartData.userStudentPoints.map(function(s) { return s.name; }),
+                datasets: [
+                    {
+                        label: 'Live',
+                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.live; }),
+                        backgroundColor: colors.live,
+                        borderWidth: 1
+                    },
+                    {
+                        label: '2 Weeks',
+                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.w2; }),
+                        backgroundColor: colors.w2,
+                        borderWidth: 1
+                    },
+                    {
+                        label: '4 Weeks',
+                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.w4; }),
+                        backgroundColor: colors.w4,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    x: { beginAtZero: true, stacked: false, title: { display: true, text: 'Points' } }
+                }
+            }
+        });
+    }
+    
+    // 4. User Level: Intellect Points (Bar) + Level (Gauge)
+    var userIntellectCtx = document.getElementById('userIntellectChart');
+    if (userIntellectCtx && leaderboardChartData.userStudentPoints && leaderboardChartData.userStudentPoints.length > 0) {
+        var userData = leaderboardChartData.userStudentPoints;
+        new Chart(userIntellectCtx, {
+            type: 'bar',
+            data: {
+                labels: userData.map(function(s) { return s.name; }),
+                datasets: [{
+                    label: 'Intellect Points',
+                    data: userData.map(function(s) { return s.intellect_points; }),
+                    backgroundColor: colors.allTime,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { beginAtZero: true, title: { display: true, text: 'Intellect Points' } },
+                    y: {
+                        ticks: {
+                            callback: function(value, index) {
+                                return userData[index].name;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [{
+                id: 'userLevelBadges',
+                afterDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var yAxis = chart.scales.y;
+                    var xAxis = chart.scales.x;
+                    
+                    userData.forEach(function(item, index) {
+                        var y = yAxis.getPixelForValue(index);
+                        var barEnd = xAxis.getPixelForValue(item.intellect_points);
+                        
+                        // Draw level badge after bar with level-based color
+                        ctx.save();
+                        ctx.font = 'bold 10px Arial';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        
+                        // Badge background with level-specific color
+                        var badgeText = 'Lvl ' + item.level;
+                        var textWidth = ctx.measureText(badgeText).width;
+                        var badgeX = barEnd + 5;
+                        var badgeY = y;
+                        var padding = 6;
+                        
+                        ctx.fillStyle = getLevelColor(item.level);
+                        ctx.beginPath();
+                        ctx.roundRect(badgeX, badgeY - 10, textWidth + padding * 2, 20, 4);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(badgeText, badgeX + padding, badgeY);
+                        ctx.restore();
+                    });
+                }
+            }]
+        });
+    }
+}
 </script>
 <?php
     echo $OUTPUT->footer();
