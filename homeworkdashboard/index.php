@@ -194,6 +194,20 @@ if ($tab === "snapshot") {
         true // pastonly
     );
     error_log("HM_DEBUG: Raw Rows Count: " . count($raw_rows));
+    
+    // Debug: Log activities per user/timeclose
+    $debug_counts = [];
+    foreach ($raw_rows as $r) {
+        $key = $r->userid . '_' . $r->timeclose;
+        if (!isset($debug_counts[$key])) {
+            $debug_counts[$key] = ['name' => $r->studentname, 'timeclose' => $r->timeclose, 'count' => 0, 'quizzes' => []];
+        }
+        $debug_counts[$key]['count']++;
+        $debug_counts[$key]['quizzes'][] = $r->quizname . ' (' . $r->classification . ')';
+    }
+    foreach ($debug_counts as $k => $v) {
+        error_log("HM_DEBUG Reports: User {$v['name']} timeclose {$v['timeclose']} has {$v['count']} activities: " . implode(', ', $v['quizzes']));
+    }
 
     // Group by Student + Due Date
     $grouped_rows = [];
@@ -221,7 +235,7 @@ if ($tab === "snapshot") {
         $grouped_rows[$key]->categories[$r->categoryid] = $r->categoryname;
         
         // Capture Next Due Date for Category 1
-        if (strcasecmp($r->categoryname, 'Category 1') === 0 && !empty($r->next_due_date)) {
+        if ((strcasecmp($r->categoryname, 'Category 1') === 0 || strcasecmp($r->categoryname, 'Category 2') === 0) && !empty($r->next_due_date)) {
             if (empty($grouped_rows[$key]->next_due_date) || $r->next_due_date < $grouped_rows[$key]->next_due_date) {
                 $grouped_rows[$key]->next_due_date = $r->next_due_date;
                 $grouped_rows[$key]->next_due_date_courseid = $r->courseid; // Store course ID for fetching activities
@@ -248,26 +262,26 @@ if ($tab === "snapshot") {
 
         // Sort Categories: Category 1 first
         uasort($g->categories, function($a, $b) {
-            $a_is_cat1 = strcasecmp($a, 'Category 1') === 0;
-            $b_is_cat1 = strcasecmp($b, 'Category 1') === 0;
+            $a_is_cat1 = (strcasecmp($a, 'Category 1') === 0 || strcasecmp($a, 'Category 2') === 0);
+            $b_is_cat1 = (strcasecmp($b, 'Category 1') === 0 || strcasecmp($b, 'Category 2') === 0);
             if ($a_is_cat1 && !$b_is_cat1) return -1;
             if (!$a_is_cat1 && $b_is_cat1) return 1;
             return strcasecmp($a, $b);
         });
 
-        // Sort Courses: Category 1 courses first
+        // Sort Courses: Category 1 and Category 2 courses first
         uasort($g->courses, function($a, $b) {
-            $a_cat1 = strcasecmp($a['category'], 'Category 1') === 0;
-            $b_cat1 = strcasecmp($b['category'], 'Category 1') === 0;
+            $a_cat1 = (strcasecmp($a['category'], 'Category 1') === 0 || strcasecmp($a['category'], 'Category 2') === 0);
+            $b_cat1 = (strcasecmp($b['category'], 'Category 1') === 0 || strcasecmp($b['category'], 'Category 2') === 0);
             if ($a_cat1 && !$b_cat1) return -1;
             if (!$a_cat1 && $b_cat1) return 1;
             return strcasecmp($a['name'], $b['name']);
         });
 
-        // Sort Activities 1: Category 1 activities first
+        // Sort Activities 1: Category 1 and Category 2 activities first
         usort($g->activities, function($a, $b) {
-            $a_cat1 = strcasecmp($a->category, 'Category 1') === 0;
-            $b_cat1 = strcasecmp($b->category, 'Category 1') === 0;
+            $a_cat1 = (strcasecmp($a->category, 'Category 1') === 0 || strcasecmp($a->category, 'Category 2') === 0);
+            $b_cat1 = (strcasecmp($b->category, 'Category 1') === 0 || strcasecmp($b->category, 'Category 2') === 0);
             if ($a_cat1 && !$b_cat1) return -1;
             if (!$a_cat1 && $b_cat1) return 1;
             return strcasecmp($a->name, $b->name);
@@ -377,115 +391,329 @@ echo $OUTPUT->tabtree($tabs, $tab);
 if ($tab === 'leaderboard') {
     // --- LEADERBOARD TAB LOGIC ---
     $manager = new \local_homeworkdashboard\homework_manager();
-    $rows = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff);
-
-    echo html_writer::start_div('container-fluid mt-3');
-
-    // Filter form (simplified for leaderboard)
-    echo html_writer::start_div('card mb-3');
-    echo html_writer::start_div('card-body');
-    echo html_writer::tag('h5', 'Filter Leaderboard', ['class' => 'card-title']);
-    echo '<form method="get" action="index.php" class="form-inline">';
-    echo html_writer::input_hidden_params(new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'leaderboard']));
     
-    // Category Select
-    echo '<div class="form-group mr-2">';
-    echo '<label for="cat_select" class="mr-1">Category:</label>';
-    // Fix: Convert array of stdClass objects to array of id => name strings
-    $cat_options = [];
-    foreach ($categories as $cat) {
-        $cat_options[$cat->id] = $cat->name;
-    }
-    echo html_writer::select($cat_options, 'categoryid', $categoryid, ['0' => 'All Categories'], ['class' => 'form-control', 'id' => 'cat_select']);
-    echo '</div>';
-
-    // Course Select (if category selected or just all)
-    // Simplified course list logic from above
-    $courselist = [];
-    foreach($courses as $c) { $courselist[$c->id] = format_string($c->fullname); }
+    // Get leaderboard data first (without user filter for the dropdown)
+    $rows = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff, $userids);
     
-    echo '<div class="form-group mr-2">';
-    echo '<label for="course_select" class="mr-1">Course:</label>';
-    echo html_writer::select($courselist, 'courseid[]', $courseids[0] ?? 0, ['0' => 'All Courses'], ['class' => 'form-control', 'id' => 'course_select']);
-    echo '</div>';
-
-    // Exclude Staff Checkbox
-    echo '<div class="form-group mr-2 form-check">';
-    echo html_writer::checkbox('excludestaff', 1, $excludestaff, 'Exclude Staff', ['class' => 'form-check-input', 'id' => 'excludestaff']);
-    echo '</div>';
-
-    echo '<button type="submit" class="btn btn-primary">Update</button>';
-    echo '</form>';
-    echo html_writer::end_div(); // card-body
-    echo html_writer::end_div(); // card
-
-    // Matrix Table
-    echo html_writer::start_div('table-responsive');
-    echo '<table class="table table-bordered table-striped table-hover">';
-    echo '<thead class="thead-dark">';
-    echo '<tr>';
-    echo '<th>Student</th>';
-    echo '<th>ID Number</th>';
-    echo '<th>Courses</th>';
-    echo '<th>Latest Due Date</th>';
-    echo '<th class="text-center">Live Points</th>';
-    echo '<th class="text-center">2 Weeks</th>';
-    echo '<th class="text-center">4 Weeks</th>';
-    echo '<th class="text-center">10 Weeks</th>';
-    echo '<th class="text-center">All Time</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-
-    if (empty($rows)) {
-        echo '<tr><td colspan="9" class="text-center">No data found for current filters.</td></tr>';
-    } else {
-        foreach ($rows as $row) {
-            echo '<tr>';
-            
-            // Name
-            echo '<td>';
-            $userurl = new moodle_url('/user/view.php', ['id' => $row->userid, 'course' => 1]); // Profile link
-            echo html_writer::link($userurl, $row->fullname);
-            echo '</td>';
-
-            // ID
-            echo '<td>' . s($row->idnumber) . '</td>';
-
-            // Courses (Badges)
-            echo '<td>';
-            foreach ($row->courses as $cid) {
-                // Try to find course name in pre-fetched list or fetch simplistic
-                $cname = $courselist[$cid] ?? "Course $cid"; 
-                echo html_writer::span($cname, 'badge badge-info mr-1');
-            }
-            echo '</td>';
-
-            // Latest Due Date
-            echo '<td>';
-            if ($row->latest_due_date > 0) {
-                echo userdate($row->latest_due_date, get_string('strftimedate'));
-            } else {
-                echo '-';
-            }
-            echo '</td>';
-
-            // Points Columns
-            echo '<td class="text-center font-weight-bold text-success">' . format_float($row->points_live, 0) . '</td>';
-            echo '<td class="text-center">' . format_float($row->points_2w, 0) . '</td>';
-            echo '<td class="text-center">' . format_float($row->points_4w, 0) . '</td>';
-            echo '<td class="text-center">' . format_float($row->points_10w, 0) . '</td>';
-            echo '<td class="text-center font-weight-bold text-primary">' . format_float($row->points_all, 0) . '</td>';
-
-            echo '</tr>';
+    // Build user list for filter from ALL leaderboard users (without user filter applied)
+    $all_rows_for_users = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff, []);
+    $leaderboard_users = [];
+    $seen_users = [];
+    foreach ($all_rows_for_users as $r) {
+        if (!isset($seen_users[$r->userid])) {
+            $leaderboard_users[] = (object)['id' => $r->userid, 'fullname' => $r->fullname];
+            $seen_users[$r->userid] = true;
         }
     }
+    // Sort by name
+    usort($leaderboard_users, function($a, $b) { return strcasecmp($a->fullname, $b->fullname); });
+?>
+<div class="container-fluid">
+    <div class="essay-dashboard-container">
+        <div class="dashboard-filters">
+            <form method="get" action="" class="filter-form">
+                <input type="hidden" name="tab" value="leaderboard">
+                <input type="hidden" name="filtersubmitted" value="1">
+                
+                <div class="filter-row">
+                    <!-- User Filter -->
+                    <div class="filter-group">
+                        <label for="lb_userid"><?php echo get_string('user'); ?></label>
+                        <select name="userid[]" id="lb_userid" multiple="multiple">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($leaderboard_users as $u): ?>
+                                <option value="<?php echo (int)$u->id; ?>" <?php echo in_array((int)$u->id, $userids) ? 'selected' : ''; ?>>
+                                    <?php echo s($u->fullname); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <!-- Category Filter -->
+                    <div class="filter-group">
+                        <label for="lb_categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
+                        <select name="categoryid" id="lb_categoryid">
+                            <option value="0"><?php echo get_string('all'); ?></option>
+                            <?php foreach ($categories as $cat): ?>
+                                <option value="<?php echo (int)$cat->id; ?>" <?php echo ((int)$categoryid === (int)$cat->id) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($cat->name); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <!-- Course Filter -->
+                    <div class="filter-group">
+                        <label for="lb_courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
+                        <select name="courseid[]" id="lb_courseid" multiple="multiple">
+                            <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
+                            <?php foreach ($courses as $c): ?>
+                                <option value="<?php echo (int)$c->id; ?>" <?php echo in_array((int)$c->id, $courseids) ? 'selected' : ''; ?>>
+                                    <?php echo format_string($c->fullname); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <!-- Exclude Staff -->
+                    <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
+                        <input type="checkbox" name="excludestaff" id="lb_excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
+                        <label for="lb_excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
+                    </div>
+                    
+                    <!-- Buttons -->
+                    <div class="filter-group" style="display: flex; gap: 5px; align-items: flex-end; padding-bottom: 5px;">
+                        <button type="submit" class="btn btn-primary">Filter</button>
+                        <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'leaderboard']))->out(false); ?>" class="btn btn-secondary">Reset</a>
+                    </div>
+                </div>
+            </form>
+        </div>
 
-    echo '</tbody>';
-    echo '</table>';
-    echo html_writer::end_div(); // table-responsive
-    echo html_writer::end_div(); // container
+        <!-- Leaderboard Table -->
+        <div class="table-responsive">
+            <table class="table dashboard-table">
+                <thead>
+                    <tr>
+                        <th>NAME</th>
+                        <th>ID</th>
+                        <th>CATEGORY</th>
+                        <th>COURSES</th>
+                        <th>LATEST DUE DATE</th>
+                        <th class="text-center">LIVE POINTS</th>
+                        <th class="text-center">2 WEEKS</th>
+                        <th class="text-center">4 WEEKS</th>
+                        <th class="text-center">10 WEEKS</th>
+                        <th class="text-center">ALL TIME</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($rows)): ?>
+                        <tr><td colspan="10" class="text-center">No data found for current filters.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($rows as $row): ?>
+                            <tr>
+                                <!-- Name (clickable filter) -->
+                                <td>
+                                    <a href="#" class="filter-link" onclick="setLbFilter('lb_userid', '<?php echo (int)$row->userid; ?>'); return false;" title="Click to filter by this student">
+                                        <?php echo s($row->fullname); ?>
+                                    </a>
+                                </td>
+                                
+                                <!-- ID -->
+                                <td><?php echo s($row->idnumber); ?></td>
+                                
+                                <!-- Category (clickable filter) -->
+                                <td>
+                                    <a href="#" class="filter-link" onclick="setLbFilter('lb_categoryid', '<?php echo (int)$row->categoryid; ?>'); return false;" title="Click to filter by this category">
+                                        <span class="badge badge-primary"><?php echo s($row->categoryname ?? 'Unknown'); ?></span>
+                                    </a>
+                                </td>
+                                
+                                <!-- Courses -->
+                                <td>
+                                    <?php foreach ($row->courses as $cid => $course_info): 
+                                        $cname = $course_info['name'] ?? "Course $cid";
+                                        $orig_cat = $course_info['categoryname'] ?? '';
+                                        $badge_class = (stripos($orig_cat, 'Personal Review') !== false) ? 'badge badge-warning' : 'badge badge-info';
+                                    ?>
+                                        <div class="mb-1"><span class="<?php echo $badge_class; ?>"><?php echo s($cname); ?></span></div>
+                                    <?php endforeach; ?>
+                                </td>
+                                
+                                <!-- Latest Due Date -->
+                                <td>
+                                    <?php echo $row->latest_due_date > 0 ? userdate($row->latest_due_date, get_string('strftimedate')) : '-'; ?>
+                                </td>
+                                
+                                <!-- Points Columns -->
+                                <?php
+                                // Prepare tooltip data (due dates for each period)
+                                $tooltip_live = !empty($row->duedates_live) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_live)) : 'No live quizzes';
+                                $tooltip_2w = !empty($row->duedates_2w) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_2w)) : 'No due dates';
+                                $tooltip_4w = !empty($row->duedates_4w) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_4w)) : 'No due dates';
+                                $tooltip_10w = !empty($row->duedates_10w) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_10w)) : 'No due dates';
+                                
+                                // Prepare modal data (JSON for Live, 2W, 4W only)
+                                // Use htmlspecialchars with ENT_QUOTES to properly escape for HTML attribute
+                                $modal_live = htmlspecialchars(json_encode($row->breakdown_live ?? []), ENT_QUOTES, 'UTF-8');
+                                $modal_2w = htmlspecialchars(json_encode($row->breakdown_2w ?? []), ENT_QUOTES, 'UTF-8');
+                                $modal_4w = htmlspecialchars(json_encode($row->breakdown_4w ?? []), ENT_QUOTES, 'UTF-8');
+                                ?>
+                                <!-- Live Points (clickable + tooltip) -->
+                                <td class="text-center font-weight-bold text-success">
+                                    <a href="#" class="points-link" 
+                                       data-toggle="modal" data-target="#pointsModal"
+                                       data-student="<?php echo s($row->fullname); ?>"
+                                       data-period="Live"
+                                       data-breakdown="<?php echo $modal_live; ?>"
+                                       title="Due dates: <?php echo s($tooltip_live); ?>">
+                                        <?php echo format_float($row->points_live, 0); ?>
+                                    </a>
+                                </td>
+                                <!-- 2 Weeks (clickable + tooltip) -->
+                                <td class="text-center">
+                                    <a href="#" class="points-link"
+                                       data-toggle="modal" data-target="#pointsModal"
+                                       data-student="<?php echo s($row->fullname); ?>"
+                                       data-period="2 Weeks"
+                                       data-breakdown="<?php echo $modal_2w; ?>"
+                                       title="Due dates: <?php echo s($tooltip_2w); ?>">
+                                        <?php echo format_float($row->points_2w, 0); ?>
+                                    </a>
+                                </td>
+                                <!-- 4 Weeks (clickable + tooltip) -->
+                                <td class="text-center">
+                                    <a href="#" class="points-link"
+                                       data-toggle="modal" data-target="#pointsModal"
+                                       data-student="<?php echo s($row->fullname); ?>"
+                                       data-period="4 Weeks"
+                                       data-breakdown="<?php echo $modal_4w; ?>"
+                                       title="Due dates: <?php echo s($tooltip_4w); ?>">
+                                        <?php echo format_float($row->points_4w, 0); ?>
+                                    </a>
+                                </td>
+                                <!-- 10 Weeks (tooltip only) -->
+                                <td class="text-center" title="Due dates: <?php echo s($tooltip_10w); ?>" style="cursor: help;">
+                                    <?php echo format_float($row->points_10w, 0); ?>
+                                </td>
+                                <!-- All Time (no tooltip/modal) -->
+                                <td class="text-center font-weight-bold text-primary"><?php echo format_float($row->points_all, 0); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
+<!-- Points Breakdown Modal -->
+<div class="modal fade" id="pointsModal" tabindex="-1" role="dialog" aria-labelledby="pointsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header" style="background: #343a40; color: white;">
+                <h5 class="modal-title" id="pointsModalLabel">Points Breakdown</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close" style="color: white;">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="pointsModalContent">
+                    <!-- Content populated by JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.points-link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+.points-link:hover {
+    text-decoration: underline;
+    color: #007bff;
+}
+.breakdown-table {
+    width: 100%;
+    margin-top: 10px;
+}
+.breakdown-table th {
+    background: #f8f9fa;
+    padding: 8px;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+}
+.breakdown-table td {
+    padding: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+.breakdown-table .status-completed { color: #28a745; font-weight: bold; }
+.breakdown-table .status-lowgrade { color: #ffc107; font-weight: bold; }
+.breakdown-table .status-noattempt { color: #dc3545; font-weight: bold; }
+.breakdown-table .status-live { color: #17a2b8; font-weight: bold; }
+.total-row { font-weight: bold; background: #e9ecef; }
+</style>
+
+<script>
+// Leaderboard filter function (global scope for onclick)
+window.setLbFilter = function(fieldId, value) {
+    var field = document.getElementById(fieldId);
+    var form = field ? field.closest('form') : null;
+    if (field && form) {
+        // Handle multi-select fields
+        if (field.multiple) {
+            // Clear all selections first
+            Array.from(field.options).forEach(function(opt) { opt.selected = false; });
+            // Select the matching option
+            var option = Array.from(field.options).find(function(opt) { return opt.value === String(value); });
+            if (option) {
+                option.selected = true;
+            }
+        } else {
+            field.value = value;
+        }
+        form.submit();
+    }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    require(['core/form-autocomplete'], function(Autocomplete) {
+        Autocomplete.enhance('#lb_userid', false, false, '<?php echo get_string('all'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
+        Autocomplete.enhance('#lb_courseid', false, false, '<?php echo get_string('allcourses', 'local_homeworkdashboard'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
+    });
+    
+    // Modal population
+    $('#pointsModal').on('show.bs.modal', function(event) {
+        var button = $(event.relatedTarget);
+        var student = button.data('student');
+        var period = button.data('period');
+        var breakdown = button.data('breakdown');
+        
+        var modal = $(this);
+        modal.find('.modal-title').text(student + ' - ' + period + ' Points Breakdown');
+        
+        var content = '';
+        if (!breakdown || breakdown.length === 0) {
+            content = '<p class="text-muted">No activities in this period.</p>';
+        } else {
+            var total = 0;
+            content = '<table class="breakdown-table">';
+            content += '<thead><tr><th>Due Date</th><th>Activity</th><th>Course</th><th>Status</th><th class="text-right">Points</th></tr></thead>';
+            content += '<tbody>';
+            
+            breakdown.forEach(function(item) {
+                var statusClass = 'status-' + (item.status || 'unknown');
+                var statusLabel = item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : 'Unknown';
+                if (statusLabel === 'Noattempt') statusLabel = 'No Attempt';
+                if (statusLabel === 'Lowgrade') statusLabel = 'Low Grade';
+                
+                content += '<tr>';
+                content += '<td>' + (item.due_date_formatted || '-') + '</td>';
+                content += '<td>' + (item.quiz_name || '-') + '</td>';
+                content += '<td>' + (item.course_name || '-') + '</td>';
+                content += '<td><span class="' + statusClass + '">' + statusLabel + '</span></td>';
+                content += '<td class="text-right">' + parseFloat(item.points || 0).toFixed(0) + '</td>';
+                content += '</tr>';
+                total += parseFloat(item.points || 0);
+            });
+            
+            content += '</tbody>';
+            content += '<tfoot><tr class="total-row"><td colspan="4" class="text-right">Total:</td><td class="text-right">' + total.toFixed(0) + '</td></tr></tfoot>';
+            content += '</table>';
+        }
+        
+        modal.find('#pointsModalContent').html(content);
+    });
+});
+</script>
+<?php
     echo $OUTPUT->footer();
     exit; // Stop processing to isolate tab
 }
@@ -724,7 +952,11 @@ if ($tab === 'snapshot' && $canmanage) {
                                        data-studentname="<?php echo s($row->studentname); ?>">
                             </td>
                             <?php endif; ?>
-                            <td><?php echo s($row->studentname); ?></td>
+                            <td>
+                                <a href="#" class="filter-link" onclick="setFilter('studentname', '<?php echo (int)$row->userid; ?>'); return false;" title="Click to filter by this student">
+                                    <?php echo s($row->studentname); ?>
+                                </a>
+                            </td>
                             <td><?php echo (int)$row->userid; ?></td>
                             <?php if ($canmanage): ?>
                             <td><?php echo s($row->email); ?></td>
@@ -767,7 +999,11 @@ if ($tab === 'snapshot' && $canmanage) {
                                 <?php endif; ?>
                             </td>
                             <?php endif; ?>
-                            <td><?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?></td>
+                            <td>
+                                <a href="#" class="filter-link" onclick="setFilter('duedate', '<?php echo (int)$row->timeclose; ?>'); return false;" title="Click to filter by this due date">
+                                    <?php echo userdate($row->timeclose, get_string('strftimedate', 'langconfig')); ?>
+                                </a>
+                            </td>
                             <?php if ($canmanage): ?>
                             <td>
                                 <?php echo !empty($row->next_due_date) ? userdate($row->next_due_date, get_string('strftimedate', 'langconfig')) : '-'; ?>
@@ -1427,7 +1663,18 @@ document.addEventListener('DOMContentLoaded', function() {
     window.setFilter = function(fieldId, value) {
         const field = document.getElementById(fieldId);
         if (field && filterForm) {
-            field.value = value;
+            // Handle multi-select fields
+            if (field.multiple) {
+                // Clear all selections first
+                Array.from(field.options).forEach(opt => opt.selected = false);
+                // Select the matching option
+                const option = Array.from(field.options).find(opt => opt.value === String(value));
+                if (option) {
+                    option.selected = true;
+                }
+            } else {
+                field.value = value;
+            }
             filterForm.submit();
         }
     };

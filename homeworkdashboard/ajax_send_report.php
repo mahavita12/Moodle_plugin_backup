@@ -44,11 +44,11 @@ usort($rows, function($a, $b) {
         return $scoreB - $scoreA; // Higher score first
     }
     
-    // 2. Category Priority (Category 1 first)
+    // 2. Category Priority (Category 1 and Category 2 first)
     $catA = strtolower($a->categoryname ?? '');
     $catB = strtolower($b->categoryname ?? '');
-    $isCat1A = ($catA === 'category 1');
-    $isCat1B = ($catB === 'category 1');
+    $isCat1A = ($catA === 'category 1' || $catA === 'category 2');
+    $isCat1B = ($catB === 'category 1' || $catB === 'category 2');
     
     if ($isCat1A !== $isCat1B) {
         return $isCat1A ? -1 : 1;
@@ -80,8 +80,8 @@ if (!empty($row->next_due_date)) {
             'category' => $r->categoryname
         ];
         
-        // Capture Next Due Date (Category 1 priority)
-        if (strcasecmp($r->categoryname, 'Category 1') === 0 && !empty($r->next_due_date)) {
+        // Capture Next Due Date (Category 1 and Category 2 priority)
+        if ((strcasecmp($r->categoryname, 'Category 1') === 0 || strcasecmp($r->categoryname, 'Category 2') === 0) && !empty($r->next_due_date)) {
             if ($next_due_date == 0 || $r->next_due_date < $next_due_date) {
                 $next_due_date = $r->next_due_date;
                 $next_due_date_courseid = $r->courseid;
@@ -106,11 +106,11 @@ if (!empty($row->next_due_date)) {
                 return $scoreB - $scoreA; // Higher score first
             }
             
-            // 2. Category Priority (Category 1 first)
+            // 2. Category Priority (Category 1 and Category 2 first)
             $catA = strtolower($a->categoryname ?? '');
             $catB = strtolower($b->categoryname ?? '');
-            $isCat1A = ($catA === 'category 1');
-            $isCat1B = ($catB === 'category 1');
+            $isCat1A = ($catA === 'category 1' || $catA === 'category 2');
+            $isCat1B = ($catB === 'category 1' || $catB === 'category 2');
             
             if ($isCat1A !== $isCat1B) {
                 return $isCat1A ? -1 : 1;
@@ -130,11 +130,11 @@ if (!empty($row->next_due_date)) {
     }
 }
 
-// Find Classroom (Category 1 Course)
+// Find Classroom (Category 1 or Category 2 Course)
 $classroom = '';
 $classroom_short = '';
 foreach ($rows as $r) {
-    if (strcasecmp($r->categoryname ?? '', 'Category 1') === 0) {
+    if (strcasecmp($r->categoryname ?? '', 'Category 1') === 0 || strcasecmp($r->categoryname ?? '', 'Category 2') === 0) {
         $classroom = $r->coursename;
         $classroom_short = $r->courseshortname ?? $r->coursename; // Fallback to fullname if shortname missing
         break;

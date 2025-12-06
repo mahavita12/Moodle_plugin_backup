@@ -479,6 +479,7 @@ class homework_manager {
         $sql .= " ORDER BY c.fullname, q.name";
 
         $snapshots = $DB->get_records_sql($sql, $params);
+        error_log("HM_DEBUG build_snapshot: Quiz $quizid timeclose $timeclose - SQL returned " . count($snapshots) . " snapshots");
         if (empty($snapshots)) {
             return [];
         }
@@ -850,7 +851,7 @@ class homework_manager {
                 }
             }
 
-            list($insql, $inparams) = $DB->get_in_or_equal($users_to_process, \SQL_PARAMS_NAMED, 'uid');
+            list($insql, $inparams) = $DB->get_in_or_equal($roster, \SQL_PARAMS_NAMED, 'uid');
             $apparams = $inparams;
             $apparams['quizid'] = (int)$qrec->quizid;
             $apparams['start'] = $windowstart;
@@ -1029,7 +1030,7 @@ class homework_manager {
         $now = time();
 
         $snapparams = [];
-        $snapsql = "SELECT DISTINCT s.quizid, s.timeclose
+        $snapsql = "SELECT DISTINCT CONCAT(s.quizid, '_', s.timeclose) AS unique_key, s.quizid, s.timeclose
                       FROM {local_homework_status} s
                       JOIN {course} c ON c.id = s.courseid
                       JOIN {course_categories} cat ON cat.id = c.category
@@ -1061,6 +1062,14 @@ class homework_manager {
             $snapparams = array_merge($snapparams, $qparams);
         }
 
+        // Filter by user IDs in the first query to ensure we get all quizzes for filtered users
+        $filter_userids = array_filter($userids, function($id) { return $id > 0; });
+        if (!empty($filter_userids)) {
+            list($usql, $uparams) = $DB->get_in_or_equal($filter_userids, SQL_PARAMS_NAMED, 'suid');
+            $snapsql .= " AND s.userid $usql";
+            $snapparams = array_merge($snapparams, $uparams);
+        }
+
         $duedates = array_filter($duedates, function($d) { return $d > 0; });
         if (!empty($duedates)) {
             list($dsql, $dparams) = $DB->get_in_or_equal($duedates, SQL_PARAMS_NAMED, 'sdd');
@@ -1083,6 +1092,7 @@ class homework_manager {
         $snapsql .= " ORDER BY s.timeclose ASC";
 
         $snapshotrecords = $DB->get_records_sql($snapsql, $snapparams);
+        error_log("HM_DEBUG get_snapshot: First query returned " . count($snapshotrecords) . " quiz/timeclose pairs");
 
         if (!empty($snapshotrecords)) {
             // Fetch excluded staff if needed.
@@ -1126,12 +1136,14 @@ class homework_manager {
                     $excludeduserids
                 );
 
+                error_log("HM_DEBUG get_snapshot: Quiz {$srec->quizid} timeclose {$stimeclose} returned " . count($snaprows) . " rows");
                 foreach ($snaprows as $sr) {
                     $rows[] = $sr;
                 }
             }
         }
 
+        error_log("HM_DEBUG get_snapshot: Total rows returned: " . count($rows));
         return $this->sort_rows($rows, $sort, $dir);
     }
 
@@ -1533,7 +1545,7 @@ class homework_manager {
                   JOIN {course_categories} cc ON cc.id = c.category
                  WHERE q.course $csql
                    AND q.timeclose = :timeclose
-                 ORDER BY CASE WHEN cc.name = 'Category 1' THEN 0 ELSE 1 END, q.name";
+                 ORDER BY CASE WHEN cc.name IN ('Category 1', 'Category 2') THEN 0 ELSE 1 END, q.name";
 
         $quizzes = $DB->get_records_sql($sql, $params);
         
@@ -1858,78 +1870,118 @@ class homework_manager {
 
     /**
      * Get leaderboard data: Aggregated points for students across different time periods.
+     * 
+     * NEW LOGIC (Dec 2025):
+     * - One row per user per category (not per course)
+     * - "Personal Review Courses" category merges into Category 1 anchor
+     * - Sorted by category name, then student name
+     * - Live = points from quizzes not yet closed
+     * - 2 Weeks = Live + 1 most recent due date
+     * - 4 Weeks = Live + 3 most recent due dates
+     * - 10 Weeks = Live + 7 most recent due dates
+     * - All Time = Live + ALL due dates
      *
      * @param int $categoryid Filter by course category (0 for all).
      * @param array $courseids Filter by specific course IDs ([0] for all).
      * @param bool $excludestaff Whether to exclude users with 'staff' in their email.
      * @return array List of objects with user details, badges, and point columns.
      */
-    public function get_leaderboard_data(int $categoryid, array $courseids, bool $excludestaff): array {
+    public function get_leaderboard_data(int $categoryid, array $courseids, bool $excludestaff, array $userids = []): array {
         global $DB;
 
-        // 1. Build filters
-        $params = [];
-        $categoryjoin = "";
-        $categorywhere = "";
-        // JOIN course to get category and fullname for grouping logic
-        $categoryjoin = "JOIN {course} c ON c.id = q.course";
-        $categoryjoin .= " JOIN {course_categories} cc ON c.category = cc.id"; // Need category ID/Name
+        $now = time();
+        $personal_review_category_name = 'Personal Review Courses';
 
-        if ($categoryid > 0) {
-            // Special case: If filtering by Category 1 (Main), also fetch Category 2 (Personal)
-            // so we can merge their points. We will filter out orphaned Category 2 rows later if needed.
-            if ($categoryid == 1) {
-                $categorywhere = "AND (c.category = :catid OR c.category = 2)";
-            } else {
-                $categorywhere = "AND c.category = :catid";
-            }
-            $params['catid'] = $categoryid;
+        // Build user filter
+        $userwhere = "";
+        $user_params = [];
+        if (!empty($userids) && !in_array(0, $userids)) {
+            list($user_insql, $user_params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+            $userwhere = "AND u.id $user_insql";
         }
 
-        $coursewhere = "";
-        if (!empty($courseids) && !in_array(0, $courseids)) {
-            list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED);
-            $coursewhere = "AND q.course $insql";
-            $params = array_merge($params, $inparams);
-        }
-
+        // Build staff exclusion filter (role-based, not email-based)
         $staffwhere = "";
+        $staff_params = [];
         if ($excludestaff) {
-            $staffwhere = "AND u.email NOT LIKE '%staff%' AND u.email NOT LIKE '%admin%' AND u.email NOT LIKE '%demo%'";
-        }
-
-        // 2. Fetch Data (ONLY from local_homework_status snapshot table)
-        // As requested, we now rely exclusively on pre-calculated points in the snapshot table.
-        // Live data from gradebook is removed to simplify logic.
-        $live_rows = []; // Empty array to preserve variable for downstream merge if needed, or we just skip it.
-
-        // 3. Fetch Snapshot Data (Historical from local_homework_status)
-        $snap_params = [];
-        $snap_cat_join = "";
-        $snap_cat_where = "";
-        // JOIN course/category for snapshot data too
-        $snap_cat_join = "JOIN {course} c ON c.id = lbs.courseid";
-        $snap_cat_join .= " JOIN {course_categories} cc ON c.category = cc.id";
-
-        if ($categoryid > 0) {
-            if ($categoryid == 1) {
-                $snap_cat_where = "AND (c.category = :catid2 OR c.category = 2)";
-            } else {
-                $snap_cat_where = "AND c.category = :catid2";
+            // Get all users with staff roles (manager, editingteacher, teacher) or site admins
+            $excluded_staff_ids = [];
+            $admins = \get_admins();
+            foreach ($admins as $admin) {
+                $excluded_staff_ids[] = (int)$admin->id;
             }
-            $snap_params['catid2'] = $categoryid;
-        }
-        
-        $snap_course_where = "";
-        if (!empty($courseids) && !in_array(0, $courseids)) {
-            list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'sc');
-            $snap_course_where = "AND lbs.courseid $insql";
-            $snap_params = array_merge($snap_params, $inparams);
+            
+            $staff_sql = "SELECT DISTINCT ra.userid
+                          FROM {role_assignments} ra
+                          JOIN {role} r ON r.id = ra.roleid
+                          WHERE r.shortname IN ('manager', 'editingteacher', 'teacher')";
+            $staff_users = $DB->get_fieldset_sql($staff_sql);
+            $excluded_staff_ids = array_unique(array_merge($excluded_staff_ids, array_map('intval', $staff_users)));
+            
+            if (!empty($excluded_staff_ids)) {
+                list($staff_insql, $staff_params) = $DB->get_in_or_equal($excluded_staff_ids, SQL_PARAMS_NAMED, 'staff', false); // false = NOT IN
+                $staffwhere = "AND u.id $staff_insql";
+            }
         }
 
+        // Build course filter
+        $course_filter_sql = "";
+        $course_params = [];
+        if (!empty($courseids) && !in_array(0, $courseids)) {
+            list($insql, $inparams) = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'cid');
+            $course_filter_sql = "AND c.id $insql";
+            $course_params = $inparams;
+        }
+
+        // =====================================================
+        // STEP 1: Get distinct due dates PER ANCHOR COURSE from snapshots
+        // We'll build this after we know the anchor courses (moved to Step 4b)
+        // =====================================================
+
+        // =====================================================
+        // STEP 2: Fetch LIVE data (quizzes not yet closed)
+        // =====================================================
+        $live_sql = "
+            SELECT
+                u.id AS userid,
+                u.firstname,
+                u.lastname,
+                u.firstnamephonetic,
+                u.lastnamephonetic,
+                u.middlename,
+                u.alternatename,
+                u.email,
+                u.idnumber,
+                c.id AS courseid,
+                c.fullname AS coursename,
+                cc.id AS categoryid,
+                cc.name AS categoryname,
+                q.id AS quizid,
+                q.timeclose,
+                q.grade AS points
+            FROM {quiz} q
+            JOIN {course} c ON c.id = q.course
+            JOIN {course_categories} cc ON cc.id = c.category
+            JOIN {course_modules} cm ON cm.instance = q.id
+            JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+            JOIN {user_enrolments} ue ON ue.enrolid IN (SELECT id FROM {enrol} WHERE courseid = c.id)
+            JOIN {user} u ON u.id = ue.userid AND u.deleted = 0
+            WHERE q.timeclose > :now
+              AND q.timeclose IS NOT NULL
+              AND q.timeclose > 0
+              $course_filter_sql
+              $staffwhere
+              $userwhere
+        ";
+        $live_params = array_merge(['now' => $now], $course_params, $staff_params, $user_params);
+        $live_rows = $DB->get_records_sql($live_sql, $live_params);
+
+        // =====================================================
+        // STEP 3: Fetch SNAPSHOT data (historical)
+        // =====================================================
         $snap_sql = "
             SELECT
-                " . $DB->sql_concat('u.id', "'_'", 'lbs.courseid', "'_'", 'lbs.timeclose') . " AS unique_key,
+                " . $DB->sql_concat('u.id', "'_'", 'lbs.quizid', "'_'", 'lbs.timeclose') . " AS unique_key,
                 lbs.id,
                 lbs.userid,
                 u.firstname,
@@ -1943,71 +1995,103 @@ class homework_manager {
                 lbs.courseid,
                 c.fullname AS coursename,
                 cc.id AS categoryid,
+                cc.name AS categoryname,
                 lbs.timeclose AS due_date,
-                lbs.points AS points
+                lbs.points AS points,
+                lbs.status AS status,
+                q.name AS quizname
             FROM {local_homework_status} lbs
             JOIN {user} u ON u.id = lbs.userid
-            $snap_cat_join
+            JOIN {course} c ON c.id = lbs.courseid
+            JOIN {course_categories} cc ON c.category = cc.id
+            LEFT JOIN {quiz} q ON q.id = lbs.quizid
             WHERE u.deleted = 0
-              $snap_cat_where
-              $snap_course_where
+              $course_filter_sql
               $staffwhere
+              $userwhere
         ";
-        
-        $snap_rows = $DB->get_records_sql($snap_sql, $snap_params);
+        $snap_rows = $DB->get_records_sql($snap_sql, array_merge($course_params, $staff_params, $user_params));
 
-        // 4. Merge and Aggregate
-
-        // 4. Grouping Logic: User + Course Stream (Refactored v2)
-        $all_raw_rows = array_merge($live_rows, $snap_rows);
+        // =====================================================
+        // STEP 4: Build anchor map (user -> category -> course)
+        // =====================================================
+        $user_anchors = [];
+        $all_rows = array_merge($live_rows, $snap_rows);
         
-        // Pass 1: Find Anchor Courses
-        $user_anchor_map = []; // userid => courseid
-        foreach ($all_raw_rows as $r) {
-            $cid = (int)$r->courseid;
-            $catid = (int)($r->categoryid ?? 0);
-            $cname = $r->coursename ?? '';
+        foreach ($all_rows as $r) {
+            $uid = $r->userid;
+            $catid = (int)$r->categoryid;
+            $catname = $r->categoryname ?? '';
             
-            // Anchor Definition: Category 1 AND Name contains "Classroom"
-            if ($catid === 1 && stripos($cname, 'Classroom') !== false) {
-                $user_anchor_map[$r->userid] = $cid; 
+            if (strcasecmp($catname, $personal_review_category_name) === 0) {
+                continue;
+            }
+            
+            if (!isset($user_anchors[$uid][$catid])) {
+                $user_anchors[$uid][$catid] = [
+                    'courseid' => (int)$r->courseid,
+                    'coursename' => $r->coursename,
+                    'categoryid' => $catid,
+                    'categoryname' => $catname,
+                ];
+            }
+        }
+
+        // =====================================================
+        // STEP 4b: Build per-anchor-course due date buckets
+        // Each anchor course has its own set of due dates for bucketing
+        // =====================================================
+        $anchor_due_dates = []; // [anchor_courseid => [due_date1, due_date2, ...] DESC]
+        
+        // Get all distinct anchor course IDs
+        $anchor_courseids = [];
+        foreach ($user_anchors as $uid => $cats) {
+            foreach ($cats as $catid => $anchor_info) {
+                $anchor_courseids[$anchor_info['courseid']] = true;
             }
         }
         
-        // Pass 2: Aggregate Data into Streams
-        $stream_aggregated = [];
+        // For each anchor course, get its distinct due dates from snapshots
+        foreach (array_keys($anchor_courseids) as $anchor_cid) {
+            $anchor_dates_sql = "SELECT DISTINCT lbs.timeclose 
+                                 FROM {local_homework_status} lbs 
+                                 WHERE lbs.courseid = :courseid
+                                   AND lbs.timeclose < :now 
+                                 ORDER BY lbs.timeclose DESC";
+            $anchor_due_dates[$anchor_cid] = $DB->get_fieldset_sql($anchor_dates_sql, [
+                'courseid' => $anchor_cid,
+                'now' => $now
+            ]);
+        }
+
+        // =====================================================
+        // STEP 5: Aggregate data - one row per user per category
+        // =====================================================
+        $aggregated = [];
         
-        foreach ($all_raw_rows as $r) {
-            $uid = $r->userid;
-            $cid = (int)$r->courseid;
-            $catid = (int)($r->categoryid ?? 0);
+        // Helper to get or create aggregated row
+        $get_or_create_row = function($uid, $catid, $catname, $r, &$aggregated, $user_anchors) {
+            $key = $uid . '_' . $catid;
             
-            // Determine Target Course ID for Grouping
-            $target_course_id = $cid; // Default to self
-            
-            if ($catid === 2) { // Personal Review Course
-                if (isset($user_anchor_map[$uid])) {
-                    $target_course_id = $user_anchor_map[$uid]; // Merge to Anchor (Main Classroom)
-                }
-                // If no Anchor found, it stays as self (Personal)
-            }
-            
-            // Key: User + Target Course Stream
-            $key = $uid . '_' . $target_course_id;
-            
-            if (!isset($stream_aggregated[$key])) {
-                $stream_aggregated[$key] = (object)[
+            if (!isset($aggregated[$key])) {
+                $anchor = $user_anchors[$uid][$catid] ?? null;
+                $anchor_coursename = $anchor ? $anchor['coursename'] : ($r->coursename ?? 'Unknown');
+                
+                $aggregated[$key] = (object)[
                     'userid' => $uid,
-                    'target_course_id' => $target_course_id,
                     'fullname' => fullname((object)[
-                        'firstname'=>$r->firstname, 
-                        'lastname'=>$r->lastname,
-                        'firstnamephonetic'=>$r->firstnamephonetic ?? '',
-                        'lastnamephonetic'=>$r->lastnamephonetic ?? '',
-                        'middlename'=>$r->middlename ?? '',
-                        'alternatename'=>$r->alternatename ?? '',
+                        'firstname' => $r->firstname ?? '', 
+                        'lastname' => $r->lastname ?? '',
+                        'firstnamephonetic' => $r->firstnamephonetic ?? '',
+                        'lastnamephonetic' => $r->lastnamephonetic ?? '',
+                        'middlename' => $r->middlename ?? '',
+                        'alternatename' => $r->alternatename ?? '',
                     ]),
-                    'idnumber' => $r->idnumber,
+                    'idnumber' => $r->idnumber ?? '',
+                    'categoryid' => $catid,
+                    'categoryname' => $catname,
+                    'anchor_courseid' => $anchor ? $anchor['courseid'] : (int)$r->courseid,
+                    'anchor_coursename' => $anchor_coursename,
                     'latest_due_date' => 0,
                     'points_live' => 0,
                     'points_2w' => 0,
@@ -2015,55 +2099,173 @@ class homework_manager {
                     'points_10w' => 0,
                     'points_all' => 0,
                     'courses' => [],
+                    // Breakdown details for tooltip/modal
+                    'breakdown_live' => [],
+                    'breakdown_2w' => [],
+                    'breakdown_4w' => [],
+                    'breakdown_10w' => [],
+                    'breakdown_all' => [],
+                    // Due dates included in each period (for tooltip)
+                    'duedates_live' => [],
+                    'duedates_2w' => [],
+                    'duedates_4w' => [],
+                    'duedates_10w' => [],
                 ];
             }
+            return $aggregated[$key];
+        };
+
+        // Process LIVE rows (add to points_live and all other columns)
+        foreach ($live_rows as $r) {
+            $uid = $r->userid;
+            $catid = (int)$r->categoryid;
+            $catname = $r->categoryname ?? '';
+            $cid = (int)$r->courseid;
             
-            $row = $stream_aggregated[$key];
-            
-            // Update Latest Due Date (Max of all items in this stream)
-            $due = (int)$r->due_date;
-            if ($due > $row->latest_due_date) {
-                $row->latest_due_date = $due;
+            // Personal Review merges into Category 1
+            if (strcasecmp($catname, $personal_review_category_name) === 0) {
+                $cat1_anchor = null;
+                foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
+                    if (strcasecmp($anchor_info['categoryname'], 'Category 1') === 0) {
+                        $cat1_anchor = $anchor_info;
+                        break;
+                    }
+                }
+                if (!$cat1_anchor) continue;
+                $catid = $cat1_anchor['categoryid'];
+                $catname = $cat1_anchor['categoryname'];
             }
             
-            // Track Source Courses
-            if (!in_array($cid, $row->courses)) {
-                $row->courses[] = $cid;
-            }
+            $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
             
-            // Add Points
             $pts = (float)$r->points;
-            $now = time();
-            
+            $row->points_live += $pts;
+            $row->points_2w += $pts;
+            $row->points_4w += $pts;
+            $row->points_10w += $pts;
             $row->points_all += $pts;
             
-            $diff = $now - $due;
-            $two_weeks = 14 * 24 * 3600;
-            $four_weeks = 28 * 24 * 3600;
-            $ten_weeks = 70 * 24 * 3600;
+            // Add breakdown detail for LIVE
+            $detail = [
+                'due_date' => (int)$r->timeclose,
+                'due_date_formatted' => userdate((int)$r->timeclose, get_string('strftimedate')),
+                'quiz_name' => $r->quizname ?? 'Live Quiz',
+                'course_name' => $r->coursename ?? '',
+                'status' => 'live',
+                'points' => $pts,
+            ];
+            $row->breakdown_live[] = $detail;
+            $row->breakdown_2w[] = $detail;
+            $row->breakdown_4w[] = $detail;
+            $row->breakdown_10w[] = $detail;
+            $row->breakdown_all[] = $detail;
             
-            if ($diff < $two_weeks) $row->points_2w += $pts;
-            if ($diff < $four_weeks) $row->points_4w += $pts;
-            if ($diff < $ten_weeks) $row->points_10w += $pts;
+            // Track due dates (Live uses timeclose)
+            $live_date_key = (int)$r->timeclose;
+            if (!in_array($live_date_key, $row->duedates_live)) {
+                $row->duedates_live[] = $live_date_key;
+            }
             
-            // Live Points (using all for now as per previous logic, or 2w? User didn't specify exact filter)
-            // Let's treat "Live" as points from "Live" (open) sources?
-            // The raw rows lost the source distinction (live vs snap).
-            // Let's assume Live ~ 2 Weeks or just display All in Live column?
-            // Actually, index.php displays "Live Points" in the matrix.
-            // I'll set points_live = points_2w as a reasonable approximation for "Active/Recent" work.
-            $row->points_live = $row->points_2w; 
+            if (!isset($row->courses[$cid])) {
+                $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
+            }
         }
 
-        // Sort by All Time Points DESC by default
-        $final_rows = array_values($stream_aggregated);
-        usort($final_rows, function($a, $b) {
-            // Primary sort: Points All Time
-            if ($b->points_all != $a->points_all) {
-                return $b->points_all <=> $a->points_all;
+        // Process SNAPSHOT rows (add to appropriate time buckets)
+        foreach ($snap_rows as $r) {
+            $uid = $r->userid;
+            $catid = (int)$r->categoryid;
+            $catname = $r->categoryname ?? '';
+            $cid = (int)$r->courseid;
+            $due_date = (int)$r->due_date;
+            
+            // Personal Review merges into Category 1
+            if (strcasecmp($catname, $personal_review_category_name) === 0) {
+                $cat1_anchor = null;
+                foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
+                    if (strcasecmp($anchor_info['categoryname'], 'Category 1') === 0) {
+                        $cat1_anchor = $anchor_info;
+                        break;
+                    }
+                }
+                if (!$cat1_anchor) continue;
+                $catid = $cat1_anchor['categoryid'];
+                $catname = $cat1_anchor['categoryname'];
             }
-            // Secondary sort: Latest Due Date (desc)
-            return $b->latest_due_date <=> $a->latest_due_date;
+            
+            $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
+            
+            $pts = (float)$r->points;
+            
+            // Update latest due date
+            if ($due_date > $row->latest_due_date) {
+                $row->latest_due_date = $due_date;
+            }
+            
+            // Build detail record for breakdown
+            $detail = [
+                'due_date' => $due_date,
+                'due_date_formatted' => userdate($due_date, get_string('strftimedate')),
+                'quiz_name' => $r->quizname ?? 'Quiz',
+                'course_name' => $r->coursename ?? '',
+                'status' => $r->status ?? 'unknown',
+                'points' => $pts,
+            ];
+            
+            // Get the anchor course for this user/category to determine due date buckets
+            $anchor_cid = $row->anchor_courseid;
+            $anchor_dates = $anchor_due_dates[$anchor_cid] ?? [];
+            
+            // Define buckets based on anchor course due dates
+            $due_dates_2w = array_slice($anchor_dates, 0, 1);  // 1 most recent anchor due date
+            $due_dates_4w = array_slice($anchor_dates, 0, 3);  // 3 most recent anchor due dates
+            $due_dates_10w = array_slice($anchor_dates, 0, 9); // 9 most recent anchor due dates
+            
+            // Add to appropriate buckets based on due date
+            if (in_array($due_date, $due_dates_2w)) {
+                $row->points_2w += $pts;
+                $row->breakdown_2w[] = $detail;
+                if (!in_array($due_date, $row->duedates_2w)) {
+                    $row->duedates_2w[] = $due_date;
+                }
+            }
+            if (in_array($due_date, $due_dates_4w)) {
+                $row->points_4w += $pts;
+                $row->breakdown_4w[] = $detail;
+                if (!in_array($due_date, $row->duedates_4w)) {
+                    $row->duedates_4w[] = $due_date;
+                }
+            }
+            if (in_array($due_date, $due_dates_10w)) {
+                $row->points_10w += $pts;
+                if (!in_array($due_date, $row->duedates_10w)) {
+                    $row->duedates_10w[] = $due_date;
+                }
+            }
+            $row->points_all += $pts;
+            
+            if (!isset($row->courses[$cid])) {
+                $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
+            }
+        }
+
+        // =====================================================
+        // STEP 6: Apply category filter
+        // =====================================================
+        if ($categoryid > 0) {
+            $aggregated = array_filter($aggregated, function($row) use ($categoryid) {
+                return (int)$row->categoryid === $categoryid;
+            });
+        }
+
+        // =====================================================
+        // STEP 7: Sort by category name, then student name
+        // =====================================================
+        $final_rows = array_values($aggregated);
+        usort($final_rows, function($a, $b) {
+            $cat_cmp = strcasecmp($a->categoryname, $b->categoryname);
+            if ($cat_cmp !== 0) return $cat_cmp;
+            return strcasecmp($a->fullname, $b->fullname);
         });
 
         return $final_rows;
