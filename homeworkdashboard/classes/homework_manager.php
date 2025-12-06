@@ -1869,6 +1869,45 @@ class homework_manager {
     }
 
     /**
+     * Get global Intellect Points for users.
+     * This aggregates ALL points for each user across the entire system.
+     * Used for gamification features like levels and items.
+     *
+     * @param array $userids Optional array of user IDs to filter. Empty = all users.
+     * @return array [userid => total_intellect_points]
+     */
+    public function get_intellect_points(array $userids = []): array {
+        global $DB;
+        
+        $params = [];
+        $userwhere = '';
+        
+        // Filter by specific users if provided
+        $userids = array_filter($userids, function($id) { return $id > 0; });
+        if (!empty($userids)) {
+            list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+            $userwhere = " AND lhs.userid $usql";
+            $params = array_merge($params, $uparams);
+        }
+        
+        // Aggregate all points from historical snapshots (global, all time)
+        $sql = "SELECT lhs.userid, SUM(lhs.points) AS total_points
+                FROM {local_homework_status} lhs
+                JOIN {user} u ON u.id = lhs.userid AND u.deleted = 0
+                WHERE 1=1 $userwhere
+                GROUP BY lhs.userid";
+        
+        $results = $DB->get_records_sql($sql, $params);
+        
+        $intellect_points = [];
+        foreach ($results as $row) {
+            $intellect_points[$row->userid] = (float)$row->total_points;
+        }
+        
+        return $intellect_points;
+    }
+
+    /**
      * Get leaderboard data: Aggregated points for students across different time periods.
      * 
      * NEW LOGIC (Dec 2025):
@@ -1943,6 +1982,7 @@ class homework_manager {
         // =====================================================
         $live_sql = "
             SELECT
+                " . $DB->sql_concat('u.id', "'_'", 'q.id') . " AS unique_key,
                 u.id AS userid,
                 u.firstname,
                 u.lastname,
@@ -1957,6 +1997,7 @@ class homework_manager {
                 cc.id AS categoryid,
                 cc.name AS categoryname,
                 q.id AS quizid,
+                q.name AS quizname,
                 q.timeclose,
                 q.grade AS points
             FROM {quiz} q
@@ -1999,6 +2040,13 @@ class homework_manager {
                 lbs.timeclose AS due_date,
                 lbs.points AS points,
                 lbs.status AS status,
+                lbs.classification AS classification,
+                lbs.quizgrade AS quizgrade,
+                lbs.score AS score,
+                lbs.bestpercent AS bestpercent,
+                lbs.firstfinish AS firstfinish,
+                lbs.lastfinish AS lastfinish,
+                lbs.windowstart AS windowstart,
                 q.name AS quizname
             FROM {local_homework_status} lbs
             JOIN {user} u ON u.id = lbs.userid
@@ -2093,6 +2141,7 @@ class homework_manager {
                     'anchor_courseid' => $anchor ? $anchor['courseid'] : (int)$r->courseid,
                     'anchor_coursename' => $anchor_coursename,
                     'latest_due_date' => 0,
+                    'live_due_date' => 0,
                     'points_live' => 0,
                     'points_2w' => 0,
                     'points_4w' => 0,
@@ -2115,59 +2164,130 @@ class homework_manager {
             return $aggregated[$key];
         };
 
-        // Process LIVE rows (add to points_live and all other columns)
+        // Process LIVE rows - fetch actual homework status for each user/quiz
+        // Group live_rows by user to fetch their actual attempt data
+        $live_user_quizzes = [];
         foreach ($live_rows as $r) {
             $uid = $r->userid;
-            $catid = (int)$r->categoryid;
-            $catname = $r->categoryname ?? '';
-            $cid = (int)$r->courseid;
-            
-            // Personal Review merges into Category 1
-            if (strcasecmp($catname, $personal_review_category_name) === 0) {
-                $cat1_anchor = null;
-                foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
-                    if (strcasecmp($anchor_info['categoryname'], 'Category 1') === 0) {
-                        $cat1_anchor = $anchor_info;
-                        break;
+            if (!isset($live_user_quizzes[$uid])) {
+                $live_user_quizzes[$uid] = [];
+            }
+            $live_user_quizzes[$uid][] = $r;
+        }
+        
+        foreach ($live_user_quizzes as $uid => $user_live_rows) {
+            foreach ($user_live_rows as $r) {
+                $catid = (int)$r->categoryid;
+                $catname = $r->categoryname ?? '';
+                $cid = (int)$r->courseid;
+                $quizid = (int)$r->quizid;
+                $live_timeclose = (int)$r->timeclose;
+                
+                // Personal Review merges into Category 1
+                if (strcasecmp($catname, $personal_review_category_name) === 0) {
+                    $cat1_anchor = null;
+                    foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
+                        if (strcasecmp($anchor_info['categoryname'], 'Category 1') === 0) {
+                            $cat1_anchor = $anchor_info;
+                            break;
+                        }
+                    }
+                    if (!$cat1_anchor) continue;
+                    $catid = $cat1_anchor['categoryid'];
+                    $catname = $cat1_anchor['categoryname'];
+                }
+                
+                $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
+                
+                // Fetch actual attempt data for this user/quiz
+                $windowdays = $this->get_course_window_days($cid);
+                [$windowstart, $windowend] = $this->build_window($live_timeclose, $windowdays);
+                
+                // Get user's best attempt for this quiz
+                $attempt_sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                                FROM {quiz_attempts} qa
+                                WHERE qa.quiz = :quizid
+                                  AND qa.userid = :userid
+                                  AND qa.state = 'finished'
+                                  AND qa.timefinish BETWEEN :start AND :end
+                                ORDER BY qa.sumgrades DESC
+                                LIMIT 1";
+                $attempt = $DB->get_record_sql($attempt_sql, [
+                    'quizid' => $quizid,
+                    'userid' => $uid,
+                    'start' => $windowstart,
+                    'end' => $windowend
+                ]);
+                
+                // Get classification
+                $cmid = $DB->get_field('course_modules', 'id', ['instance' => $quizid, 'course' => $cid]);
+                $classification = $cmid ? ($this->get_activity_classification($cmid) ?? '-') : '-';
+                
+                // Calculate status, duration, score
+                $quizgrade = (float)$r->points; // This is q.grade
+                $status = 'noattempt';
+                $duration = '-';
+                $score_display = '-';
+                $score_percent = '-';
+                $pts = 0;
+                
+                if ($attempt) {
+                    $duration_seconds = (int)$attempt->timefinish - (int)$attempt->timestart;
+                    if ($duration_seconds >= 180) { // Valid attempt (>= 3 min)
+                        $duration = gmdate('H:i:s', $duration_seconds);
+                        $score_raw = (float)$attempt->sumgrades;
+                        $score_display = round($score_raw, 1) . '/' . round($quizgrade, 1);
+                        $pct = $quizgrade > 0 ? ($score_raw / $quizgrade) * 100 : 0;
+                        $score_percent = round($pct, 0) . '%';
+                        
+                        if ($pct >= 30) { // COMPLETION_PERCENT_THRESHOLD
+                            $status = 'completed';
+                            $pts = $quizgrade;
+                        } else {
+                            $status = 'lowgrade';
+                            $pts = $quizgrade * 0.5;
+                        }
                     }
                 }
-                if (!$cat1_anchor) continue;
-                $catid = $cat1_anchor['categoryid'];
-                $catname = $cat1_anchor['categoryname'];
-            }
-            
-            $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
-            
-            $pts = (float)$r->points;
-            $row->points_live += $pts;
-            $row->points_2w += $pts;
-            $row->points_4w += $pts;
-            $row->points_10w += $pts;
-            $row->points_all += $pts;
-            
-            // Add breakdown detail for LIVE
-            $detail = [
-                'due_date' => (int)$r->timeclose,
-                'due_date_formatted' => userdate((int)$r->timeclose, get_string('strftimedate')),
-                'quiz_name' => $r->quizname ?? 'Live Quiz',
-                'course_name' => $r->coursename ?? '',
-                'status' => 'live',
-                'points' => $pts,
-            ];
-            $row->breakdown_live[] = $detail;
-            $row->breakdown_2w[] = $detail;
-            $row->breakdown_4w[] = $detail;
-            $row->breakdown_10w[] = $detail;
-            $row->breakdown_all[] = $detail;
-            
-            // Track due dates (Live uses timeclose)
-            $live_date_key = (int)$r->timeclose;
-            if (!in_array($live_date_key, $row->duedates_live)) {
-                $row->duedates_live[] = $live_date_key;
-            }
-            
-            if (!isset($row->courses[$cid])) {
-                $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
+                
+                // Track live due date
+                if ($row->live_due_date == 0 || $live_timeclose < $row->live_due_date) {
+                    $row->live_due_date = $live_timeclose;
+                }
+                
+                $row->points_live += $pts;
+                $row->points_2w += $pts;
+                $row->points_4w += $pts;
+                $row->points_10w += $pts;
+                $row->points_all += $pts;
+                
+                // Add breakdown detail for LIVE with actual attempt data
+                $detail = [
+                    'due_date' => $live_timeclose,
+                    'due_date_formatted' => userdate($live_timeclose, get_string('strftimedate')),
+                    'course_name' => $r->coursename ?? '',
+                    'quiz_name' => $r->quizname ?? 'Live Quiz',
+                    'classification' => $classification,
+                    'status' => $status,
+                    'duration' => $duration,
+                    'score_display' => $score_display,
+                    'score_percent' => $score_percent,
+                    'points' => $pts,
+                ];
+                $row->breakdown_live[] = $detail;
+                $row->breakdown_2w[] = $detail;
+                $row->breakdown_4w[] = $detail;
+                $row->breakdown_10w[] = $detail;
+                $row->breakdown_all[] = $detail;
+                
+                // Track due dates
+                if (!in_array($live_timeclose, $row->duedates_live)) {
+                    $row->duedates_live[] = $live_timeclose;
+                }
+                
+                if (!isset($row->courses[$cid])) {
+                    $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
+                }
             }
         }
 
@@ -2203,12 +2323,29 @@ class homework_manager {
             }
             
             // Build detail record for breakdown
+            // Calculate duration if we have finish times
+            $duration_seconds = 0;
+            if (!empty($r->firstfinish) && !empty($r->windowstart) && $r->firstfinish > $r->windowstart) {
+                $duration_seconds = (int)$r->firstfinish - (int)$r->windowstart;
+            }
+            $duration_formatted = $duration_seconds > 0 ? gmdate('H:i:s', $duration_seconds) : '-';
+            
+            // Score display
+            $score_raw = (float)($r->score ?? 0);
+            $quizgrade = (float)($r->quizgrade ?? 0);
+            $score_display = $quizgrade > 0 ? round($score_raw, 1) . '/' . round($quizgrade, 1) : '-';
+            $score_percent = (float)($r->bestpercent ?? 0);
+            
             $detail = [
                 'due_date' => $due_date,
                 'due_date_formatted' => userdate($due_date, get_string('strftimedate')),
-                'quiz_name' => $r->quizname ?? 'Quiz',
                 'course_name' => $r->coursename ?? '',
+                'quiz_name' => $r->quizname ?? 'Quiz',
+                'classification' => $r->classification ?? '-',
                 'status' => $r->status ?? 'unknown',
+                'duration' => $duration_formatted,
+                'score_display' => $score_display,
+                'score_percent' => round($score_percent, 0) . '%',
                 'points' => $pts,
             ];
             

@@ -392,11 +392,83 @@ if ($tab === 'leaderboard') {
     // --- LEADERBOARD TAB LOGIC ---
     $manager = new \local_homeworkdashboard\homework_manager();
     
-    // Get leaderboard data first (without user filter for the dropdown)
-    $rows = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff, $userids);
+    // Get single duedate filter if provided
+    $duedate_filter = optional_param('duedate', 0, PARAM_INT);
+    
+    // Get leaderboard data WITHOUT course filter to preserve grouping/aggregation
+    // Course filter will be applied post-fetch to just filter which rows to display
+    $rows = $manager->get_leaderboard_data($categoryid, [], $excludestaff, $userids);
+    
+    // Filter by course if specified (post-fetch to preserve aggregation)
+    $courseids_filtered = array_filter($courseids, function($id) { return $id > 0; });
+    if (!empty($courseids_filtered)) {
+        $rows = array_filter($rows, function($row) use ($courseids_filtered) {
+            // Check if any of the row's courses match the filter
+            foreach ($row->courses as $cid => $course_info) {
+                if (in_array($cid, $courseids_filtered)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        $rows = array_values($rows);
+    }
+    
+    // Filter by due date if specified
+    if ($duedate_filter > 0) {
+        $rows = array_filter($rows, function($row) use ($duedate_filter) {
+            return $row->latest_due_date == $duedate_filter || $row->live_due_date == $duedate_filter;
+        });
+        $rows = array_values($rows);
+    }
+    
+    // Calculate Intellect Points by summing All Time points across all categories for each user
+    // This is simpler, includes live points, and is easy to verify (IP = sum of All Time column per user)
+    $all_rows_for_ip = $manager->get_leaderboard_data(0, [], $excludestaff, []);
+    $intellect_points = [];
+    foreach ($all_rows_for_ip as $r) {
+        if (!isset($intellect_points[$r->userid])) {
+            $intellect_points[$r->userid] = 0;
+        }
+        $intellect_points[$r->userid] += $r->points_all;
+    }
+    
+    // Apply sorting to leaderboard rows
+    if (!empty($rows)) {
+        usort($rows, function($a, $b) use ($sort, $dir, $intellect_points) {
+            $result = 0;
+            switch ($sort) {
+                case 'fullname':
+                    $result = strcasecmp($a->fullname, $b->fullname);
+                    break;
+                case 'level':
+                case 'intellect_point':
+                    $ip_a = isset($intellect_points[$a->userid]) ? $intellect_points[$a->userid] : 0;
+                    $ip_b = isset($intellect_points[$b->userid]) ? $intellect_points[$b->userid] : 0;
+                    $result = $ip_a <=> $ip_b;
+                    break;
+                case 'categoryname':
+                    $result = strcasecmp($a->categoryname, $b->categoryname);
+                    break;
+                case 'latest_due_date':
+                    $result = ($a->latest_due_date ?? 0) <=> ($b->latest_due_date ?? 0);
+                    break;
+                case 'points_all':
+                    $result = ($a->points_all ?? 0) <=> ($b->points_all ?? 0);
+                    break;
+                default:
+                    // Default: category then name
+                    $result = strcasecmp($a->categoryname, $b->categoryname);
+                    if ($result === 0) {
+                        $result = strcasecmp($a->fullname, $b->fullname);
+                    }
+            }
+            return strtoupper($dir) === 'DESC' ? -$result : $result;
+        });
+    }
     
     // Build user list for filter from ALL leaderboard users (without user filter applied)
-    $all_rows_for_users = $manager->get_leaderboard_data($categoryid, $courseids, $excludestaff, []);
+    $all_rows_for_users = $manager->get_leaderboard_data($categoryid, [], $excludestaff, []);
     $leaderboard_users = [];
     $seen_users = [];
     foreach ($all_rows_for_users as $r) {
@@ -462,7 +534,7 @@ if ($tab === 'leaderboard') {
                     </div>
                     
                     <!-- Buttons -->
-                    <div class="filter-group" style="display: flex; gap: 5px; align-items: flex-end; padding-bottom: 5px;">
+                    <div class="filter-actions" style="display: flex; gap: 5px; align-items: flex-end; padding-bottom: 2px;">
                         <button type="submit" class="btn btn-primary">Filter</button>
                         <a href="<?php echo (new moodle_url('/local/homeworkdashboard/index.php', ['tab' => 'leaderboard']))->out(false); ?>" class="btn btn-secondary">Reset</a>
                     </div>
@@ -475,21 +547,24 @@ if ($tab === 'leaderboard') {
             <table class="table dashboard-table">
                 <thead>
                     <tr>
-                        <th>NAME</th>
+                        <th class="sortable-column" data-sort="fullname" style="cursor:pointer;">NAME <?php echo local_homeworkdashboard_sort_arrows('fullname', $sort, $dir); ?></th>
                         <th>ID</th>
-                        <th>CATEGORY</th>
+                        <th class="sortable-column text-center" data-sort="level" style="cursor:pointer;">LEVEL <?php echo local_homeworkdashboard_sort_arrows('level', $sort, $dir); ?></th>
+                        <th class="sortable-column text-center" data-sort="intellect_point" style="cursor:pointer;">Intellect Point <?php echo local_homeworkdashboard_sort_arrows('intellect_point', $sort, $dir); ?></th>
+                        <th class="sortable-column" data-sort="categoryname" style="cursor:pointer;">CATEGORY <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?></th>
                         <th>COURSES</th>
-                        <th>LATEST DUE DATE</th>
+                        <th>LIVE DUE DATE</th>
+                        <th class="sortable-column" data-sort="latest_due_date" style="cursor:pointer;">LATEST DUE DATE <?php echo local_homeworkdashboard_sort_arrows('latest_due_date', $sort, $dir); ?></th>
                         <th class="text-center">LIVE POINTS</th>
                         <th class="text-center">2 WEEKS</th>
                         <th class="text-center">4 WEEKS</th>
                         <th class="text-center">10 WEEKS</th>
-                        <th class="text-center">ALL TIME</th>
+                        <th class="sortable-column text-center" data-sort="points_all" style="cursor:pointer;">ALL TIME <?php echo local_homeworkdashboard_sort_arrows('points_all', $sort, $dir); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="10" class="text-center">No data found for current filters.</td></tr>
+                        <tr><td colspan="13" class="text-center">No data found for current filters.</td></tr>
                     <?php else: ?>
                         <?php foreach ($rows as $row): ?>
                             <tr>
@@ -501,29 +576,96 @@ if ($tab === 'leaderboard') {
                                 </td>
                                 
                                 <!-- ID -->
-                                <td><?php echo s($row->idnumber); ?></td>
+                                <td><?php echo !empty($row->idnumber) ? s($row->idnumber) : $row->userid; ?></td>
+                                
+                                <?php 
+                                    $raw_points = isset($intellect_points[$row->userid]) ? $intellect_points[$row->userid] : 0;
+                                    $ip = $raw_points / 10; // IP = raw points / 10
+                                    $level = ceil($ip / 100); // Level = IP / 100, rounded up
+                                    if ($level < 1) $level = 1; // Minimum level 1
+                                ?>
+                                <!-- Level (IP / 100, rounded up) -->
+                                <td class="text-center font-weight-bold" style="color: #fd7e14;">
+                                    <?php echo $level; ?>
+                                </td>
+                                <!-- Intellect Points (raw / 10, 1 decimal) -->
+                                <td class="text-center font-weight-bold" style="color: #6f42c1;">
+                                    <?php echo number_format($ip, 1); ?>
+                                </td>
                                 
                                 <!-- Category (clickable filter) -->
                                 <td>
+                                    <?php
+                                    // Different colors for different categories (blue/green/navy)
+                                    $cat_colors = [
+                                        '#003366', // Dark Navy
+                                        '#198754', // Green
+                                        '#0d6efd', // Blue
+                                        '#084298', // Navy Blue
+                                        '#146c43', // Dark Green
+                                    ];
+                                    $cat_color = $cat_colors[$row->categoryid % count($cat_colors)];
+                                    ?>
                                     <a href="#" class="filter-link" onclick="setLbFilter('lb_categoryid', '<?php echo (int)$row->categoryid; ?>'); return false;" title="Click to filter by this category">
-                                        <span class="badge badge-primary"><?php echo s($row->categoryname ?? 'Unknown'); ?></span>
+                                        <span class="badge" style="background-color: <?php echo $cat_color; ?>; color: white; padding: 4px 8px;"><?php echo s($row->categoryname ?? 'Unknown'); ?></span>
                                     </a>
                                 </td>
                                 
                                 <!-- Courses -->
                                 <td>
-                                    <?php foreach ($row->courses as $cid => $course_info): 
+                                    <?php 
+                                    // Define specific colors for known courses, fallback to rotation
+                                    $specific_course_colors = [
+                                        3 => '#003366',  // Year 5A Classroom - Dark Navy
+                                        7 => '#0a58ca',  // Year 3A Classroom - Dark Blue
+                                        9 => '#084298',  // Year 9A Classroom - Navy Blue
+                                        2 => '#198754',  // Selective Trial Test - Green
+                                        6 => '#20c997',  // OC Trial Test - Teal
+                                    ];
+                                    $fallback_colors = [
+                                        '#003366', // Dark Navy
+                                        '#0d6efd', // Blue
+                                        '#198754', // Green
+                                        '#0a58ca', // Medium Blue
+                                        '#084298', // Navy Blue
+                                        '#20c997', // Teal
+                                        '#0f5132', // Forest Green
+                                        '#052c65', // Deep Navy
+                                    ];
+                                    foreach ($row->courses as $cid => $course_info): 
                                         $cname = $course_info['name'] ?? "Course $cid";
                                         $orig_cat = $course_info['categoryname'] ?? '';
-                                        $badge_class = (stripos($orig_cat, 'Personal Review') !== false) ? 'badge badge-warning' : 'badge badge-info';
+                                        // Personal Review courses get light blue
+                                        if (stripos($orig_cat, 'Personal Review') !== false) {
+                                            $color = '#5bc0de'; // Light blue
+                                        } else if (isset($specific_course_colors[$cid])) {
+                                            $color = $specific_course_colors[$cid];
+                                        } else {
+                                            $color = $fallback_colors[$cid % count($fallback_colors)];
+                                        }
                                     ?>
-                                        <div class="mb-1"><span class="<?php echo $badge_class; ?>"><?php echo s($cname); ?></span></div>
+                                        <div class="mb-1">
+                                            <a href="#" class="filter-link" onclick="setLbFilter('lb_courseid', '<?php echo (int)$cid; ?>'); return false;" title="Click to filter by this course">
+                                                <span class="badge" style="background-color: <?php echo $color; ?>; color: white; padding: 4px 8px;"><?php echo s($cname); ?></span>
+                                            </a>
+                                        </div>
                                     <?php endforeach; ?>
                                 </td>
                                 
-                                <!-- Latest Due Date -->
+                                <!-- Live Due Date -->
                                 <td>
-                                    <?php echo $row->latest_due_date > 0 ? userdate($row->latest_due_date, get_string('strftimedate')) : '-'; ?>
+                                    <?php echo $row->live_due_date > 0 ? userdate($row->live_due_date, get_string('strftimedatetime')) : '-'; ?>
+                                </td>
+                                
+                                <!-- Latest Due Date (clickable filter) -->
+                                <td>
+                                    <?php if ($row->latest_due_date > 0): ?>
+                                        <a href="#" class="filter-link" onclick="setLbDueDateFilter(<?php echo (int)$row->latest_due_date; ?>); return false;" title="Click to filter by this due date" style="color: #0d6efd;">
+                                            <?php echo userdate($row->latest_due_date, get_string('strftimedatetime')); ?>
+                                        </a>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
                                 </td>
                                 
                                 <!-- Points Columns -->
@@ -534,19 +676,13 @@ if ($tab === 'leaderboard') {
                                 $tooltip_4w = !empty($row->duedates_4w) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_4w)) : 'No due dates';
                                 $tooltip_10w = !empty($row->duedates_10w) ? implode(', ', array_map(function($d) { return userdate($d, get_string('strftimedate')); }, $row->duedates_10w)) : 'No due dates';
                                 
-                                // Prepare modal data (JSON for Live, 2W, 4W only)
-                                // Use htmlspecialchars with ENT_QUOTES to properly escape for HTML attribute
-                                $modal_live = htmlspecialchars(json_encode($row->breakdown_live ?? []), ENT_QUOTES, 'UTF-8');
-                                $modal_2w = htmlspecialchars(json_encode($row->breakdown_2w ?? []), ENT_QUOTES, 'UTF-8');
-                                $modal_4w = htmlspecialchars(json_encode($row->breakdown_4w ?? []), ENT_QUOTES, 'UTF-8');
+                                // Create unique row key for JavaScript data storage
+                                $row_key = $row->userid . '_' . $row->categoryid;
                                 ?>
                                 <!-- Live Points (clickable + tooltip) -->
                                 <td class="text-center font-weight-bold text-success">
                                     <a href="#" class="points-link" 
-                                       data-toggle="modal" data-target="#pointsModal"
-                                       data-student="<?php echo s($row->fullname); ?>"
-                                       data-period="Live"
-                                       data-breakdown="<?php echo $modal_live; ?>"
+                                       onclick="showBreakdown('<?php echo s($row->fullname); ?>', 'Live', '<?php echo $row_key; ?>_live'); return false;"
                                        title="Due dates: <?php echo s($tooltip_live); ?>">
                                         <?php echo format_float($row->points_live, 0); ?>
                                     </a>
@@ -554,10 +690,7 @@ if ($tab === 'leaderboard') {
                                 <!-- 2 Weeks (clickable + tooltip) -->
                                 <td class="text-center">
                                     <a href="#" class="points-link"
-                                       data-toggle="modal" data-target="#pointsModal"
-                                       data-student="<?php echo s($row->fullname); ?>"
-                                       data-period="2 Weeks"
-                                       data-breakdown="<?php echo $modal_2w; ?>"
+                                       onclick="showBreakdown('<?php echo s($row->fullname); ?>', '2 Weeks', '<?php echo $row_key; ?>_2w'); return false;"
                                        title="Due dates: <?php echo s($tooltip_2w); ?>">
                                         <?php echo format_float($row->points_2w, 0); ?>
                                     </a>
@@ -565,10 +698,7 @@ if ($tab === 'leaderboard') {
                                 <!-- 4 Weeks (clickable + tooltip) -->
                                 <td class="text-center">
                                     <a href="#" class="points-link"
-                                       data-toggle="modal" data-target="#pointsModal"
-                                       data-student="<?php echo s($row->fullname); ?>"
-                                       data-period="4 Weeks"
-                                       data-breakdown="<?php echo $modal_4w; ?>"
+                                       onclick="showBreakdown('<?php echo s($row->fullname); ?>', '4 Weeks', '<?php echo $row_key; ?>_4w'); return false;"
                                        title="Due dates: <?php echo s($tooltip_4w); ?>">
                                         <?php echo format_float($row->points_4w, 0); ?>
                                     </a>
@@ -587,6 +717,19 @@ if ($tab === 'leaderboard') {
         </div>
     </div>
 </div>
+
+<!-- Breakdown Data (stored in JavaScript) -->
+<script>
+var breakdownData = {
+<?php foreach ($rows as $row): 
+    $row_key = $row->userid . '_' . $row->categoryid;
+?>
+    '<?php echo $row_key; ?>_live': <?php echo json_encode($row->breakdown_live ?? []); ?>,
+    '<?php echo $row_key; ?>_2w': <?php echo json_encode($row->breakdown_2w ?? []); ?>,
+    '<?php echo $row_key; ?>_4w': <?php echo json_encode($row->breakdown_4w ?? []); ?>,
+<?php endforeach; ?>
+};
+</script>
 
 <!-- Points Breakdown Modal -->
 <div class="modal fade" id="pointsModal" tabindex="-1" role="dialog" aria-labelledby="pointsModalLabel" aria-hidden="true">
@@ -663,20 +806,43 @@ window.setLbFilter = function(fieldId, value) {
     }
 };
 
+// Due date filter function - redirects with duedate parameter
+window.setLbDueDateFilter = function(timestamp) {
+    var currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('duedate', timestamp);
+    currentUrl.searchParams.set('filtersubmitted', '1');
+    window.location.href = currentUrl.toString();
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     require(['core/form-autocomplete'], function(Autocomplete) {
         Autocomplete.enhance('#lb_userid', false, false, '<?php echo get_string('all'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
         Autocomplete.enhance('#lb_courseid', false, false, '<?php echo get_string('allcourses', 'local_homeworkdashboard'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
     });
     
-    // Modal population
-    $('#pointsModal').on('show.bs.modal', function(event) {
-        var button = $(event.relatedTarget);
-        var student = button.data('student');
-        var period = button.data('period');
-        var breakdown = button.data('breakdown');
+    // Show breakdown modal function
+    window.showBreakdown = function(student, period, dataKey) {
+        var breakdown = breakdownData[dataKey] || [];
         
-        var modal = $(this);
+        // Sort by Due Date (desc), Type/Classification (desc), Activity (desc)
+        breakdown.sort(function(a, b) {
+            // Due date descending
+            if (b.due_date !== a.due_date) {
+                return b.due_date - a.due_date;
+            }
+            // Classification descending
+            var classA = (a.classification || '').toLowerCase();
+            var classB = (b.classification || '').toLowerCase();
+            if (classB !== classA) {
+                return classB.localeCompare(classA);
+            }
+            // Activity name descending
+            var nameA = (a.quiz_name || '').toLowerCase();
+            var nameB = (b.quiz_name || '').toLowerCase();
+            return nameB.localeCompare(nameA);
+        });
+        
+        var modal = $('#pointsModal');
         modal.find('.modal-title').text(student + ' - ' + period + ' Points Breakdown');
         
         var content = '';
@@ -685,31 +851,68 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             var total = 0;
             content = '<table class="breakdown-table">';
-            content += '<thead><tr><th>Due Date</th><th>Activity</th><th>Course</th><th>Status</th><th class="text-right">Points</th></tr></thead>';
+            content += '<thead><tr><th>Due Date</th><th>Course</th><th>Activity</th><th>Classification</th><th>Status</th><th>Duration</th><th>Score</th><th>Score %</th><th class="text-right">Points</th></tr></thead>';
             content += '<tbody>';
             
             breakdown.forEach(function(item) {
-                var statusClass = 'status-' + (item.status || 'unknown');
-                var statusLabel = item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : 'Unknown';
-                if (statusLabel === 'Noattempt') statusLabel = 'No Attempt';
-                if (statusLabel === 'Lowgrade') statusLabel = 'Low Grade';
+                // Classification badge (using exact CSS classes from styles.css)
+                var classification = (item.classification || '').toLowerCase();
+                var classificationBadge = '-';
+                if (classification === 'new') {
+                    classificationBadge = '<span class="hw-classification-badge hw-classification-new">New</span>';
+                } else if (classification === 'revision') {
+                    classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision</span>';
+                }
+                
+                // Status badge (using exact CSS classes from styles.css)
+                var status = (item.status || 'unknown').toLowerCase();
+                var statusBadge = '-';
+                if (status === 'completed') {
+                    statusBadge = '<span class="hw-badge hw-badge-completed">Done</span>';
+                } else if (status === 'lowgrade') {
+                    statusBadge = '<span class="hw-badge hw-badge-lowgrade">Retry</span>';
+                } else if (status === 'noattempt') {
+                    statusBadge = '<span class="hw-badge hw-badge-noattempt">To do</span>';
+                }
                 
                 content += '<tr>';
                 content += '<td>' + (item.due_date_formatted || '-') + '</td>';
-                content += '<td>' + (item.quiz_name || '-') + '</td>';
                 content += '<td>' + (item.course_name || '-') + '</td>';
-                content += '<td><span class="' + statusClass + '">' + statusLabel + '</span></td>';
+                content += '<td>' + (item.quiz_name || '-') + '</td>';
+                content += '<td>' + classificationBadge + '</td>';
+                content += '<td>' + statusBadge + '</td>';
+                content += '<td>' + (item.duration || '-') + '</td>';
+                content += '<td>' + (item.score_display || '-') + '</td>';
+                content += '<td>' + (item.score_percent || '-') + '</td>';
                 content += '<td class="text-right">' + parseFloat(item.points || 0).toFixed(0) + '</td>';
                 content += '</tr>';
                 total += parseFloat(item.points || 0);
             });
             
             content += '</tbody>';
-            content += '<tfoot><tr class="total-row"><td colspan="4" class="text-right">Total:</td><td class="text-right">' + total.toFixed(0) + '</td></tr></tfoot>';
+            content += '<tfoot><tr class="total-row"><td colspan="8" class="text-right">Total:</td><td class="text-right">' + total.toFixed(0) + '</td></tr></tfoot>';
             content += '</table>';
         }
         
         modal.find('#pointsModalContent').html(content);
+        modal.modal('show');
+    };
+    
+    // Sortable column headers for leaderboard
+    document.querySelectorAll('.sortable-column').forEach(function(header) {
+        header.addEventListener('click', function() {
+            var sortField = this.getAttribute('data-sort');
+            var currentSort = '<?php echo $sort; ?>';
+            var currentDir  = '<?php echo $dir; ?>';
+            var newDir = 'ASC';
+            if (currentSort === sortField && currentDir === 'ASC') {
+                newDir = 'DESC';
+            }
+            var url = new URL(window.location.href);
+            url.searchParams.set('sort', sortField);
+            url.searchParams.set('dir', newDir);
+            window.location.href = url.toString();
+        });
     });
 });
 </script>
@@ -1376,7 +1579,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     <th class="sortable-column" data-sort="status"><?php echo get_string('status'); ?> <?php echo local_homeworkdashboard_sort_arrows('status', $sort, $dir); ?></th>
                     <th>Points</th>
                     <th class="sortable-column" data-sort="attemptno"><?php echo get_string('col_attempt', 'local_homeworkdashboard'); ?> <?php echo local_homeworkdashboard_sort_arrows('attemptno', $sort, $dir); ?></th>
-                    <th class="sortable-column" data-sort="classification">Activity classification <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?></th>
+                    <th class="sortable-column" data-sort="classification">Classification <?php echo local_homeworkdashboard_sort_arrows('classification', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="quiz_type">Quiz type <?php echo local_homeworkdashboard_sort_arrows('quiz_type', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="timeclose">Due date <?php echo local_homeworkdashboard_sort_arrows('timeclose', $sort, $dir); ?></th>
                     <th class="sortable-column" data-sort="timefinish">Finished <?php echo local_homeworkdashboard_sort_arrows('timefinish', $sort, $dir); ?></th>
