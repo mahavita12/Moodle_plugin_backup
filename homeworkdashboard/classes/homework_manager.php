@@ -2047,7 +2047,8 @@ class homework_manager {
                 lbs.firstfinish AS firstfinish,
                 lbs.lastfinish AS lastfinish,
                 lbs.windowstart AS windowstart,
-                q.name AS quizname
+                q.name AS quizname,
+                q.grade AS quiz_grade_live
             FROM {local_homework_status} lbs
             JOIN {user} u ON u.id = lbs.userid
             JOIN {course} c ON c.id = lbs.courseid
@@ -2315,7 +2316,23 @@ class homework_manager {
             
             $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
             
+            // Get points - use stored value, or fallback to calculation if quizgrade was 0
             $pts = (float)$r->points;
+            if ($pts == 0 && !empty($r->status) && $r->status !== 'noattempt') {
+                // Fallback: calculate from quiz grade if stored points is 0
+                $fallback_grade = (float)($r->quizgrade ?? 0);
+                if ($fallback_grade == 0) {
+                    // Try to get from joined quiz table
+                    $fallback_grade = isset($r->quiz_grade_live) ? (float)$r->quiz_grade_live : 0;
+                }
+                if ($fallback_grade > 0) {
+                    if ($r->status === 'completed') {
+                        $pts = $fallback_grade;
+                    } elseif ($r->status === 'lowgrade') {
+                        $pts = $fallback_grade * 0.5;
+                    }
+                }
+            }
             
             // Update latest due date
             if ($due_date > $row->latest_due_date) {
