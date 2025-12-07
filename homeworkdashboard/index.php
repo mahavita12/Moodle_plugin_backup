@@ -24,7 +24,16 @@ $canmanage = has_capability('local/homeworkdashboard:manage', $context) || is_si
 $tab           = optional_param('tab', 'live', PARAM_ALPHA);
 $userids       = optional_param_array('userid', [], PARAM_INT); // Retrieve user IDs from dropdown
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
-$courseids     = optional_param_array('courseid', [0], PARAM_INT);
+// Handle both single courseid (leaderboard) and courseid[] (other tabs)
+$_courseid_single = optional_param('courseid', null, PARAM_INT);
+$_courseid_array = optional_param_array('courseid', [], PARAM_INT);
+if ($_courseid_single !== null) {
+    $courseids = [$_courseid_single];
+} elseif (!empty($_courseid_array)) {
+    $courseids = $_courseid_array;
+} else {
+    $courseids = [0];
+}
 $sectionid     = optional_param('sectionid', 0, PARAM_INT);
 $quizids       = optional_param_array('quizid', [0], PARAM_INT);
 $studentname   = optional_param('studentname', '', PARAM_TEXT);
@@ -48,10 +57,30 @@ $userids       = optional_param_array('userid', [0], PARAM_INT);
 if (!$canmanage) {
     // Force view to current user only
     $userids = [$USER->id];
-    // Disable exclude staff (irrelevant for single user)
-    $excludestaff = 0;
+    // Always exclude staff for students (they shouldn't see staff in leaderboard)
+    $excludestaff = 1;
     // Clear student name filter to avoid confusion
     $studentname = '';
+    
+    // For leaderboard tab: Set default course by category priority (1 > 2 > 3)
+    // This will be applied later when we have the enrolled courses
+    if ($tab === 'leaderboard' && (empty($courseids) || $courseids === [0])) {
+        $student_courses = enrol_get_users_courses($USER->id, true, 'id, fullname, category');
+        $default_course = null;
+        $best_priority = PHP_INT_MAX;
+        
+        foreach ($student_courses as $course) {
+            $cat_priority = (int)$course->category;
+            if ($cat_priority > 0 && $cat_priority < $best_priority) {
+                $best_priority = $cat_priority;
+                $default_course = $course;
+            }
+        }
+        
+        if ($default_course) {
+            $courseids = [(int)$default_course->id];
+        }
+    }
 }
 
 // If a specific due date is selected, clear the week filter to avoid confusion/conflict
@@ -395,9 +424,29 @@ if ($tab === 'leaderboard') {
     // Get single duedate filter if provided
     $duedate_filter = optional_param('duedate', 0, PARAM_INT);
     
+    // For students: get all peers enrolled in their courses (leaderboard shows course peers)
+    if (!$canmanage) {
+        global $DB;
+        $user_courses = enrol_get_users_courses($USER->id, true, 'id');
+        $course_ids = array_keys($user_courses);
+        if (!empty($course_ids)) {
+            list($in_sql, $params) = $DB->get_in_or_equal($course_ids, SQL_PARAMS_NAMED, 'cid');
+            $peer_sql = "SELECT DISTINCT ue.userid FROM {user_enrolments} ue
+                         JOIN {enrol} e ON e.id = ue.enrolid
+                         WHERE e.courseid $in_sql AND ue.status = 0";
+            $peers = $DB->get_records_sql($peer_sql, $params);
+            $leaderboard_userids = array_keys($peers);
+        } else {
+            $leaderboard_userids = [$USER->id];
+        }
+    } else {
+        // Staff: use filter or show all (empty array = all users)
+        $leaderboard_userids = array_filter($userids, function($id) { return $id > 0; });
+    }
+    
     // Get leaderboard data WITHOUT course filter to preserve grouping/aggregation
     // Course filter will be applied post-fetch to just filter which rows to display
-    $rows = $manager->get_leaderboard_data($categoryid, [], $excludestaff, $userids);
+    $rows = $manager->get_leaderboard_data($categoryid, [], $excludestaff, $leaderboard_userids);
     
     // Filter by course if specified (post-fetch to preserve aggregation)
     $courseids_filtered = array_filter($courseids, function($id) { return $id > 0; });
@@ -491,7 +540,8 @@ if ($tab === 'leaderboard') {
                 <input type="hidden" name="filtersubmitted" value="1">
                 
                 <div class="filter-row">
-                    <!-- User Filter -->
+                    <!-- User Filter (Admin Only) -->
+                    <?php if ($canmanage): ?>
                     <div class="filter-group">
                         <label for="lb_userid"><?php echo get_string('user'); ?></label>
                         <select name="userid[]" id="lb_userid" multiple="multiple">
@@ -503,8 +553,10 @@ if ($tab === 'leaderboard') {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
                     
-                    <!-- Category Filter -->
+                    <!-- Category Filter (Admin Only) -->
+                    <?php if ($canmanage): ?>
                     <div class="filter-group">
                         <label for="lb_categoryid"><?php echo get_string('col_category', 'local_homeworkdashboard'); ?></label>
                         <select name="categoryid" id="lb_categoryid">
@@ -516,25 +568,29 @@ if ($tab === 'leaderboard') {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
                     
-                    <!-- Course Filter -->
+                    <!-- Course Filter (Single Select for Leaderboard) -->
                     <div class="filter-group">
                         <label for="lb_courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
-                        <select name="courseid[]" id="lb_courseid" multiple="multiple">
+                        <?php $selected_courseid = !empty($courseids) ? reset($courseids) : 0; ?>
+                        <select name="courseid" id="lb_courseid">
                             <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
                             <?php foreach ($courses as $c): ?>
-                                <option value="<?php echo (int)$c->id; ?>" <?php echo in_array((int)$c->id, $courseids) ? 'selected' : ''; ?>>
+                                <option value="<?php echo (int)$c->id; ?>" <?php echo ((int)$c->id === (int)$selected_courseid) ? 'selected' : ''; ?>>
                                     <?php echo format_string($c->fullname); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     
-                    <!-- Exclude Staff -->
+                    <!-- Exclude Staff (Admin Only) -->
+                    <?php if ($canmanage): ?>
                     <div class="filter-group checkbox-group" style="display: flex; align-items: flex-end; padding-bottom: 5px;">
                         <input type="checkbox" name="excludestaff" id="lb_excludestaff" value="1" <?php echo $excludestaff ? 'checked' : ''; ?> style="margin-right: 5px;">
                         <label for="lb_excludestaff" style="margin-bottom: 0;"><?php echo get_string('excludestaff', 'local_homeworkdashboard'); ?></label>
                     </div>
+                    <?php endif; ?>
                     
                     <!-- Buttons -->
                     <div class="filter-actions" style="display: flex; gap: 5px; align-items: flex-end; padding-bottom: 2px;">
@@ -550,13 +606,23 @@ if ($tab === 'leaderboard') {
         
         <!-- Charts Section (Always Visible) -->
         <div id="leaderboardCharts" style="margin-bottom: 20px;">
+<?php
+    // Determine chart title prefix based on selected course(s)
+    $selected_course_ids = array_filter($courseids, function($id) { return $id > 0; });
+    if (count($selected_course_ids) === 1 && !empty($courses)) {
+        $selected_course_id = reset($selected_course_ids);
+        $chart_title_prefix = isset($courses[$selected_course_id]) ? format_string($courses[$selected_course_id]->fullname) : 'Course Level';
+    } else {
+        $chart_title_prefix = 'Course Level';
+    }
+?>
             <!-- Course/Category Level Charts (2x2) -->
             <div class="row">
                 <!-- Course Level: Students Points (Live, 2wk, 4wk) -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-primary text-white">
-                            <strong>Course Level: Student Points (Live / 2wk / 4wk)</strong>
+                            <strong><?php echo $chart_title_prefix; ?>: Student Points (Live / 2wk / 4wk)</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="courseStudentPointsChart"></canvas>
@@ -568,7 +634,7 @@ if ($tab === 'leaderboard') {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-primary text-white">
-                            <strong>Course Level: All Time Points & Class Level</strong>
+                            <strong><?php echo $chart_title_prefix; ?>: All Time Points & Class Level</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="courseAllTimeChart"></canvas>
@@ -653,7 +719,8 @@ if ($tab === 'leaderboard') {
             </div>
         </div>
 
-        <!-- Leaderboard Table -->
+        <!-- Leaderboard Table (Admin Only) -->
+        <?php if ($canmanage): ?>
         <div class="table-responsive">
             <table class="table dashboard-table">
                 <thead>
@@ -871,7 +938,9 @@ if ($tab === 'leaderboard') {
         </div>
     </div>
 </div>
+<?php endif; // End admin-only table ?>
 
+<?php if ($canmanage): // Breakdown data and modal for admin only ?>
 <!-- Breakdown Data (stored in JavaScript) -->
 <script>
 var breakdownData = {
@@ -906,6 +975,7 @@ var breakdownData = {
         </div>
     </div>
 </div>
+<?php endif; // End admin-only breakdown and modal ?>
 
 <style>
 .points-link {
@@ -971,7 +1041,7 @@ window.setLbDueDateFilter = function(timestamp) {
 document.addEventListener('DOMContentLoaded', function() {
     require(['core/form-autocomplete'], function(Autocomplete) {
         Autocomplete.enhance('#lb_userid', false, false, '<?php echo get_string('all'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
-        Autocomplete.enhance('#lb_courseid', false, false, '<?php echo get_string('allcourses', 'local_homeworkdashboard'); ?>', false, true, '<?php echo get_string('noselection', 'form'); ?>');
+        // Note: lb_courseid is now single-select, no autocomplete needed
     });
     
     // Show breakdown modal function
