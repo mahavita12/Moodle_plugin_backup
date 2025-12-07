@@ -21,7 +21,7 @@ $PAGE->requires->css('/local/quizdashboard/styles.css');
 // Check capability for management (Staff vs Student)
 $canmanage = has_capability('local/homeworkdashboard:manage', $context) || is_siteadmin();
 
-$tab           = optional_param('tab', 'live', PARAM_ALPHA);
+$tab           = optional_param('tab', 'leaderboard', PARAM_ALPHA);
 $userids       = optional_param_array('userid', [], PARAM_INT); // Retrieve user IDs from dropdown
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
 // Handle both single courseid (leaderboard) and courseid[] (other tabs)
@@ -622,7 +622,7 @@ if ($tab === 'leaderboard') {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-primary text-white">
-                            <strong><?php echo $chart_title_prefix; ?>: Student Points (Live / 2wk / 4wk)</strong>
+                            <strong><?php echo $chart_title_prefix; ?>: Intellect Points (Live / 2wk / 4wk)</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="courseStudentPointsChart"></canvas>
@@ -634,7 +634,7 @@ if ($tab === 'leaderboard') {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-primary text-white">
-                            <strong><?php echo $chart_title_prefix; ?>: All Time Points & Class Level</strong>
+                            <strong><?php echo $chart_title_prefix; ?>: Intellect Points & Class Level</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="courseAllTimeChart"></canvas>
@@ -697,7 +697,7 @@ if ($tab === 'leaderboard') {
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-success text-white">
-                            <strong>User Level: Student Points (Live / 2wk / 4wk)</strong>
+                            <strong>User Level: Intellect Points (Live / 2wk / 4wk)</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="userStudentPointsChart"></canvas>
@@ -1168,7 +1168,7 @@ var leaderboardChartData = {
             ];
         }
         // Sort by live points desc and take top 10
-        usort($goal_data, function($a, $b) { return $b['live'] <=> $a['live']; });
+        usort($goal_data, function($a, $b) { return $b['all_time'] <=> $a['all_time']; });
         $goal_data = array_slice($goal_data, 0, 10);
         echo json_encode($goal_data);
     ?>,
@@ -1190,7 +1190,7 @@ var leaderboardChartData = {
             ];
         }
         // Sort by live points desc and take top 10
-        usort($course_data, function($a, $b) { return $b['live'] <=> $a['live']; });
+        usort($course_data, function($a, $b) { return $b['all_time'] <=> $a['all_time']; });
         $course_data = array_slice($course_data, 0, 10);
         echo json_encode($course_data);
     ?>,
@@ -1240,7 +1240,7 @@ var leaderboardChartData = {
         unset($u);
         $user_list = array_values($user_agg);
         // Sort by live points desc and take top 10
-        usort($user_list, function($a, $b) { return $b['live'] <=> $a['live']; });
+        usort($user_list, function($a, $b) { return $b['intellect_points'] <=> $a['intellect_points']; });
         $user_list = array_slice($user_list, 0, 10);
         echo json_encode($user_list);
     ?>,
@@ -1313,7 +1313,7 @@ function renderCharts() {
         w2: 'rgba(13, 110, 253, 0.8)',       // Blue for 2 weeks
         w4: 'rgba(111, 66, 193, 0.8)',       // Purple for 4 weeks
         w10: 'rgba(255, 193, 7, 0.8)',       // Yellow for 10 weeks
-        allTime: 'rgba(253, 126, 20, 0.8)', // Orange for all time
+        allTime: 'rgba(13, 110, 253, 0.8)', // Blue for all time
         goal: 'rgba(220, 53, 69, 1)'         // Red for goal line
     };
     
@@ -1336,9 +1336,28 @@ function renderCharts() {
                         type: 'bar',
                         label: 'Points',
                         data: goalData.map(function(s) { return s[pointsKey]; }),
-                        backgroundColor: barColor,
-                        borderColor: barColor.replace('0.8', '1'),
-                        borderWidth: 1,
+                        backgroundColor: function(context) {
+                            if (context.dataIndex === 0) {
+                                var chart = context.chart;
+                                var chartArea = chart.chartArea;
+                                if (!chartArea) return '#FFD700';
+                                var ctx = chart.ctx;
+                                var gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                                gradient.addColorStop(0, '#FFD700');
+                                gradient.addColorStop(0.5, '#FFA500');
+                                gradient.addColorStop(1, '#FF6B00');
+                                return gradient;
+                            }
+                            return barColor;
+                        },
+                        borderColor: function(context) {
+                            if (context.dataIndex === 0) return 'transparent';
+                            return barColor.replace('0.8', '1');
+                        },
+                        borderWidth: function(context) {
+                            if (context.dataIndex === 0) return 0;
+                            return 1;
+                        },
                         order: 2
                     },
                     {
@@ -1365,7 +1384,26 @@ function renderCharts() {
                     legend: { 
                         position: 'top',
                         reverse: true,
-                        labels: { usePointStyle: true }
+                        labels: { 
+                            usePointStyle: true, 
+                            boxWidth: 6, 
+                            boxHeight: 6,
+                            font: { size: 10 },
+                            generateLabels: function(chart) {
+                                var datasets = chart.data.datasets;
+                                return datasets.map(function(dataset, i) {
+                                    return {
+                                        text: dataset.label,
+                                        fillStyle: i === 0 ? barColor : dataset.borderColor,
+                                        strokeStyle: i === 0 ? barColor : dataset.borderColor,
+                                        lineWidth: dataset.borderWidth || 0,
+                                        pointStyle: i === 0 ? 'rect' : 'circle',
+                                        hidden: !chart.isDatasetVisible(i),
+                                        datasetIndex: i
+                                    };
+                                });
+                            }
+                        }
                     },
                     tooltip: {
                         callbacks: {
@@ -1382,7 +1420,8 @@ function renderCharts() {
                 scales: {
                     y: { 
                         beginAtZero: true,
-                        title: { display: true, text: 'Points' }
+                        beginAtZero: true,
+                        title: { display: false }
                     },
                     x: {
                         ticks: {
@@ -1461,7 +1500,7 @@ function renderCharts() {
                     x: { 
                         beginAtZero: true, 
                         stacked: false, 
-                        title: { display: true, text: 'Points' },
+                        title: { display: false },
                         max: Math.max(...cspData.map(function(s) { return Math.max(s.live || 0, s.w2 || 0, s.w4 || 0, s.max_live || 0, s.max_w2 || 0, s.max_w4 || 0); })) * 1.15
                     }
                 }
@@ -1522,7 +1561,18 @@ function renderCharts() {
                 datasets: [{
                     label: 'All Time Points',
                     data: courseData.map(function(s) { return s.all_time; }),
-                    backgroundColor: colors.allTime,
+                    backgroundColor: function(context) {
+                        if (context.dataIndex === 0) {
+                            var chart = context.chart;
+                            var ctx = chart.ctx;
+                            var gradient = ctx.createLinearGradient(0, 0, chart.width, 0);
+                            gradient.addColorStop(0, '#FFD700');
+                            gradient.addColorStop(0.5, '#FFA500');
+                            gradient.addColorStop(1, '#FF6B00');
+                            return gradient;
+                        }
+                        return colors.allTime;
+                    },
                     borderWidth: 1
                 }]
             },
@@ -1536,7 +1586,7 @@ function renderCharts() {
                 scales: {
                     x: { 
                         beginAtZero: true, 
-                        title: { display: true, text: 'All Time Points' },
+                        title: { display: false },
                         max: Math.max(...courseData.map(function(s) { return Math.max(s.all_time, s.max_all || 0); })) * 1.1
                     },
                     y: {
@@ -1580,6 +1630,22 @@ function renderCharts() {
                         ctx.fillStyle = '#fff';
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
+                        
+                        // Draw star badge for leader
+                        if (index === 0) {
+                            ctx.save();
+                            var starX = badgeX + textWidth + padding * 2 + 5;
+                            ctx.fillStyle = '#FFD700';
+                            ctx.beginPath();
+                            ctx.roundRect(starX, y - 10, 20, 20, 4);
+                            ctx.fill();
+                            ctx.fillStyle = '#dc3545';
+                            ctx.font = 'bold 12px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText('★', starX + 10, y);
+                            ctx.restore();
+                        }
                         
                         // Draw red goal dot at max_all position (separate save/restore)
                         if (item.max_all > 0) {
@@ -1641,7 +1707,7 @@ function renderCharts() {
                     x: { 
                         beginAtZero: true, 
                         stacked: false, 
-                        title: { display: true, text: 'Points' },
+                        title: { display: false },
                         max: Math.max(...uspData.map(function(s) { return Math.max(s.live || 0, s.w2 || 0, s.w4 || 0, s.max_live || 0, s.max_w2 || 0, s.max_w4 || 0); })) * 1.15
                     }
                 }
@@ -1698,7 +1764,18 @@ function renderCharts() {
                 datasets: [{
                     label: 'Intellect Points',
                     data: userData.map(function(s) { return s.intellect_points; }),
-                    backgroundColor: colors.allTime,
+                    backgroundColor: function(context) {
+                        if (context.dataIndex === 0) {
+                            var chart = context.chart;
+                            var ctx = chart.ctx;
+                            var gradient = ctx.createLinearGradient(0, 0, chart.width, 0);
+                            gradient.addColorStop(0, '#FFD700');
+                            gradient.addColorStop(0.5, '#FFA500');
+                            gradient.addColorStop(1, '#FF6B00');
+                            return gradient;
+                        }
+                        return colors.allTime;
+                    },
                     borderWidth: 1
                 }]
             },
@@ -1712,7 +1789,7 @@ function renderCharts() {
                 scales: {
                     x: { 
                         beginAtZero: true, 
-                        title: { display: true, text: 'Intellect Points' },
+                        title: { display: false },
                         max: Math.max(...userData.map(function(s) { return Math.max(s.intellect_points || 0, s.max_ip || 0); })) * 1.15
                     },
                     y: {
@@ -1756,6 +1833,22 @@ function renderCharts() {
                         ctx.fillStyle = '#fff';
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
+                        
+                        // Draw star badge for leader
+                        if (index === 0) {
+                            ctx.save();
+                            var starX = badgeX + textWidth + padding * 2 + 5;
+                            ctx.fillStyle = '#FFD700';
+                            ctx.beginPath();
+                            ctx.roundRect(starX, y - 10, 20, 20, 4);
+                            ctx.fill();
+                            ctx.fillStyle = '#dc3545';
+                            ctx.font = 'bold 12px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText('★', starX + 10, y);
+                            ctx.restore();
+                        }
                         
                         // Draw red goal dot at max_ip position (separate save/restore)
                         if (item.max_ip > 0) {
