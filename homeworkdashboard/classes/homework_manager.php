@@ -479,7 +479,7 @@ class homework_manager {
         $sql .= " ORDER BY c.fullname, q.name";
 
         $snapshots = $DB->get_records_sql($sql, $params);
-        error_log("HM_DEBUG build_snapshot: Quiz $quizid timeclose $timeclose - SQL returned " . count($snapshots) . " snapshots");
+        
         if (empty($snapshots)) {
             return [];
         }
@@ -790,11 +790,11 @@ class homework_manager {
         $sql .= " ORDER BY c.fullname, q.name";
 
         // Debug logging
-        error_log("HM_DEBUG: SQL: " . $sql);
-        error_log("HM_DEBUG: Params: " . json_encode($params));
+        
+        
 
         $quizrecords = $DB->get_records_sql($sql, $params);
-        error_log("HM_DEBUG: Records found: " . count($quizrecords));
+        
 
         if (empty($quizrecords)) {
             return [];
@@ -822,7 +822,7 @@ class homework_manager {
             $excludeduserids = [];
             if ($excludestaff) {
                 $excludeduserids = $this->get_staff_users_for_course((int)$qrec->courseid);
-                error_log("HM_DEBUG: Course " . $qrec->courseid . " Excluded Staff Count: " . count($excludeduserids));
+                
             }
 
             // Calculate Live Window
@@ -837,7 +837,7 @@ class homework_manager {
             if (!empty($excludeduserids)) {
                 $roster = array_diff($roster, $excludeduserids);
                 if (empty($roster)) {
-                    error_log("HM_DEBUG: Course " . $qrec->courseid . " skipped because roster is empty after excluding staff.");
+                    
                     continue;
                 }
                 $roster = array_values($roster);
@@ -1092,7 +1092,7 @@ class homework_manager {
         $snapsql .= " ORDER BY s.timeclose ASC";
 
         $snapshotrecords = $DB->get_records_sql($snapsql, $snapparams);
-        error_log("HM_DEBUG get_snapshot: First query returned " . count($snapshotrecords) . " quiz/timeclose pairs");
+        
 
         if (!empty($snapshotrecords)) {
             // Fetch excluded staff if needed.
@@ -1136,14 +1136,14 @@ class homework_manager {
                     $excludeduserids
                 );
 
-                error_log("HM_DEBUG get_snapshot: Quiz {$srec->quizid} timeclose {$stimeclose} returned " . count($snaprows) . " rows");
+                
                 foreach ($snaprows as $sr) {
                     $rows[] = $sr;
                 }
             }
         }
 
-        error_log("HM_DEBUG get_snapshot: Total rows returned: " . count($rows));
+        
         return $this->sort_rows($rows, $sort, $dir);
     }
 
@@ -2087,28 +2087,29 @@ class homework_manager {
         }
 
         // =====================================================
-        // STEP 4b: Build per-anchor-course due date buckets
-        // Each anchor course has its own set of due dates for bucketing
+        // STEP 4b: Build per-user-course due date buckets
+        // Each user has their own set of due dates for bucketing
         // =====================================================
-        $anchor_due_dates = []; // [anchor_courseid => [due_date1, due_date2, ...] DESC]
+        $user_due_dates = []; // [userid_courseid => [due_date1, due_date2, ...] DESC]
         
-        // Get all distinct anchor course IDs
-        $anchor_courseids = [];
-        foreach ($user_anchors as $uid => $cats) {
-            foreach ($cats as $catid => $anchor_info) {
-                $anchor_courseids[$anchor_info['courseid']] = true;
-            }
+        // Build user+course keys from snap_rows
+        $user_course_keys = [];
+        foreach ($snap_rows as $r) {
+            $key = $r->userid . '_' . $r->courseid;
+            $user_course_keys[$key] = ['userid' => $r->userid, 'courseid' => $r->courseid];
         }
         
-        // For each anchor course, get its distinct due dates from snapshots
-        foreach (array_keys($anchor_courseids) as $anchor_cid) {
-            $anchor_dates_sql = "SELECT DISTINCT lbs.timeclose 
-                                 FROM {local_homework_status} lbs 
-                                 WHERE lbs.courseid = :courseid
-                                   AND lbs.timeclose < :now 
-                                 ORDER BY lbs.timeclose DESC";
-            $anchor_due_dates[$anchor_cid] = $DB->get_fieldset_sql($anchor_dates_sql, [
-                'courseid' => $anchor_cid,
+        // For each user+course, get their distinct due dates from snapshots
+        foreach ($user_course_keys as $key => $info) {
+            $user_dates_sql = "SELECT DISTINCT lbs.timeclose 
+                               FROM {local_homework_status} lbs 
+                               WHERE lbs.userid = :userid
+                                 AND lbs.courseid = :courseid
+                                 AND lbs.timeclose < :now 
+                               ORDER BY lbs.timeclose DESC";
+            $user_due_dates[$key] = $DB->get_fieldset_sql($user_dates_sql, [
+                'userid' => $info['userid'],
+                'courseid' => $info['courseid'],
                 'now' => $now
             ]);
         }
@@ -2148,6 +2149,12 @@ class homework_manager {
                     'points_4w' => 0,
                     'points_10w' => 0,
                     'points_all' => 0,
+                    // Max possible points for each period
+                    'max_live' => 0,
+                    'max_2w' => 0,
+                    'max_4w' => 0,
+                    'max_10w' => 0,
+                    'max_all' => 0,
                     'courses' => [],
                     // Breakdown details for tooltip/modal
                     'breakdown_live' => [],
@@ -2200,20 +2207,18 @@ class homework_manager {
                 
                 $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
                 
-                // Fetch actual attempt data for this user/quiz
+                // Fetch actual attempt data for this user/quiz (same logic as Live tab)
                 $windowdays = $this->get_course_window_days($cid);
                 [$windowstart, $windowend] = $this->build_window($live_timeclose, $windowdays);
                 
-                // Get user's best attempt for this quiz
-                $attempt_sql = "SELECT qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
+                // Get ALL attempts for this user/quiz within window
+                $attempt_sql = "SELECT qa.id, qa.userid, qa.sumgrades, qa.timestart, qa.timefinish
                                 FROM {quiz_attempts} qa
                                 WHERE qa.quiz = :quizid
                                   AND qa.userid = :userid
                                   AND qa.state = 'finished'
-                                  AND qa.timefinish BETWEEN :start AND :end
-                                ORDER BY qa.sumgrades DESC
-                                LIMIT 1";
-                $attempt = $DB->get_record_sql($attempt_sql, [
+                                  AND qa.timefinish BETWEEN :start AND :end";
+                $attempts = $DB->get_records_sql($attempt_sql, [
                     'quizid' => $quizid,
                     'userid' => $uid,
                     'start' => $windowstart,
@@ -2224,30 +2229,47 @@ class homework_manager {
                 $cmid = $DB->get_field('course_modules', 'id', ['instance' => $quizid, 'course' => $cid]);
                 $classification = $cmid ? ($this->get_activity_classification($cmid) ?? '-') : '-';
                 
-                // Calculate status, duration, score
+                // Calculate status using same logic as Live tab
                 $quizgrade = (float)$r->points; // This is q.grade
                 $status = 'noattempt';
                 $duration = '-';
                 $score_display = '-';
                 $score_percent = '-';
                 $pts = 0;
+                $bestpercent = 0.0;
+                $bestattempt = null;
                 
-                if ($attempt) {
-                    $duration_seconds = (int)$attempt->timefinish - (int)$attempt->timestart;
-                    if ($duration_seconds >= 180) { // Valid attempt (>= 3 min)
-                        $duration = gmdate('H:i:s', $duration_seconds);
-                        $score_raw = (float)$attempt->sumgrades;
-                        $score_display = round($score_raw, 1) . '/' . round($quizgrade, 1);
-                        $pct = $quizgrade > 0 ? ($score_raw / $quizgrade) * 100 : 0;
-                        $score_percent = round($pct, 0) . '%';
-                        
-                        if ($pct >= 30) { // COMPLETION_PERCENT_THRESHOLD
-                            $status = 'completed';
-                            $pts = $quizgrade;
-                        } else {
-                            $status = 'lowgrade';
-                            $pts = $quizgrade * 0.5;
+                // Find best valid attempt (duration >= 180s AND score > 10%)
+                foreach ($attempts as $a) {
+                    $timestart = (int)$a->timestart;
+                    $timefinish = (int)$a->timefinish;
+                    if ($timestart <= 0 || $timefinish <= $timestart) {
+                        continue;
+                    }
+                    $dur = $timefinish - $timestart;
+                    if ($dur >= 180 && $quizgrade > 0 && $a->sumgrades !== null) {
+                        $pct = ((float)$a->sumgrades / $quizgrade) * 100.0;
+                        if ($pct > 10.0 && $pct > $bestpercent) {
+                            $bestpercent = $pct;
+                            $bestattempt = $a;
                         }
+                    }
+                }
+                
+                // Determine status based on best attempt
+                if ($bestattempt) {
+                    $duration_seconds = (int)$bestattempt->timefinish - (int)$bestattempt->timestart;
+                    $duration = gmdate('H:i:s', $duration_seconds);
+                    $score_raw = (float)$bestattempt->sumgrades;
+                    $score_display = round($score_raw, 1) . '/' . round($quizgrade, 1);
+                    $score_percent = round($bestpercent, 0) . '%';
+                    
+                    if ($bestpercent > self::COMPLETION_PERCENT_THRESHOLD) {
+                        $status = 'completed';
+                        $pts = $quizgrade;
+                    } else {
+                        $status = 'lowgrade';
+                        $pts = $quizgrade * 0.5;
                     }
                 }
                 
@@ -2261,6 +2283,13 @@ class homework_manager {
                 $row->points_4w += $pts;
                 $row->points_10w += $pts;
                 $row->points_all += $pts;
+                
+                // Add max possible points (quizgrade) for each period
+                $row->max_live += $quizgrade;
+                $row->max_2w += $quizgrade;
+                $row->max_4w += $quizgrade;
+                $row->max_10w += $quizgrade;
+                $row->max_all += $quizgrade;
                 
                 // Add breakdown detail for LIVE with actual attempt data
                 $detail = [
@@ -2366,18 +2395,25 @@ class homework_manager {
                 'points' => $pts,
             ];
             
-            // Get the anchor course for this user/category to determine due date buckets
-            $anchor_cid = $row->anchor_courseid;
-            $anchor_dates = $anchor_due_dates[$anchor_cid] ?? [];
+            // Get the user's due dates for this course to determine buckets
+            $user_course_key = $uid . '_' . $cid;
+            $user_dates = $user_due_dates[$user_course_key] ?? [];
             
-            // Define buckets based on anchor course due dates
-            $due_dates_2w = array_slice($anchor_dates, 0, 1);  // 1 most recent anchor due date
-            $due_dates_4w = array_slice($anchor_dates, 0, 3);  // 3 most recent anchor due dates
-            $due_dates_10w = array_slice($anchor_dates, 0, 9); // 9 most recent anchor due dates
+            // Define buckets based on user's own due dates for this course
+            $due_dates_2w = array_slice($user_dates, 0, 1);  // 1 most recent due date for this user
+            $due_dates_4w = array_slice($user_dates, 0, 3);  // 3 most recent due dates
+            $due_dates_10w = array_slice($user_dates, 0, 9); // 9 most recent due dates
+            
+            // Get max grade for this quiz (use stored quizgrade or fallback to live)
+            $max_grade = $quizgrade;
+            if ($max_grade == 0 && isset($r->quiz_grade_live)) {
+                $max_grade = (float)$r->quiz_grade_live;
+            }
             
             // Add to appropriate buckets based on due date
             if (in_array($due_date, $due_dates_2w)) {
                 $row->points_2w += $pts;
+                $row->max_2w += $max_grade;
                 $row->breakdown_2w[] = $detail;
                 if (!in_array($due_date, $row->duedates_2w)) {
                     $row->duedates_2w[] = $due_date;
@@ -2385,6 +2421,7 @@ class homework_manager {
             }
             if (in_array($due_date, $due_dates_4w)) {
                 $row->points_4w += $pts;
+                $row->max_4w += $max_grade;
                 $row->breakdown_4w[] = $detail;
                 if (!in_array($due_date, $row->duedates_4w)) {
                     $row->duedates_4w[] = $due_date;
@@ -2392,11 +2429,13 @@ class homework_manager {
             }
             if (in_array($due_date, $due_dates_10w)) {
                 $row->points_10w += $pts;
+                $row->max_10w += $max_grade;
                 if (!in_array($due_date, $row->duedates_10w)) {
                     $row->duedates_10w[] = $due_date;
                 }
             }
             $row->points_all += $pts;
+            $row->max_all += $max_grade;
             
             if (!isset($row->courses[$cid])) {
                 $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];

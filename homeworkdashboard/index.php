@@ -101,7 +101,7 @@ if (!empty($categoryid)) {
 $filter_userids = array_filter($userids, function($id) { return $id > 0; });
 
 if (!empty($filter_userids)) {
-    error_log("HM_DEBUG: Filtering courses for " . count($filter_userids) . " users.");
+    
     
     $enrolled_course_ids = [];
     foreach ($filter_userids as $uid) {
@@ -113,7 +113,7 @@ if (!empty($filter_userids)) {
         }
     }
     
-    error_log("HM_DEBUG: Found " . count($enrolled_course_ids) . " unique enrolled courses.");
+    
 
     // Intersect: Keep only courses that are in the enrolled list
     // If multiple users selected, we show union of their courses (any course ANY selected user is in)
@@ -121,7 +121,7 @@ if (!empty($filter_userids)) {
         return isset($enrolled_course_ids[$c->id]);
     });
     
-    error_log("HM_DEBUG: Filtered course list to " . count($courses) . " items.");
+    
 }
 
 $manager = new \local_homeworkdashboard\homework_manager();
@@ -193,7 +193,7 @@ if ($tab === "snapshot") {
         $report_duedates, // Pass selected due dates
         true // pastonly
     );
-    error_log("HM_DEBUG: Raw Rows Count: " . count($raw_rows));
+    
     
     // Debug: Log activities per user/timeclose
     $debug_counts = [];
@@ -206,7 +206,7 @@ if ($tab === "snapshot") {
         $debug_counts[$key]['quizzes'][] = $r->quizname . ' (' . $r->classification . ')';
     }
     foreach ($debug_counts as $k => $v) {
-        error_log("HM_DEBUG Reports: User {$v['name']} timeclose {$v['timeclose']} has {$v['count']} activities: " . implode(', ', $v['quizzes']));
+        
     }
 
     // Group by Student + Due Date
@@ -422,15 +422,18 @@ if ($tab === 'leaderboard') {
         $rows = array_values($rows);
     }
     
-    // Calculate Intellect Points by summing All Time points across all categories for each user
+    // Calculate Intellect Points and Max IP by summing All Time points across all categories for each user
     // This is simpler, includes live points, and is easy to verify (IP = sum of All Time column per user)
     $all_rows_for_ip = $manager->get_leaderboard_data(0, [], $excludestaff, []);
     $intellect_points = [];
+    $max_intellect_points = []; // Max possible IP per user
     foreach ($all_rows_for_ip as $r) {
         if (!isset($intellect_points[$r->userid])) {
             $intellect_points[$r->userid] = 0;
+            $max_intellect_points[$r->userid] = 0;
         }
         $intellect_points[$r->userid] += $r->points_all;
+        $max_intellect_points[$r->userid] += $r->max_all ?? 0;
     }
     
     // Apply sorting to leaderboard rows
@@ -547,7 +550,7 @@ if ($tab === 'leaderboard') {
         
         <!-- Charts Section (Always Visible) -->
         <div id="leaderboardCharts" style="margin-bottom: 20px;">
-            <!-- Top Row: Course/Category Level -->
+            <!-- Course/Category Level Charts (2x2) -->
             <div class="row">
                 <!-- Course Level: Students Points (Live, 2wk, 4wk) -->
                 <div class="col-md-6 mb-3">
@@ -564,7 +567,7 @@ if ($tab === 'leaderboard') {
                 <!-- Course Level: All Time & Class Level -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
-                        <div class="card-header bg-success text-white">
+                        <div class="card-header bg-primary text-white">
                             <strong>Course Level: All Time Points & Class Level</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
@@ -574,12 +577,60 @@ if ($tab === 'leaderboard') {
                 </div>
             </div>
             
-            <!-- Bottom Row: User Level (Aggregated) -->
+            <!-- Period Goal Charts (Single Row - 4x1) - Between Course and User Level -->
+            <div class="row">
+                <!-- Live Points vs Goal -->
+                <div class="col-md-3 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white py-2">
+                            <strong>Live vs Goal</strong>
+                        </div>
+                        <div class="card-body" style="height: 280px;">
+                            <canvas id="liveGoalChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 2 Week Points vs Goal -->
+                <div class="col-md-3 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white py-2">
+                            <strong>2 Week vs Goal</strong>
+                        </div>
+                        <div class="card-body" style="height: 280px;">
+                            <canvas id="w2GoalChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 4 Week Points vs Goal -->
+                <div class="col-md-3 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white py-2">
+                            <strong>4 Week vs Goal</strong>
+                        </div>
+                        <div class="card-body" style="height: 280px;">
+                            <canvas id="w4GoalChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <!-- 10 Week Points vs Goal -->
+                <div class="col-md-3 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white py-2">
+                            <strong>10 Week vs Goal</strong>
+                        </div>
+                        <div class="card-body" style="height: 280px;">
+                            <canvas id="w10GoalChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- User Level (Aggregated) -->
             <div class="row">
                 <!-- User Level: Students Points (Live, 2wk, 4wk) -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
-                        <div class="card-header bg-warning text-dark">
+                        <div class="card-header bg-success text-white">
                             <strong>User Level: Student Points (Live / 2wk / 4wk)</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
@@ -591,7 +642,7 @@ if ($tab === 'leaderboard') {
                 <!-- User Level: Intellect Points & Level -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
-                        <div class="card-header bg-info text-white">
+                        <div class="card-header bg-success text-white">
                             <strong>User Level: Intellect Points & Level</strong>
                         </div>
                         <div class="card-body" style="height: 350px;">
@@ -611,21 +662,27 @@ if ($tab === 'leaderboard') {
                         <th>ID</th>
                         <th class="sortable-column text-center" data-sort="level" style="cursor:pointer;">LEVEL <?php echo local_homeworkdashboard_sort_arrows('level', $sort, $dir); ?></th>
                         <th class="sortable-column text-center" data-sort="intellect_point" style="cursor:pointer;">Intellect Point <?php echo local_homeworkdashboard_sort_arrows('intellect_point', $sort, $dir); ?></th>
+                        <th class="text-center">MAX IP</th>
                         <th class="sortable-column" data-sort="categoryname" style="cursor:pointer;">CATEGORY <?php echo local_homeworkdashboard_sort_arrows('categoryname', $sort, $dir); ?></th>
                         <th>COURSES</th>
                         <th class="text-center">CLASS LEVEL</th>
                         <th>LIVE DUE DATE</th>
                         <th class="sortable-column" data-sort="latest_due_date" style="cursor:pointer;">LATEST DUE DATE <?php echo local_homeworkdashboard_sort_arrows('latest_due_date', $sort, $dir); ?></th>
-                        <th class="text-center">LIVE POINTS</th>
-                        <th class="text-center">2 WEEKS</th>
-                        <th class="text-center">4 WEEKS</th>
-                        <th class="text-center">10 WEEKS</th>
+                        <th class="text-center">LIVE</th>
+                        <th class="text-center">MAX</th>
+                        <th class="text-center">2 WK</th>
+                        <th class="text-center">MAX</th>
+                        <th class="text-center">4 WK</th>
+                        <th class="text-center">MAX</th>
+                        <th class="text-center">10 WK</th>
+                        <th class="text-center">MAX</th>
                         <th class="sortable-column text-center" data-sort="points_all" style="cursor:pointer;">ALL TIME <?php echo local_homeworkdashboard_sort_arrows('points_all', $sort, $dir); ?></th>
+                        <th class="text-center">MAX</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="14" class="text-center">No data found for current filters.</td></tr>
+                        <tr><td colspan="20" class="text-center">No data found for current filters.</td></tr>
                     <?php else: ?>
                         <?php foreach ($rows as $row): ?>
                             <tr>
@@ -642,7 +699,9 @@ if ($tab === 'leaderboard') {
                                 <?php 
                                     // Intellect Point = sum of All Time values (already divided by 10 for display)
                                     $raw_points = isset($intellect_points[$row->userid]) ? $intellect_points[$row->userid] : 0;
+                                    $raw_max_ip = isset($max_intellect_points[$row->userid]) ? $max_intellect_points[$row->userid] : 0;
                                     $ip = $raw_points / 10; // IP = sum of all time / 10 (matches All Time column)
+                                    $max_ip = $raw_max_ip / 10; // Max IP = sum of all max_all / 10
                                     $level = ceil($ip / 100); // Level = IP / 100, rounded up
                                     if ($level < 1) $level = 1; // Minimum level 1
                                 ?>
@@ -653,6 +712,10 @@ if ($tab === 'leaderboard') {
                                 <!-- Intellect Points = sum of All Time (divided by 10, 1 decimal) -->
                                 <td class="text-center font-weight-bold" style="color: #6f42c1;">
                                     <?php echo number_format($ip, 1); ?>
+                                </td>
+                                <!-- Max IP = sum of all max_all (divided by 10, 1 decimal) -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format($max_ip, 1); ?>
                                 </td>
                                 
                                 <!-- Category (clickable filter) -->
@@ -758,6 +821,10 @@ if ($tab === 'leaderboard') {
                                         <?php echo number_format($row->points_live / 10, 1); ?>
                                     </a>
                                 </td>
+                                <!-- Max Live - divided by 10 -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format(($row->max_live ?? 0) / 10, 1); ?>
+                                </td>
                                 <!-- 2 Weeks (clickable + tooltip) - divided by 10 -->
                                 <td class="text-center">
                                     <a href="#" class="points-link"
@@ -765,6 +832,10 @@ if ($tab === 'leaderboard') {
                                        title="Due dates: <?php echo s($tooltip_2w); ?>">
                                         <?php echo number_format($row->points_2w / 10, 1); ?>
                                     </a>
+                                </td>
+                                <!-- Max 2 Weeks - divided by 10 -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format(($row->max_2w ?? 0) / 10, 1); ?>
                                 </td>
                                 <!-- 4 Weeks (clickable + tooltip) - divided by 10 -->
                                 <td class="text-center">
@@ -774,12 +845,24 @@ if ($tab === 'leaderboard') {
                                         <?php echo number_format($row->points_4w / 10, 1); ?>
                                     </a>
                                 </td>
+                                <!-- Max 4 Weeks - divided by 10 -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format(($row->max_4w ?? 0) / 10, 1); ?>
+                                </td>
                                 <!-- 10 Weeks (tooltip only) - divided by 10 -->
                                 <td class="text-center" title="Due dates: <?php echo s($tooltip_10w); ?>" style="cursor: help;">
                                     <?php echo number_format($row->points_10w / 10, 1); ?>
                                 </td>
+                                <!-- Max 10 Weeks - divided by 10 -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format(($row->max_10w ?? 0) / 10, 1); ?>
+                                </td>
                                 <!-- All Time (no tooltip/modal) - divided by 10 -->
                                 <td class="text-center font-weight-bold text-primary"><?php echo number_format($row->points_all / 10, 1); ?></td>
+                                <!-- Max All Time - divided by 10 -->
+                                <td class="text-center" style="color: #999;">
+                                    <?php echo number_format(($row->max_all ?? 0) / 10, 1); ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -994,6 +1077,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Chart data from PHP
 var leaderboardChartData = {
+    // Goal Charts Data: Course Level with points and max (goal)
+    goalChartData: <?php
+        $goal_data = [];
+        foreach ($rows as $row) {
+            $goal_data[] = [
+                'name' => $row->fullname,
+                'category' => $row->categoryname ?? 'Unknown',
+                'live' => round(($row->points_live ?? 0) / 10, 1),
+                'max_live' => round(($row->max_live ?? 0) / 10, 1),
+                'w2' => round(($row->points_2w ?? 0) / 10, 1),
+                'max_w2' => round(($row->max_2w ?? 0) / 10, 1),
+                'w4' => round(($row->points_4w ?? 0) / 10, 1),
+                'max_w4' => round(($row->max_4w ?? 0) / 10, 1),
+                'w10' => round(($row->points_10w ?? 0) / 10, 1),
+                'max_w10' => round(($row->max_10w ?? 0) / 10, 1),
+                'all_time' => round(($row->points_all ?? 0) / 10, 1),
+                'max_all' => round(($row->max_all ?? 0) / 10, 1),
+                'class_level' => max(1, ceil(($row->points_all / 10) / 100)),
+            ];
+        }
+        // Sort by live points desc and take top 10
+        usort($goal_data, function($a, $b) { return $b['live'] <=> $a['live']; });
+        $goal_data = array_slice($goal_data, 0, 10);
+        echo json_encode($goal_data);
+    ?>,
+    
     // Course Level: Students with Live, 2wk, 4wk points (per category row)
     courseStudentPoints: <?php 
         $course_data = [];
@@ -1005,7 +1114,9 @@ var leaderboardChartData = {
                 'w2' => round(($row->points_2w ?? 0) / 10, 1),
                 'w4' => round(($row->points_4w ?? 0) / 10, 1),
                 'all_time' => round(($row->points_all ?? 0) / 10, 1),
-                'class_level' => max(1, ceil(($row->points_all / 10) / 100))
+                'class_level' => max(1, ceil(($row->points_all / 10) / 100)),
+                'max_live' => round(($row->max_live ?? 0) / 10, 1),
+                'max_all' => round(($row->max_all ?? 0) / 10, 1)
             ];
         }
         // Sort by live points desc and take top 10
@@ -1025,6 +1136,10 @@ var leaderboardChartData = {
                     'live' => 0,
                     'w2' => 0,
                     'w4' => 0,
+                    'max_live' => 0,
+                    'max_w2' => 0,
+                    'max_w4' => 0,
+                    'max_all' => 0,
                     'intellect_points' => 0,
                     'level' => 1
                 ];
@@ -1032,15 +1147,25 @@ var leaderboardChartData = {
             $user_agg[$uid]['live'] += ($row->points_live ?? 0) / 10;
             $user_agg[$uid]['w2'] += ($row->points_2w ?? 0) / 10;
             $user_agg[$uid]['w4'] += ($row->points_4w ?? 0) / 10;
+            $user_agg[$uid]['max_live'] += ($row->max_live ?? 0) / 10;
+            $user_agg[$uid]['max_w2'] += ($row->max_2w ?? 0) / 10;
+            $user_agg[$uid]['max_w4'] += ($row->max_4w ?? 0) / 10;
+            $user_agg[$uid]['max_all'] += ($row->max_all ?? 0) / 10;
         }
         // Add intellect points and level
         foreach ($user_agg as $uid => &$u) {
             $raw = isset($intellect_points[$uid]) ? $intellect_points[$uid] : 0;
+            $raw_max = isset($max_intellect_points[$uid]) ? $max_intellect_points[$uid] : 0;
             $u['intellect_points'] = round($raw / 10, 1);
+            $u['max_ip'] = round($raw_max / 10, 1);
             $u['level'] = max(1, ceil(($raw / 10) / 100));
             $u['live'] = round($u['live'], 1);
             $u['w2'] = round($u['w2'], 1);
             $u['w4'] = round($u['w4'], 1);
+            $u['max_live'] = round($u['max_live'], 1);
+            $u['max_w2'] = round($u['max_w2'], 1);
+            $u['max_w4'] = round($u['max_w4'], 1);
+            $u['max_all'] = round($u['max_all'], 1);
         }
         unset($u);
         $user_list = array_values($user_agg);
@@ -1095,7 +1220,7 @@ var leaderboardChartData = {
 var chartsInitialized = false;
 
 function initLeaderboardCharts() {
-    console.log('initLeaderboardCharts called, chartsInitialized:', chartsInitialized);
+    
     if (chartsInitialized) return;
     
     if (typeof Chart === 'undefined') {
@@ -1103,13 +1228,13 @@ function initLeaderboardCharts() {
         return;
     }
     
-    console.log('Chart.js available, rendering charts...');
+    
     renderCharts();
 }
 
 function renderCharts() {
-    console.log('renderCharts called');
-    console.log('Chart data:', leaderboardChartData);
+    
+    
     chartsInitialized = true;
     
     // Color palette
@@ -1117,8 +1242,94 @@ function renderCharts() {
         live: 'rgba(25, 135, 84, 0.8)',      // Green for live
         w2: 'rgba(13, 110, 253, 0.8)',       // Blue for 2 weeks
         w4: 'rgba(111, 66, 193, 0.8)',       // Purple for 4 weeks
-        allTime: 'rgba(253, 126, 20, 0.8)' // Orange for all time
+        w10: 'rgba(255, 193, 7, 0.8)',       // Yellow for 10 weeks
+        allTime: 'rgba(253, 126, 20, 0.8)', // Orange for all time
+        goal: 'rgba(220, 53, 69, 1)'         // Red for goal line
     };
+    
+    // =====================================================
+    // GOAL CHARTS (Combo: Bar + Line)
+    // =====================================================
+    var goalData = leaderboardChartData.goalChartData || [];
+    
+    // Helper function to create goal chart
+    function createGoalChart(canvasId, pointsKey, maxKey, barColor, title) {
+        var ctx = document.getElementById(canvasId);
+        if (!ctx || goalData.length === 0) return;
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: goalData.map(function(s) { return s.name; }),
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Points',
+                        data: goalData.map(function(s) { return s[pointsKey]; }),
+                        backgroundColor: barColor,
+                        borderColor: barColor.replace('0.8', '1'),
+                        borderWidth: 1,
+                        order: 2
+                    },
+                    {
+                        type: 'line',
+                        label: 'Goal',
+                        data: goalData.map(function(s) { return s[maxKey]; }),
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        borderWidth: 3,
+                        borderDash: [5, 5],
+                        pointBackgroundColor: '#dc3545',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        fill: false,
+                        tension: 0,
+                        order: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        position: 'top',
+                        reverse: true,
+                        labels: { usePointStyle: true }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function(context) {
+                                var idx = context[0].dataIndex;
+                                var pts = goalData[idx][pointsKey];
+                                var max = goalData[idx][maxKey];
+                                var pct = max > 0 ? Math.round((pts / max) * 100) : 0;
+                                return 'Progress: ' + pct + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { 
+                        beginAtZero: true,
+                        title: { display: true, text: 'Points' }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Create the 4 goal charts
+    createGoalChart('liveGoalChart', 'live', 'max_live', colors.live, 'Live');
+    createGoalChart('w2GoalChart', 'w2', 'max_w2', colors.w2, '2 Week');
+    createGoalChart('w4GoalChart', 'w4', 'max_w4', colors.w4, '4 Week');
+    createGoalChart('w10GoalChart', 'w10', 'max_w10', colors.w10, '10 Week');
     
     // Level badge colors (different color per level)
     var levelColors = [
@@ -1140,29 +1351,30 @@ function renderCharts() {
         return levelColors[level] || levelColors[0];
     }
     
-    // 1. Course Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar
+    // 1. Course Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar with Goal Dots
     var courseStudentCtx = document.getElementById('courseStudentPointsChart');
-    if (courseStudentCtx && leaderboardChartData.courseStudentPoints && leaderboardChartData.courseStudentPoints.length > 0) {
+    if (courseStudentCtx && leaderboardChartData.goalChartData && leaderboardChartData.goalChartData.length > 0) {
+        var cspData = leaderboardChartData.goalChartData;
         new Chart(courseStudentCtx, {
             type: 'bar',
             data: {
-                labels: leaderboardChartData.courseStudentPoints.map(function(s) { return s.name + ' (' + s.category + ')'; }),
+                labels: cspData.map(function(s) { return s.name + ' (' + s.category + ')'; }),
                 datasets: [
                     {
                         label: 'Live',
-                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.live; }),
+                        data: cspData.map(function(s) { return s.live; }),
                         backgroundColor: colors.live,
                         borderWidth: 1
                     },
                     {
                         label: '2 Weeks',
-                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.w2; }),
+                        data: cspData.map(function(s) { return s.w2; }),
                         backgroundColor: colors.w2,
                         borderWidth: 1
                     },
                     {
                         label: '4 Weeks',
-                        data: leaderboardChartData.courseStudentPoints.map(function(s) { return s.w4; }),
+                        data: cspData.map(function(s) { return s.w4; }),
                         backgroundColor: colors.w4,
                         borderWidth: 1
                     }
@@ -1176,16 +1388,63 @@ function renderCharts() {
                     legend: { position: 'top' }
                 },
                 scales: {
-                    x: { beginAtZero: true, stacked: false, title: { display: true, text: 'Points' } }
+                    x: { 
+                        beginAtZero: true, 
+                        stacked: false, 
+                        title: { display: true, text: 'Points' },
+                        max: Math.max(...cspData.map(function(s) { return Math.max(s.live || 0, s.w2 || 0, s.w4 || 0, s.max_live || 0, s.max_w2 || 0, s.max_w4 || 0); })) * 1.15
+                    }
                 }
-            }
+            },
+            plugins: [{
+                id: 'goalDots',
+                afterDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var yAxis = chart.scales.y;
+                    var xAxis = chart.scales.x;
+                    var meta = chart.getDatasetMeta(0);
+                    
+                    if (!meta.data || meta.data.length === 0) return;
+                    
+                    // Get bar height from first bar
+                    var barHeight = meta.data[0].height || 10;
+                    
+                    // Draw goal dots for each period (Live, 2wk, 4wk)
+                    var goalKeys = ['max_live', 'max_w2', 'max_w4'];
+                    var numBars = goalKeys.length;
+                    
+                    cspData.forEach(function(item, index) {
+                        var baseY = yAxis.getPixelForValue(index);
+                        
+                        goalKeys.forEach(function(key, barIndex) {
+                            if (item[key] > 0) {
+                                var goalX = xAxis.getPixelForValue(item[key]);
+                                // Offset y position to align with each bar in the group
+                                var barMeta = chart.getDatasetMeta(barIndex);
+                                var y = barMeta.data[index] ? barMeta.data[index].y : baseY;
+                                
+                                // Draw red goal dot
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.arc(goalX, y, 6, 0, 2 * Math.PI);
+                                ctx.fillStyle = '#dc3545';
+                                ctx.fill();
+                                ctx.strokeStyle = '#fff';
+                                ctx.lineWidth = 2;
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        });
+                    });
+                }
+            }]
         });
     }
     
     // 2. Course Level: All Time Points (Bar) + Class Level (Gauge)
     var courseAllTimeCtx = document.getElementById('courseAllTimeChart');
-    if (courseAllTimeCtx && leaderboardChartData.courseStudentPoints && leaderboardChartData.courseStudentPoints.length > 0) {
-        var courseData = leaderboardChartData.courseStudentPoints;
+    if (courseAllTimeCtx && leaderboardChartData.goalChartData && leaderboardChartData.goalChartData.length > 0) {
+        var courseData = leaderboardChartData.goalChartData;
         new Chart(courseAllTimeCtx, {
             type: 'bar',
             data: {
@@ -1205,7 +1464,11 @@ function renderCharts() {
                     legend: { display: false }
                 },
                 scales: {
-                    x: { beginAtZero: true, title: { display: true, text: 'All Time Points' } },
+                    x: { 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'All Time Points' },
+                        max: Math.max(...courseData.map(function(s) { return Math.max(s.all_time, s.max_all || 0); })) * 1.1
+                    },
                     y: {
                         ticks: {
                             callback: function(value, index) {
@@ -1247,6 +1510,20 @@ function renderCharts() {
                         ctx.fillStyle = '#fff';
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
+                        
+                        // Draw red goal dot at max_all position (separate save/restore)
+                        if (item.max_all > 0) {
+                            ctx.save();
+                            var goalX = xAxis.getPixelForValue(item.max_all);
+                            ctx.beginPath();
+                            ctx.arc(goalX, y, 6, 0, 2 * Math.PI);
+                            ctx.fillStyle = '#dc3545';
+                            ctx.fill();
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                            ctx.restore();
+                        }
                     });
                 }
             }]
@@ -1254,29 +1531,30 @@ function renderCharts() {
     }
     
     
-    // 3. User Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar
+    // 3. User Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar with Goal Dots
     var userStudentCtx = document.getElementById('userStudentPointsChart');
     if (userStudentCtx && leaderboardChartData.userStudentPoints && leaderboardChartData.userStudentPoints.length > 0) {
+        var uspData = leaderboardChartData.userStudentPoints;
         new Chart(userStudentCtx, {
             type: 'bar',
             data: {
-                labels: leaderboardChartData.userStudentPoints.map(function(s) { return s.name; }),
+                labels: uspData.map(function(s) { return s.name; }),
                 datasets: [
                     {
                         label: 'Live',
-                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.live; }),
+                        data: uspData.map(function(s) { return s.live; }),
                         backgroundColor: colors.live,
                         borderWidth: 1
                     },
                     {
                         label: '2 Weeks',
-                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.w2; }),
+                        data: uspData.map(function(s) { return s.w2; }),
                         backgroundColor: colors.w2,
                         borderWidth: 1
                     },
                     {
                         label: '4 Weeks',
-                        data: leaderboardChartData.userStudentPoints.map(function(s) { return s.w4; }),
+                        data: uspData.map(function(s) { return s.w4; }),
                         backgroundColor: colors.w4,
                         borderWidth: 1
                     }
@@ -1290,9 +1568,52 @@ function renderCharts() {
                     legend: { position: 'top' }
                 },
                 scales: {
-                    x: { beginAtZero: true, stacked: false, title: { display: true, text: 'Points' } }
+                    x: { 
+                        beginAtZero: true, 
+                        stacked: false, 
+                        title: { display: true, text: 'Points' },
+                        max: Math.max(...uspData.map(function(s) { return Math.max(s.live || 0, s.w2 || 0, s.w4 || 0, s.max_live || 0, s.max_w2 || 0, s.max_w4 || 0); })) * 1.15
+                    }
                 }
-            }
+            },
+            plugins: [{
+                id: 'userGoalDots',
+                afterDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var yAxis = chart.scales.y;
+                    var xAxis = chart.scales.x;
+                    var meta = chart.getDatasetMeta(0);
+                    
+                    if (!meta.data || meta.data.length === 0) return;
+                    
+                    // Draw goal dots for each period (Live, 2wk, 4wk)
+                    var goalKeys = ['max_live', 'max_w2', 'max_w4'];
+                    
+                    uspData.forEach(function(item, index) {
+                        var baseY = yAxis.getPixelForValue(index);
+                        
+                        goalKeys.forEach(function(key, barIndex) {
+                            if (item[key] > 0) {
+                                var goalX = xAxis.getPixelForValue(item[key]);
+                                // Offset y position to align with each bar in the group
+                                var barMeta = chart.getDatasetMeta(barIndex);
+                                var y = barMeta.data[index] ? barMeta.data[index].y : baseY;
+                                
+                                // Draw red goal dot
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.arc(goalX, y, 6, 0, 2 * Math.PI);
+                                ctx.fillStyle = '#dc3545';
+                                ctx.fill();
+                                ctx.strokeStyle = '#fff';
+                                ctx.lineWidth = 2;
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        });
+                    });
+                }
+            }]
         });
     }
     
@@ -1319,7 +1640,11 @@ function renderCharts() {
                     legend: { display: false }
                 },
                 scales: {
-                    x: { beginAtZero: true, title: { display: true, text: 'Intellect Points' } },
+                    x: { 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'Intellect Points' },
+                        max: Math.max(...userData.map(function(s) { return Math.max(s.intellect_points || 0, s.max_ip || 0); })) * 1.15
+                    },
                     y: {
                         ticks: {
                             callback: function(value, index) {
@@ -1361,6 +1686,20 @@ function renderCharts() {
                         ctx.fillStyle = '#fff';
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
+                        
+                        // Draw red goal dot at max_ip position (separate save/restore)
+                        if (item.max_ip > 0) {
+                            ctx.save();
+                            var goalX = xAxis.getPixelForValue(item.max_ip);
+                            ctx.beginPath();
+                            ctx.arc(goalX, y, 6, 0, 2 * Math.PI);
+                            ctx.fillStyle = '#dc3545';
+                            ctx.fill();
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                            ctx.restore();
+                        }
                     });
                 }
             }]
@@ -1816,11 +2155,11 @@ if ($tab === 'snapshot' && $canmanage) {
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM fully loaded and parsed');
+        
 
         // Process Queue Function
         var processQueue = function(queue, index) {
-            console.log('Processing queue item ' + index + ' of ' + queue.length);
+            
             
             if (index >= queue.length) {
                 alert('Process completed.');
@@ -1828,7 +2167,7 @@ if ($tab === 'snapshot' && $canmanage) {
             }
 
             var item = queue[index];
-            console.log('Processing item:', item);
+            
 
             var actionUrl = (item.action === 'sendemail') ? 'ajax_email_report.php' : 'ajax_send_report.php';
             var statusText = (item.action === 'sendemail') ? 'Sending Email...' : 'Generating...';
@@ -1855,14 +2194,14 @@ if ($tab === 'snapshot' && $canmanage) {
             
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4) {
-                    console.log('XHR Response Status:', xhr.status);
-                    console.log('XHR Response Text:', xhr.responseText);
+                    
+                    
 
                     if (xhr.status === 200) {
                         try {
                             var resp = JSON.parse(xhr.responseText);
                             if (resp.status === 'success') {
-                                console.log('Success for ' + item.userid);
+                                
                                 if (statusCell) {
                                     // Remove status badge
                                     var badges = statusCell.querySelectorAll('.badge');
@@ -1926,19 +2265,19 @@ if ($tab === 'snapshot' && $canmanage) {
             if (item.lang) {
                 params += '&lang=' + item.lang;
             }
-            console.log('Sending request with params:', params);
+            
             xhr.send(params);
         };
 
         // Generate Reports Button
         var btnGenerate = document.getElementById('btn-generate-reports');
         if (btnGenerate) {
-            console.log('Generate Reports button found');
+            
             btnGenerate.addEventListener('click', function(e) {
-                console.log('Generate Reports button clicked');
+                
                 e.preventDefault();
                 var lang = document.getElementById('report-lang-select').value;
-                console.log('Selected language:', lang);
+                
                 
                 var selected = [];
                 document.querySelectorAll('.report-checkbox:checked').forEach(function(cb) {
@@ -1965,7 +2304,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     }
                 });
 
-                console.log('Selected items:', selected);
+                
 
                 if (selected.length === 0) {
                     alert('Please select at least one student.');
@@ -1982,9 +2321,9 @@ if ($tab === 'snapshot' && $canmanage) {
         // Send Emails Button
         var btnSend = document.getElementById('btn-send-emails');
         if (btnSend) {
-            console.log('Send Emails button found');
+            
             btnSend.addEventListener('click', function(e) {
-                console.log('Send Emails button clicked');
+                
                 e.preventDefault();
                 var selected = [];
                 document.querySelectorAll('.report-checkbox:checked').forEach(function(cb) {
@@ -1995,7 +2334,7 @@ if ($tab === 'snapshot' && $canmanage) {
                     });
                 });
 
-                console.log('Selected items for email:', selected);
+                
 
                 if (selected.length === 0) {
                     alert('Please select at least one student.');
