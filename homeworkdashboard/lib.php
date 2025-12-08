@@ -57,11 +57,23 @@ function local_homeworkdashboard_calendar_get_event_homework_status(event_interf
  * Hook to inject course charts on course pages for Category 1, 2, and 3 courses.
  */
 function local_homeworkdashboard_before_standard_html_head() {
-    global $PAGE, $COURSE, $CFG;
+    global $PAGE, $COURSE, $CFG, $USER;
     
+    $output = '';
+    
+    // ==========================================
+    // PART 1: Gamification Stats Navbar Injection (ALL PAGES)
+    // ==========================================
+    if (isloggedin() && !isguestuser()) {
+        $output .= local_homeworkdashboard_render_gamification_navbar();
+    }
+    
+    // ==========================================
+    // PART 2: Course Charts (COURSE PAGES ONLY)
+    // ==========================================
     // Only run on course view pages
     if (strpos($PAGE->pagetype, 'course-view') !== 0) {
-        return '';
+        return $output;
     }
     
     // Only for Category 1, 2, or 3 courses
@@ -216,17 +228,15 @@ function local_homeworkdashboard_before_standard_html_head() {
                                     chartCtx.textAlign = 'center';
                                     chartCtx.fillText('Lv.' + level, x + 17, y + 4);
                                     
-                                    // Leader gets additional star badge
+                                    // Medal badges: Gold for 1st, Silver for 2nd
                                     if (index === 0) {
-                                        var starX = x + 42;
-                                        chartCtx.fillStyle = '#FFD700';
-                                        chartCtx.beginPath();
-                                        chartCtx.roundRect(starX, y - 10, 25, 20, 3);
-                                        chartCtx.fill();
-                                        chartCtx.fillStyle = '#dc3545';
-                                        chartCtx.font = 'bold 12px Arial';
-                                        chartCtx.textAlign = 'center';
-                                        chartCtx.fillText('★', starX + 12, y + 5);
+                                        chartCtx.font = '14px Arial';
+                                        chartCtx.textAlign = 'left';
+                                        chartCtx.fillText('🥇', x + 42, y + 5);
+                                    } else if (index === 1) {
+                                        chartCtx.font = '14px Arial';
+                                        chartCtx.textAlign = 'left';
+                                        chartCtx.fillText('🥈', x + 42, y + 5);
                                     }
                                 });
 
@@ -242,8 +252,121 @@ function local_homeworkdashboard_before_standard_html_head() {
     </script>
     ";
     
-    return $js;
+    return $output . $js;
 }
 
-
+/**
+ * Render gamification stats for navbar injection.
+ */
+function local_homeworkdashboard_render_gamification_navbar(): string {
+    global $CFG;
+    
+    $ajaxurl = $CFG->wwwroot . '/local/homeworkdashboard/ajax_get_gamification_stats.php';
+    
+    $js = "
+    <style>
+    .gm-navbar-stats {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-right: 15px;
+        padding: 4px 0;
+    }
+    .gm-navbar-stats .gm-stat-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        color: white;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        white-space: nowrap;
+    }
+    .gm-navbar-stats .gm-stat-pill:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+    }
+    .gm-navbar-stats .gm-stat-pill.gm-overall {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    }
+    .gm-navbar-stats .gm-stat-pill.gm-course {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .gm-navbar-stats .gm-stat-icon {
+        font-size: 14px;
+    }
+    .gm-navbar-stats .gm-stat-level {
+        background: rgba(255,255,255,0.25);
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 11px;
+    }
+    .gm-navbar-stats .gm-stat-points {
+        opacity: 0.9;
+        font-size: 11px;
+    }
+    /* Tooltip for full course name */
+    .gm-stat-pill[title] {
+        position: relative;
+    }
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Find the user menu container
+        var navbar = document.querySelector('.usermenu-container') || 
+                     document.querySelector('.usermenu') ||
+                     document.querySelector('nav.navbar .navbar-nav.d-none.d-md-flex');
+        
+        if (!navbar) {
+            console.log('Gamification: navbar container not found');
+            return;
+        }
+        
+        // Create stats container
+        var statsContainer = document.createElement('div');
+        statsContainer.className = 'gm-navbar-stats';
+        statsContainer.innerHTML = '<span style=\"color:#999;font-size:12px;\">Loading stats...</span>';
+        
+        // Insert before the user menu
+        navbar.parentNode.insertBefore(statsContainer, navbar);
+        
+        // Fetch stats via AJAX
+        fetch('{$ajaxurl}')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (!data.success) {
+                    statsContainer.innerHTML = '';
+                    return;
+                }
+                
+                var html = '';
+                
+                // Overall stats pill only (no course stats in navbar) - links to leaderboard
+                var leaderboardUrl = M.cfg.wwwroot + '/local/homeworkdashboard/index.php?tab=leaderboard';
+                html += '<a href=\"' + leaderboardUrl + '\" target=\"_blank\" class=\"gm-stat-pill gm-overall\" title=\"Total Intellect Points - Click to view Leaderboard\" style=\"text-decoration:none;\">';
+                // Icon removed from navbar per user request
+                if (data.overall.isLeader) {
+                    html += '<span style=\"font-size:14px;margin-right:4px;\">🥇</span>';
+                } else if (data.overall.isRunnerup) {
+                    html += '<span style=\"font-size:14px;margin-right:4px;\">🥈</span>';
+                }
+                html += '<span class=\"gm-stat-level\">Lvl ' + data.overall.level + '</span>';
+                html += '<span class=\"gm-stat-points\">' + Math.round(data.overall.points).toLocaleString() + ' IP</span>';
+                html += '</a>';
+                
+                statsContainer.innerHTML = html;
+            })
+            .catch(function(error) {
+                console.log('Gamification stats error:', error);
+                statsContainer.innerHTML = '';
+            });
+    });
+    </script>
+    ";
+    
+    return $js;
+}
 

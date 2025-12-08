@@ -618,19 +618,7 @@ if ($tab === 'leaderboard') {
 ?>
             <!-- Course/Category Level Charts (2x2) -->
             <div class="row">
-                <!-- Course Level: Students Points (Live, 2wk, 4wk) -->
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-primary text-white">
-                            <strong><?php echo $chart_title_prefix; ?>: Intellect Points (Live / 2wk / 4wk)</strong>
-                        </div>
-                        <div class="card-body" style="height: 350px;">
-                            <canvas id="courseStudentPointsChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Course Level: All Time & Class Level -->
+                <!-- Course Level: All Time & Class Level (FIRST) -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-primary text-white">
@@ -638,6 +626,18 @@ if ($tab === 'leaderboard') {
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="courseAllTimeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Course Level: Students Points (Live, 2wk, 4wk) (SECOND) -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <strong><?php echo $chart_title_prefix; ?>: Intellect Points (Live / 2wk / 4wk)</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="courseStudentPointsChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -693,19 +693,7 @@ if ($tab === 'leaderboard') {
             
             <!-- User Level (Aggregated) -->
             <div class="row">
-                <!-- User Level: Students Points (Live, 2wk, 4wk) -->
-                <div class="col-md-6 mb-3">
-                    <div class="card">
-                        <div class="card-header bg-success text-white">
-                            <strong>User Level: Intellect Points (Live / 2wk / 4wk)</strong>
-                        </div>
-                        <div class="card-body" style="height: 350px;">
-                            <canvas id="userStudentPointsChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- User Level: Intellect Points & Level -->
+                <!-- User Level: Intellect Points & Level (FIRST) -->
                 <div class="col-md-6 mb-3">
                     <div class="card">
                         <div class="card-header bg-success text-white">
@@ -713,6 +701,18 @@ if ($tab === 'leaderboard') {
                         </div>
                         <div class="card-body" style="height: 350px;">
                             <canvas id="userIntellectChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- User Level: Students Points (Live, 2wk, 4wk) (SECOND) -->
+                <div class="col-md-6 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <strong>User Level: Intellect Points (Live / 2wk / 4wk)</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="userStudentPointsChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1631,19 +1631,20 @@ function renderCharts() {
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
                         
-                        // Draw star badge for leader
+                        // Medal badges: Gold for 1st, Silver for 2nd
                         if (index === 0) {
                             ctx.save();
-                            var starX = badgeX + textWidth + padding * 2 + 5;
-                            ctx.fillStyle = '#FFD700';
-                            ctx.beginPath();
-                            ctx.roundRect(starX, y - 10, 20, 20, 4);
-                            ctx.fill();
-                            ctx.fillStyle = '#dc3545';
-                            ctx.font = 'bold 12px Arial';
-                            ctx.textAlign = 'center';
+                            ctx.font = '14px Arial';
+                            ctx.textAlign = 'left';
                             ctx.textBaseline = 'middle';
-                            ctx.fillText('★', starX + 10, y);
+                            ctx.fillText('🥇', badgeX + textWidth + padding * 2 + 5, y);
+                            ctx.restore();
+                        } else if (index === 1) {
+                            ctx.save();
+                            ctx.font = '14px Arial';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText('🥈', badgeX + textWidth + padding * 2 + 5, y);
                             ctx.restore();
                         }
                         
@@ -1834,19 +1835,20 @@ function renderCharts() {
                         ctx.fillText(badgeText, badgeX + padding, badgeY);
                         ctx.restore();
                         
-                        // Draw star badge for leader
+                        // Medal badges: Gold for 1st, Silver for 2nd
                         if (index === 0) {
                             ctx.save();
-                            var starX = badgeX + textWidth + padding * 2 + 5;
-                            ctx.fillStyle = '#FFD700';
-                            ctx.beginPath();
-                            ctx.roundRect(starX, y - 10, 20, 20, 4);
-                            ctx.fill();
-                            ctx.fillStyle = '#dc3545';
-                            ctx.font = 'bold 12px Arial';
-                            ctx.textAlign = 'center';
+                            ctx.font = '14px Arial';
+                            ctx.textAlign = 'left';
                             ctx.textBaseline = 'middle';
-                            ctx.fillText('★', starX + 10, y);
+                            ctx.fillText('🥇', badgeX + textWidth + padding * 2 + 5, y);
+                            ctx.restore();
+                        } else if (index === 1) {
+                            ctx.save();
+                            ctx.font = '14px Arial';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText('🥈', badgeX + textWidth + padding * 2 + 5, y);
                             ctx.restore();
                         }
                         
