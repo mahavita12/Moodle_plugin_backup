@@ -1,0 +1,518 @@
+/* Grow Minds Study - Custom Frontpage Styles */
+
+/* ===== CSS Variables ===== */
+:root {
+    --gm-primary: #1e88e5;
+    --gm-primary-dark: #1565c0;
+    --gm-secondary: #43a047;
+    --gm-secondary-dark: #2e7d32;
+    --gm-accent: #7c4dff;
+    --gm-text: #263238;
+    --gm-text-light: #546e7a;
+    --gm-white: #ffffff;
+    --gm-gray-50: #fafafa;
+    --gm-gray-100: #f5f5f5;
+    --gm-gray-200: #eeeeee;
+    --gm-shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+    --gm-shadow-md: 0 4px 20px rgba(0,0,0,0.12);
+    --gm-shadow-lg: 0 8px 40px rgba(0,0,0,0.16);
+    --gm-radius: 12px;
+    --gm-radius-lg: 20px;
+    --gm-transition: all 0.3s ease;
+}
+
+/* ===== Reset & Base ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--gm-text);
+    line-height: 1.6;
+    background: var(--gm-white);
+    overflow-x: hidden;
+}
+
+.gm-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+/* ===== Navigation ===== */
+.gm-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--gm-shadow-sm);
+}
+
+.gm-nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px 24px;
+}
+
+.gm-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--gm-text);
+}
+
+.gm-logo-icon {
+    font-size: 28px;
+}
+
+.gm-logo-text {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.gm-nav-links {
+    display: flex;
+    gap: 32px;
+}
+
+.gm-nav-link {
+    text-decoration: none;
+    color: var(--gm-text-light);
+    font-weight: 500;
+    font-size: 15px;
+    transition: var(--gm-transition);
+}
+
+.gm-nav-link:hover,
+.gm-nav-link.active {
+    color: var(--gm-primary);
+}
+
+/* ===== Buttons ===== */
+.gm-btn {
+    display: inline-block;
+    padding: 12px 28px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: var(--gm-transition);
+    border: none;
+}
+
+.gm-btn-primary {
+    background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
+    color: var(--gm-white);
+    box-shadow: 0 4px 15px rgba(30, 136, 229, 0.35);
+}
+
+.gm-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(30, 136, 229, 0.45);
+}
+
+.gm-btn-secondary {
+    background: var(--gm-gray-100);
+    color: var(--gm-text);
+}
+
+.gm-btn-secondary:hover {
+    background: var(--gm-gray-200);
+}
+
+.gm-btn-outline {
+    background: transparent;
+    border: 2px solid var(--gm-white);
+    color: var(--gm-white);
+}
+
+.gm-btn-outline:hover {
+    background: var(--gm-white);
+    color: var(--gm-primary);
+}
+
+.gm-btn-large {
+    padding: 16px 40px;
+    font-size: 17px;
+}
+
+/* ===== Hero Section ===== */
+.gm-hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #43a047 100%);
+    overflow: hidden;
+}
+
+.gm-hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></svg>');
+    background-size: 100px 100px;
+    animation: float 20s linear infinite;
+}
+
+@keyframes float {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-100px); }
+}
+
+.gm-hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.gm-hero-content {
+    position: relative;
+    z-index: 10;
+    color: var(--gm-white);
+    padding: 0 24px;
+    max-width: 800px;
+}
+
+.gm-hero-title {
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 700;
+    margin-bottom: 20px;
+    line-height: 1.2;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+}
+
+.gm-hero-subtitle {
+    font-size: clamp(16px, 2.5vw, 22px);
+    margin-bottom: 40px;
+    opacity: 0.95;
+    line-height: 1.6;
+}
+
+/* ===== Benefits Section ===== */
+.gm-benefits {
+    padding: 100px 0;
+    background: var(--gm-gray-50);
+}
+
+.gm-benefits-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+}
+
+.gm-benefit-card {
+    background: var(--gm-white);
+    padding: 40px 32px;
+    border-radius: var(--gm-radius-lg);
+    text-align: center;
+    box-shadow: var(--gm-shadow-sm);
+    transition: var(--gm-transition);
+}
+
+.gm-benefit-card:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--gm-shadow-lg);
+}
+
+.gm-benefit-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+.gm-benefit-title {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--gm-text);
+}
+
+.gm-benefit-desc {
+    color: var(--gm-text-light);
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+/* ===== Section Titles ===== */
+.gm-section-title {
+    text-align: center;
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    margin-bottom: 60px;
+    color: var(--gm-text);
+}
+
+/* ===== Programs Section ===== */
+.gm-programs {
+    padding: 100px 0;
+    background: var(--gm-white);
+}
+
+.gm-programs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 40px;
+}
+
+.gm-program-card {
+    background: var(--gm-white);
+    border-radius: var(--gm-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--gm-shadow-md);
+    transition: var(--gm-transition);
+}
+
+.gm-program-card:hover {
+    transform: translateY(-10px);
+    box-shadow: var(--gm-shadow-lg);
+}
+
+.gm-program-image {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gm-program-reading {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.gm-program-writing {
+    background: linear-gradient(135deg, #11998e, #38ef7d);
+}
+
+.gm-program-icon {
+    font-size: 72px;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+}
+
+.gm-program-content {
+    padding: 32px;
+}
+
+.gm-program-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--gm-text);
+}
+
+.gm-program-desc {
+    color: var(--gm-text-light);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 24px;
+}
+
+/* ===== Team Section ===== */
+.gm-team {
+    padding: 100px 0;
+    background: var(--gm-gray-50);
+}
+
+.gm-team-carousel {
+    overflow: hidden;
+    padding: 20px 0;
+}
+
+.gm-team-track {
+    display: flex;
+    gap: 24px;
+    transition: transform 0.5s ease;
+}
+
+.gm-team-card {
+    flex: 0 0 280px;
+    background: var(--gm-white);
+    padding: 40px 32px;
+    border-radius: var(--gm-radius-lg);
+    text-align: center;
+    box-shadow: var(--gm-shadow-sm);
+}
+
+.gm-team-avatar {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gm-team-avatar-placeholder {
+    font-size: 48px;
+    filter: grayscale(1) brightness(2);
+}
+
+.gm-team-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--gm-text);
+}
+
+.gm-team-role {
+    color: var(--gm-text-light);
+    font-size: 14px;
+}
+
+/* ===== Testimonials Section ===== */
+.gm-testimonials {
+    padding: 100px 0;
+    background: var(--gm-white);
+}
+
+.gm-testimonials-carousel {
+    overflow: hidden;
+    padding: 20px 0;
+}
+
+.gm-testimonials-track {
+    display: flex;
+    gap: 24px;
+    transition: transform 0.5s ease;
+}
+
+.gm-testimonial-card {
+    flex: 0 0 380px;
+    background: linear-gradient(135deg, var(--gm-gray-50), var(--gm-white));
+    padding: 40px;
+    border-radius: var(--gm-radius-lg);
+    box-shadow: var(--gm-shadow-sm);
+    border: 1px solid var(--gm-gray-200);
+}
+
+.gm-testimonial-quote {
+    font-size: 64px;
+    font-family: Georgia, serif;
+    color: var(--gm-primary);
+    opacity: 0.3;
+    line-height: 1;
+    margin-bottom: -20px;
+}
+
+.gm-testimonial-text {
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--gm-text);
+    margin-bottom: 24px;
+    font-style: italic;
+}
+
+.gm-testimonial-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gm-testimonial-name {
+    font-weight: 600;
+    color: var(--gm-text);
+}
+
+.gm-testimonial-grade {
+    color: var(--gm-text-light);
+    font-size: 14px;
+}
+
+/* ===== CTA Section ===== */
+.gm-cta {
+    padding: 120px 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #43a047 100%);
+    text-align: center;
+    color: var(--gm-white);
+}
+
+.gm-cta-title {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    margin-bottom: 16px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+
+.gm-cta-subtitle {
+    font-size: clamp(16px, 2vw, 20px);
+    margin-bottom: 40px;
+    opacity: 0.9;
+}
+
+/* ===== Footer ===== */
+.gm-footer {
+    padding: 60px 0;
+    background: #1a1a2e;
+    color: var(--gm-white);
+}
+
+.gm-footer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    text-align: center;
+}
+
+.gm-footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gm-footer-copyright {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+    .gm-nav-links {
+        display: none;
+    }
+    
+    .gm-benefits-grid,
+    .gm-programs-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .gm-team-card,
+    .gm-testimonial-card {
+        flex: 0 0 280px;
+    }
+}
+
+@media (max-width: 480px) {
+    .gm-btn-large {
+        padding: 14px 32px;
+        font-size: 15px;
+    }
+    
+    .gm-benefit-card,
+    .gm-program-content {
+        padding: 28px 20px;
+    }
+}
