@@ -10,6 +10,21 @@ defined('MOODLE_INTERNAL') || die();
 function local_frontpage_before_http_headers() {
     global $CFG, $PAGE;
     
+    // NEVER redirect during AJAX requests - this causes "redirecterrordetected" errors
+    if (defined('AJAX_SCRIPT') && AJAX_SCRIPT) {
+        return;
+    }
+    
+    // Don't redirect during CLI scripts
+    if (CLI_SCRIPT) {
+        return;
+    }
+    
+    // Don't redirect during web service calls
+    if (defined('WS_SERVER') && WS_SERVER) {
+        return;
+    }
+    
     // Only act on the site front page (index.php at site root)
     if ($PAGE->pagetype !== 'site-index') {
         return;
