@@ -50,6 +50,10 @@ class question_importer {
             if (!$tempfile || !file_put_contents($tempfile, $xmlcontent)) {
                 throw new \moodle_exception('Failed to create temporary file');
             }
+            
+            // Log XML content preview for debugging
+            error_log('Quiz Uploader - XML content first 500 chars: ' . substr($xmlcontent, 0, 500));
+            error_log('Quiz Uploader - XML content length: ' . strlen($xmlcontent));
 
             // Create qformat_xml importer
             $qformat = new \qformat_xml();
@@ -66,18 +70,36 @@ class question_importer {
             $qformat->setStoponerror(false);  // Continue on errors
             $qformat->set_display_progress(false);  // Disable progress output
 
-            // Import questions using standard importprocess
+            // Log before import attempt
+            error_log('Quiz Uploader - Starting importprocess...');
+            error_log('Quiz Uploader - Temp file exists: ' . (file_exists($tempfile) ? 'YES' : 'NO'));
+            error_log('Quiz Uploader - Temp file size: ' . filesize($tempfile) . ' bytes');
+            error_log('Quiz Uploader - Category ID: ' . $category->id . ', Context ID: ' . $category->contextid);
+            
+            // Import questions using importprocess (handles read + parse + save internally)
             if ($qformat->importprocess()) {
                 $result->success = true;
                 $result->questionids = $qformat->questionids;
                 $result->count = count($qformat->questionids);
+                error_log('Quiz Uploader - Import SUCCESS! Question count: ' . $result->count);
             } else {
-                $result->error = 'Import process failed';
-                $result->count = $qformat->importerrors;
+                // Get detailed error info
+                $errors = [];
+                if (property_exists($qformat, 'importerrors') && $qformat->importerrors) {
+                    $errors[] = 'Import errors count: ' . $qformat->importerrors;
+                }
+                // Check for question IDs even on failure
+                $questionCount = property_exists($qformat, 'questionids') ? count($qformat->questionids) : 0;
+                $errors[] = 'Questions imported before failure: ' . $questionCount;
+                
+                $result->error = 'Import process failed: ' . implode('; ', $errors);
+                $result->count = $qformat->importerrors ?? 0;
+                error_log('Quiz Uploader - Import FAILED: ' . $result->error);
             }
 
         } catch (\Exception $e) {
             $result->error = $e->getMessage();
+            error_log('Quiz Uploader - Exception: ' . $e->getMessage() . ' - Trace: ' . $e->getTraceAsString());
         } finally {
             // Clean up temp file
             if ($tempfile && file_exists($tempfile)) {
