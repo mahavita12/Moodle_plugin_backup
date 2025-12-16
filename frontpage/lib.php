@@ -31,11 +31,12 @@ function local_frontpage_before_http_headers() {
     }
     
     // Logged-in users (not guests) go to dashboard
-    if (isloggedin() && !isguestuser()) {
-        redirect(new moodle_url('/my/'));
-    }
+    // DISABLED so logged in users see the new frontpage too
+    // if (isloggedin() && !isguestuser()) {
+    //    redirect(new moodle_url('/my/'));
+    // }
     
-    // Guests and non-logged-in users go to custom frontpage
+    // Everyone goes to custom frontpage (logged-in users will then be redirected to /my/ by index.php)
     redirect(new moodle_url('/local/frontpage/'));
 }
 
@@ -44,4 +45,5 @@ function local_frontpage_before_http_headers() {
  */
 function local_frontpage_extend_navigation(global_navigation $navigation) {
     // Navigation extensions if needed
+    local_frontpage_before_http_headers();
 }

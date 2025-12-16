@@ -1,10 +1,7 @@
 <?php
 require_once(__DIR__ . '/../../config.php');
 
-// Redirect logged-in users to dashboard
-if (isloggedin() && !isguestuser()) {
-    redirect(new moodle_url('/my/'));
-}
+// Logged-in users now see the frontpage (no redirect to dashboard)
 
 $PAGE->set_url(new moodle_url('/local/frontpage/index.php'));
 $PAGE->set_context(context_system::instance());
