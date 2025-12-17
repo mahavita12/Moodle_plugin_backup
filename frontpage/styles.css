@@ -243,8 +243,18 @@ body {
 
 
 .gm-benefit-icon {
-    font-size: 56px;
     margin-bottom: 20px;
+}
+
+.gm-benefit-icon svg {
+    width: 56px;
+    height: 56px;
+    stroke: url(#icon-gradient);
+}
+
+.gm-benefit-icon svg path,
+.gm-benefit-icon svg circle {
+    stroke: url(#icon-gradient);
 }
 
 .gm-benefit-title {

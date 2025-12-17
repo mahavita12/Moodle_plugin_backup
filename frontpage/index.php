@@ -118,27 +118,64 @@ $testimonials = [
         </div>
     </section>
 
+    <!-- SVG Gradient Definition -->
+    <svg width="0" height="0" style="position: absolute;">
+        <defs>
+            <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#667eea" />
+                <stop offset="50%" style="stop-color:#764ba2" />
+                <stop offset="100%" style="stop-color:#43a047" />
+            </linearGradient>
+        </defs>
+    </svg>
+
     <!-- Benefits Section -->
     <section class="gm-benefits" id="about">
         <div class="gm-container">
             <div class="gm-benefits-grid">
                 <div class="gm-benefit-card">
-                    <div class="gm-benefit-icon">🎯</div>
+                    <div class="gm-benefit-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <circle cx="12" cy="12" r="6"></circle>
+                            <circle cx="12" cy="12" r="2"></circle>
+                        </svg>
+                    </div>
                     <h3 class="gm-benefit-title"><?php echo $benefit1_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit1_desc; ?></p>
                 </div>
                 <div class="gm-benefit-card">
-                    <div class="gm-benefit-icon">🌟</div>
+                    <div class="gm-benefit-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"></path>
+                        </svg>
+                    </div>
                     <h3 class="gm-benefit-title"><?php echo $benefit2_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit2_desc; ?></p>
                 </div>
                 <div class="gm-benefit-card">
-                    <div class="gm-benefit-icon">🏆</div>
+                    <div class="gm-benefit-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                            <path d="M4 22h16"></path>
+                            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+                            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
+                            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
+                        </svg>
+                    </div>
                     <h3 class="gm-benefit-title"><?php echo $benefit3_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit3_desc; ?></p>
                 </div>
                 <div class="gm-benefit-card">
-                    <div class="gm-benefit-icon">👨‍🏫</div>
+                    <div class="gm-benefit-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
                     <h3 class="gm-benefit-title"><?php echo $benefit4_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit4_desc; ?></p>
                 </div>
