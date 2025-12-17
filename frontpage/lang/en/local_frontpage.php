@@ -9,12 +9,12 @@ $string['hero_subtitle'] = 'Empowering Students for Academic Success powered by 
 $string['hero_cta'] = 'Register Today';
 
 // Benefits section
-$string['benefit1_title'] = 'Personalized Learning';
-$string['benefit1_desc'] = 'Tailored educational experiences that adapt to each student\'s unique learning style and pace.';
-$string['benefit2_title'] = 'Holistic Development';
-$string['benefit2_desc'] = 'Nurturing not just academic excellence, but also critical thinking and creativity.';
-$string['benefit3_title'] = 'Proven Success';
-$string['benefit3_desc'] = 'Our students consistently achieve outstanding results and develop lifelong learning skills.';
+$string['benefit1_title'] = 'Tailored Learning Plans';
+$string['benefit1_desc'] = 'We create customized learning experiences that cater to each student\'s unique strengths and challenges, ensuring maximum growth and success.';
+$string['benefit2_title'] = 'Holistic Growth Focus';
+$string['benefit2_desc'] = 'Our programs emphasize personal development, fostering well-rounded students who excel both in and out of the classroom.';
+$string['benefit3_title'] = 'Outstanding Outcomes';
+$string['benefit3_desc'] = 'We take pride in helping students achieve their academic goals, with a strong record of admissions into competitive programs.';
 $string['benefit4_title'] = 'Expert Guidance';
 $string['benefit4_desc'] = 'Learn from experienced educators who are passionate about helping students reach their full potential.';
 
