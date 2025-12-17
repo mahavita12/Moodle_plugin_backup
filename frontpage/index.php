@@ -139,9 +139,14 @@ $testimonials = [
     <!-- Our Approach Section -->
     <section class="gm-approach">
         <div class="gm-container">
-            <h2 class="gm-section-title"><?php echo $approach_title; ?></h2>
-            <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
-            <p class="gm-approach-desc"><?php echo $approach_desc; ?></p>
+            <div class="gm-approach-grid">
+                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approach.jpg') center center / cover no-repeat;"></div>
+                <div class="gm-approach-content">
+                    <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
+                    <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
+                    <p class="gm-approach-desc"><?php echo $approach_desc; ?></p>
+                </div>
+            </div>
         </div>
     </section>
 
