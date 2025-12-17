@@ -187,7 +187,7 @@ $testimonials = [
         </div>
     </section>
 
-    <!-- Team Section -->
+    <?php /* Team Section - Commented Out
     <section class="gm-team" id="team">
         <div class="gm-container">
             <h2 class="gm-section-title"><?php echo $team_title; ?></h2>
@@ -207,8 +207,9 @@ $testimonials = [
             </div>
         </div>
     </section>
+    */ ?>
 
-    <!-- Testimonials Section -->
+    <?php /* Testimonials Section - Commented Out
     <section class="gm-testimonials">
         <div class="gm-container">
             <h2 class="gm-section-title"><?php echo $testimonials_title; ?></h2>
@@ -229,6 +230,7 @@ $testimonials = [
             </div>
         </div>
     </section>
+    */ ?>
 
     <!-- CTA Section -->
     <section class="gm-cta">
