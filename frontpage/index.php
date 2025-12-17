@@ -54,6 +54,11 @@ $testimonials = [
     ['name' => 'Emma S.', 'grade' => 'Grade 8', 'text' => 'The Reading Club helped me discover my love for literature. My comprehension skills have improved dramatically!'],
     ['name' => 'James L.', 'grade' => 'Grade 10', 'text' => 'The Writing Club transformed my essay writing. I went from struggling to achieving top marks consistently.'],
     ['name' => 'Sophie M.', 'grade' => 'Grade 7', 'text' => 'The personalized approach really works. My tutor understands exactly how I learn best.'],
+    ['name' => 'Oliver T.', 'grade' => 'Grade 9', 'text' => 'I used to dread writing assignments, but now I actually enjoy them. The feedback I get is always so helpful and encouraging.'],
+    ['name' => 'Mia K.', 'grade' => 'Grade 11', 'text' => 'Grow Minds helped me prepare for my exams with confidence. My grades have improved significantly since I joined.'],
+    ['name' => 'Ethan R.', 'grade' => 'Grade 6', 'text' => 'The teachers make learning fun! I look forward to every session and have made so much progress in reading.'],
+    ['name' => 'Ava C.', 'grade' => 'Grade 8', 'text' => 'The AI-powered feedback helps me understand my mistakes instantly. I have become a much more confident writer.'],
+    ['name' => 'Lucas W.', 'grade' => 'Grade 12', 'text' => 'Grow Minds prepared me perfectly for my final exams. The structured approach and dedicated support made all the difference.'],
 ];
 
 ?>

@@ -389,6 +389,11 @@ body {
     background: var(--gm-white);
 }
 
+.gm-testimonials .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
+}
+
 .gm-testimonials-carousel {
     overflow: hidden;
     padding: 20px 0;
