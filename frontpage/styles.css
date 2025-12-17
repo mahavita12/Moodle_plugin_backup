@@ -262,8 +262,17 @@ body {
     text-align: center;
     font-size: clamp(28px, 4vw, 40px);
     font-weight: 700;
-    margin-bottom: 60px;
+    margin-bottom: 16px;
     color: var(--gm-text);
+}
+
+.gm-section-desc {
+    text-align: center;
+    font-size: 18px;
+    color: var(--gm-text-light);
+    max-width: 800px;
+    margin: 0 auto 60px;
+    line-height: 1.7;
 }
 
 /* ===== Programs Section ===== */

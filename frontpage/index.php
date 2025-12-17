@@ -32,6 +32,9 @@ $tutoring_desc = get_string('tutoring_desc', 'local_frontpage');
 
 $team_title = get_string('team_title', 'local_frontpage');
 $testimonials_title = get_string('testimonials_title', 'local_frontpage');
+$programs_desc = get_string('programs_desc', 'local_frontpage');
+$team_desc = get_string('team_desc', 'local_frontpage');
+$testimonials_desc = get_string('testimonials_desc', 'local_frontpage');
 
 $cta_title = get_string('cta_title', 'local_frontpage');
 $cta_subtitle = get_string('cta_subtitle', 'local_frontpage');
@@ -133,6 +136,7 @@ $testimonials = [
     <section class="gm-programs" id="programs">
         <div class="gm-container">
             <h2 class="gm-section-title"><?php echo $programs_title; ?></h2>
+            <p class="gm-section-desc"><?php echo $programs_desc; ?></p>
             <div class="gm-programs-grid">
                 <div class="gm-program-card">
                     <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program1.jpg') center center / cover no-repeat;">
@@ -169,6 +173,7 @@ $testimonials = [
     <section class="gm-team" id="team">
         <div class="gm-container">
             <h2 class="gm-section-title"><?php echo $team_title; ?></h2>
+            <p class="gm-section-desc"><?php echo $team_desc; ?></p>
             <div class="gm-team-carousel">
                 <div class="gm-team-track">
                     <?php foreach ($team_members as $member): ?>
@@ -189,6 +194,7 @@ $testimonials = [
     <section class="gm-testimonials">
         <div class="gm-container">
             <h2 class="gm-section-title"><?php echo $testimonials_title; ?></h2>
+            <p class="gm-section-desc"><?php echo $testimonials_desc; ?></p>
             <div class="gm-testimonials-carousel">
                 <div class="gm-testimonials-track">
                     <?php foreach ($testimonials as $testimonial): ?>
@@ -223,7 +229,6 @@ $testimonials = [
                     <span class="gm-logo-icon">🌱</span>
                     <span class="gm-logo-text">Grow Minds Study</span>
                 </div>
-                <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-outline"><?php echo $cta_button; ?></a>
                 <p class="gm-footer-copyright"><?php echo $footer_copyright; ?></p>
             </div>
         </div>

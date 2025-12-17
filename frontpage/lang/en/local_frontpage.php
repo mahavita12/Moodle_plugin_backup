@@ -20,6 +20,9 @@ $string['benefit4_desc'] = 'Learn from experienced educators who are passionate 
 
 // Programs section
 $string['programs_title'] = 'Our Programs';
+$string['programs_desc'] = 'Discover our comprehensive range of educational programs designed to help students excel academically and develop essential skills for lifelong success.';
+$string['team_desc'] = 'Our dedicated team of experienced educators is passionate about helping every student reach their full potential.';
+$string['testimonials_desc'] = 'Hear from our students and parents about their experiences with Grow Minds Study.';
 $string['reading_club'] = 'OC, Selective, Scholarship Trial Tests';
 $string['reading_club_desc'] = '<ul><li>Unique Set of Questions in Trial Tests</li><li>Detailed Performance Feedback with Progress Report</li><li>Time Management & Exam Technique</li></ul>';
 $string['writing_club'] = 'Small Group Tutoring';
