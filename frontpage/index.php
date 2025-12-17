@@ -74,10 +74,10 @@ $testimonials = [
     ['name' => 'James L.', 'grade' => 'Grade 10', 'text' => 'The Writing Club transformed my essay writing. I went from struggling to achieving top marks consistently.'],
     ['name' => 'Sophie M.', 'grade' => 'Grade 7', 'text' => 'The personalized approach really works. My tutor understands exactly how I learn best.'],
     ['name' => 'Oliver T.', 'grade' => 'Grade 9', 'text' => 'I used to dread writing assignments, but now I actually enjoy them. The feedback I get is always so helpful and encouraging.'],
-    ['name' => 'Mia K.', 'grade' => 'Grade 11', 'text' => 'Grow Minds helped me prepare for my exams with confidence. My grades have improved significantly since I joined.'],
+    ['name' => 'Mia K.', 'grade' => 'Grade 11', 'text' => 'GrowMinds Academy helped me prepare for my exams with confidence. My grades have improved significantly since I joined.'],
     ['name' => 'Ethan R.', 'grade' => 'Grade 6', 'text' => 'The teachers make learning fun! I look forward to every session and have made so much progress in reading.'],
     ['name' => 'Ava C.', 'grade' => 'Grade 8', 'text' => 'The AI-powered feedback helps me understand my mistakes instantly. I have become a much more confident writer.'],
-    ['name' => 'Lucas W.', 'grade' => 'Grade 12', 'text' => 'Grow Minds prepared me perfectly for my final exams. The structured approach and dedicated support made all the difference.'],
+    ['name' => 'Lucas W.', 'grade' => 'Grade 12', 'text' => 'GrowMinds Academy prepared me perfectly for my final exams. The structured approach and dedicated support made all the difference.'],
 ];
 
 ?>
@@ -86,7 +86,7 @@ $testimonials = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grow Minds Study - Trusted Educational Support</title>
+    <title>GrowMinds Academy - Trusted Educational Support</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -97,8 +97,8 @@ $testimonials = [
     <nav class="gm-nav">
         <div class="gm-nav-container">
             <a href="<?php echo $CFG->wwwroot; ?>" class="gm-logo">
-                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="Grow Minds" class="gm-logo-img">
-                <span class="gm-logo-text">Grow Minds Study</span>
+                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="GrowMinds Academy" class="gm-logo-img">
+                <span class="gm-logo-text">GrowMinds Academy</span>
             </a>
             <div class="gm-nav-links">
                 <a href="#" class="gm-nav-link active">Home</a>
@@ -299,8 +299,8 @@ $testimonials = [
             <div class="gm-footer-grid">
                 <div class="gm-footer-brand-section">
                     <div class="gm-footer-brand">
-                        <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="Grow Minds" class="gm-logo-img">
-                        <span class="gm-logo-text">Grow Minds Study</span>
+                        <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="GrowMinds Academy" class="gm-logo-img">
+                        <span class="gm-logo-text">GrowMinds Academy</span>
                     </div>
                     <p class="gm-footer-tagline">Empowering students to achieve academic excellence through personalized learning.</p>
                 </div>
@@ -312,7 +312,7 @@ $testimonials = [
                 </div>
                 <div class="gm-footer-contact">
                     <h4 class="gm-footer-heading">Contact Us</h4>
-                    <p class="gm-footer-info">📧 info@growmindsstudy.com.au</p>
+                    <p class="gm-footer-info">📧 info@growmindsacademy.com.au</p>
                     <p class="gm-footer-info">📞 (02) 1234 5678</p>
                     <p class="gm-footer-info">📍 Sydney, Australia</p>
                 </div>

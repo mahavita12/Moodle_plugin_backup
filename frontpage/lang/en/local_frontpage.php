@@ -21,12 +21,12 @@ $string['benefit4_desc'] = 'Learn from experienced educators who are passionate 
 // Programs section
 $string['approach_title'] = 'Our Approach';
 $string['approach_subtitle'] = 'Preparing Students for OC, Selective and Scholarship Tests with the Latest in AI and Data Analytics';
-$string['approach_desc'] = 'At Grow Minds Study, we are committed to transforming the way students learn. Our custom-built platform continuously tracks the latest questions released by leading assessment centres worldwide and integrates them into our practice tests. We also use advanced, in-house tools to monitor student progress across Essay Writing, Math, English and Thinking Skills. This allows us to deliver highly personalised learning materials – ensuring each student is fully prepared for the OC, Selective and Scholarship tests.';
+$string['approach_desc'] = 'At GrowMinds Academy, we are committed to transforming the way students learn. Our custom-built platform continuously tracks the latest questions released by leading assessment centres worldwide and integrates them into our practice tests. We also use advanced, in-house tools to monitor student progress across Essay Writing, Math, English and Thinking Skills. This allows us to deliver highly personalised learning materials – ensuring each student is fully prepared for the OC, Selective and Scholarship tests.';
 
 $string['programs_title'] = 'Our Programs';
 $string['programs_desc'] = 'Discover our comprehensive range of educational programs designed to help students excel academically and develop essential skills for lifelong success.';
 $string['team_desc'] = 'Our dedicated team of experienced educators is passionate about helping every student reach their full potential.';
-$string['testimonials_desc'] = 'Hear from our students and parents about their experiences with Grow Minds Study.';
+$string['testimonials_desc'] = 'Hear from our students and parents about their experiences with GrowMinds Academy.';
 $string['reading_club'] = 'OC, Selective, Scholarship Trial Tests';
 $string['reading_club_desc'] = '<ul><li>Unique Set of Questions in Trial Tests</li><li>Detailed Performance Feedback with Progress Report</li><li>Time Management & Exam Technique</li></ul>';
 $string['reading_club_detail'] = 'Our Trial Tests are designed to simulate the real OC, Selective, and Scholarship exam experience. Each test features a unique set of questions that are never repeated, ensuring students are always challenged with fresh content. After each test, students receive detailed performance feedback with a comprehensive progress report highlighting strengths and areas for improvement. We also focus on time management strategies and exam techniques to help students perform their best under pressure.';
@@ -45,8 +45,8 @@ $string['testimonials_title'] = 'Student Feedback';
 
 // CTA section
 $string['cta_title'] = 'Ready to Nurture Your Child\'s Success?';
-$string['cta_subtitle'] = 'Start Your Journey with Grow Minds Study Today';
+$string['cta_subtitle'] = 'Start Your Journey with GrowMinds Academy Today';
 $string['cta_button'] = 'Get Started';
 
 // Footer
-$string['footer_copyright'] = '© 2025 Grow Minds Study';
+$string['footer_copyright'] = '© 2025 GrowMinds Academy';
