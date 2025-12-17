@@ -224,11 +224,28 @@ $testimonials = [
     <!-- Footer -->
     <footer class="gm-footer">
         <div class="gm-container">
-            <div class="gm-footer-content">
-                <div class="gm-footer-brand">
-                    <span class="gm-logo-icon">🌱</span>
-                    <span class="gm-logo-text">Grow Minds Study</span>
+            <div class="gm-footer-grid">
+                <div class="gm-footer-brand-section">
+                    <div class="gm-footer-brand">
+                        <span class="gm-logo-icon">🌱</span>
+                        <span class="gm-logo-text">Grow Minds Study</span>
+                    </div>
+                    <p class="gm-footer-tagline">Empowering students to achieve academic excellence through personalized learning.</p>
                 </div>
+                <div class="gm-footer-links">
+                    <h4 class="gm-footer-heading">Quick Links</h4>
+                    <a href="#about" class="gm-footer-link">About Us</a>
+                    <a href="#programs" class="gm-footer-link">Our Programs</a>
+                    <a href="<?php echo $login_url; ?>" class="gm-footer-link">Student Login</a>
+                </div>
+                <div class="gm-footer-contact">
+                    <h4 class="gm-footer-heading">Contact Us</h4>
+                    <p class="gm-footer-info">📧 info@growmindsstudy.com.au</p>
+                    <p class="gm-footer-info">📞 (02) 1234 5678</p>
+                    <p class="gm-footer-info">📍 Sydney, Australia</p>
+                </div>
+            </div>
+            <div class="gm-footer-bottom">
                 <p class="gm-footer-copyright"><?php echo $footer_copyright; ?></p>
             </div>
         </div>
