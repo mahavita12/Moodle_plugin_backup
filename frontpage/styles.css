@@ -289,6 +289,8 @@ body {
     overflow: hidden;
     box-shadow: var(--gm-shadow-md);
     transition: var(--gm-transition);
+    position: relative;
+    padding-bottom: 80px;
 }
 
 .gm-program-card:hover {
@@ -322,6 +324,12 @@ body {
 
 .gm-program-content {
     padding: 32px;
+}
+
+.gm-program-content .gm-btn {
+    position: absolute;
+    bottom: 32px;
+    left: 32px;
 }
 
 .gm-program-title {
