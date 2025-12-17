@@ -48,10 +48,10 @@ $register_url = new moodle_url('/login/signup.php');
 
 // Team members data
 $team_members = [
-    ['name' => 'Sarah Johnson', 'role' => 'Education Director', 'image' => 'profile1.jpg'],
-    ['name' => 'Michael Chen', 'role' => 'Reading Specialist', 'image' => 'profile2.jpg'],
-    ['name' => 'Emily Williams', 'role' => 'Writing Coach', 'image' => 'profile3.jpg'],
-    ['name' => 'David Park', 'role' => 'Learning Advisor', 'image' => 'profile4.jpg'],
+    ['name' => 'Sarah Johnson', 'role' => 'Education Director', 'image' => 'profile1.jpg', 'bio' => 'Sarah brings over 15 years of experience in educational leadership. She holds a Master\'s degree in Education from Sydney University and is passionate about creating innovative learning environments that inspire students to reach their full potential.'],
+    ['name' => 'Michael Chen', 'role' => 'Reading Specialist', 'image' => 'profile2.jpg', 'bio' => 'Michael is a certified literacy specialist with expertise in developing reading comprehension strategies. He has helped hundreds of students discover the joy of reading and improve their analytical skills through engaging literature programs.'],
+    ['name' => 'Emily Williams', 'role' => 'Writing Coach', 'image' => 'profile3.jpg', 'bio' => 'Emily is an award-winning writing instructor who specializes in essay writing and creative expression. Her unique approach combines structured techniques with creative freedom, helping students find their authentic voice.'],
+    ['name' => 'David Park', 'role' => 'Learning Advisor', 'image' => 'profile4.jpg', 'bio' => 'David is dedicated to helping students develop effective study habits and learning strategies. With a background in educational psychology, he creates personalized learning plans that address each student\'s unique needs and goals.'],
 ];
 
 // Testimonials data
@@ -176,12 +176,13 @@ $testimonials = [
             <p class="gm-section-desc"><?php echo $team_desc; ?></p>
             <div class="gm-team-carousel">
                 <div class="gm-team-track">
-                    <?php foreach ($team_members as $member): ?>
-                    <div class="gm-team-card">
+                    <?php foreach ($team_members as $index => $member): ?>
+                    <div class="gm-team-card" onclick="openTeamModal(<?php echo $index; ?>)">
                         <div class="gm-team-avatar" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/<?php echo $member['image']; ?>') center center / cover no-repeat;">
                         </div>
                         <h4 class="gm-team-name"><?php echo $member['name']; ?></h4>
                         <p class="gm-team-role"><?php echo $member['role']; ?></p>
+
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -219,6 +220,17 @@ $testimonials = [
             <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary gm-btn-large"><?php echo $cta_button; ?></a>
         </div>
     </section>
+
+    <!-- Team Modal -->
+    <div id="teamModal" class="gm-modal">
+        <div class="gm-modal-content">
+            <span class="gm-modal-close" onclick="closeTeamModal()">&times;</span>
+            <div class="gm-modal-avatar" id="modalAvatar"></div>
+            <h3 class="gm-modal-name" id="modalName"></h3>
+            <p class="gm-modal-role" id="modalRole"></p>
+            <p class="gm-modal-bio" id="modalBio"></p>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="gm-footer">
@@ -278,6 +290,39 @@ $testimonials = [
                 }
             });
         });
+    });
+
+    // Team modal functionality
+    const teamMembers = <?php echo json_encode($team_members); ?>;
+    const wwwroot = '<?php echo $CFG->wwwroot; ?>';
+
+    function openTeamModal(index) {
+        const member = teamMembers[index];
+        document.getElementById('modalAvatar').style.background = `url('${wwwroot}/local/frontpage/public/${member.image}') center center / cover no-repeat`;
+        document.getElementById('modalName').textContent = member.name;
+        document.getElementById('modalRole').textContent = member.role;
+        document.getElementById('modalBio').textContent = member.bio;
+        document.getElementById('teamModal').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeTeamModal() {
+        document.getElementById('teamModal').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    // Close modal on outside click
+    document.getElementById('teamModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeTeamModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeTeamModal();
+        }
     });
     </script>
 </body>

@@ -422,6 +422,100 @@ body {
     font-size: 14px;
 }
 
+.gm-team-card {
+    cursor: pointer;
+}
+
+.gm-team-more {
+    display: block;
+    margin-top: 16px;
+    font-size: 13px;
+    color: #667eea;
+    font-weight: 500;
+}
+
+/* ===== Team Modal ===== */
+.gm-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.gm-modal.active {
+    display: flex;
+}
+
+.gm-modal-content {
+    background: var(--gm-white);
+    border-radius: var(--gm-radius-lg);
+    padding: 48px;
+    max-width: 500px;
+    width: 100%;
+    text-align: center;
+    position: relative;
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.gm-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 28px;
+    color: var(--gm-text-light);
+    cursor: pointer;
+    transition: var(--gm-transition);
+}
+
+.gm-modal-close:hover {
+    color: var(--gm-text);
+}
+
+.gm-modal-avatar {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    margin: 0 auto 24px;
+}
+
+.gm-modal-name {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--gm-text);
+}
+
+.gm-modal-role {
+    font-size: 16px;
+    color: #667eea;
+    font-weight: 500;
+    margin-bottom: 24px;
+}
+
+.gm-modal-bio {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--gm-text-light);
+}
+
 /* ===== Testimonials Section ===== */
 .gm-testimonials {
     padding: 100px 0;
