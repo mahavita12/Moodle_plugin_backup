@@ -19,6 +19,10 @@ $string['benefit4_title'] = 'Expert Guidance';
 $string['benefit4_desc'] = 'Learn from experienced educators who are passionate about helping students reach their full potential.';
 
 // Programs section
+$string['approach_title'] = 'Our Approach';
+$string['approach_subtitle'] = 'Preparing Students for OC, Selective and Scholarship Tests with the Latest in AI and Data Analytics';
+$string['approach_desc'] = 'At Grow Minds Study, we are committed to transforming the way students learn. Our custom-built platform continuously tracks the latest questions released by leading assessment centres worldwide and integrates them into our practice tests. We also use advanced, in-house tools to monitor student progress across Essay Writing, Math, English and Thinking Skills. This allows us to deliver highly personalised learning materials – ensuring each student is fully prepared for the OC, Selective and Scholarship tests.';
+
 $string['programs_title'] = 'Our Programs';
 $string['programs_desc'] = 'Discover our comprehensive range of educational programs designed to help students excel academically and develop essential skills for lifelong success.';
 $string['team_desc'] = 'Our dedicated team of experienced educators is passionate about helping every student reach their full potential.';

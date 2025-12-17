@@ -22,6 +22,10 @@ $benefit3_desc = get_string('benefit3_desc', 'local_frontpage');
 $benefit4_title = get_string('benefit4_title', 'local_frontpage');
 $benefit4_desc = get_string('benefit4_desc', 'local_frontpage');
 
+$approach_title = get_string('approach_title', 'local_frontpage');
+$approach_subtitle = get_string('approach_subtitle', 'local_frontpage');
+$approach_desc = get_string('approach_desc', 'local_frontpage');
+
 $programs_title = get_string('programs_title', 'local_frontpage');
 $reading_club = get_string('reading_club', 'local_frontpage');
 $reading_club_desc = get_string('reading_club_desc', 'local_frontpage');
@@ -129,6 +133,15 @@ $testimonials = [
                     <p class="gm-benefit-desc"><?php echo $benefit4_desc; ?></p>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- Our Approach Section -->
+    <section class="gm-approach">
+        <div class="gm-container">
+            <h2 class="gm-section-title"><?php echo $approach_title; ?></h2>
+            <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
+            <p class="gm-approach-desc"><?php echo $approach_desc; ?></p>
         </div>
     </section>
 

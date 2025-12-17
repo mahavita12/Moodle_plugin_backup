@@ -272,6 +272,31 @@ body {
     line-height: 1.7;
 }
 
+/* ===== Our Approach Section ===== */
+.gm-approach {
+    padding: 100px 0;
+    background: var(--gm-white);
+}
+
+.gm-approach-subtitle {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 600;
+    color: #667eea;
+    max-width: 900px;
+    margin: 0 auto 32px;
+    line-height: 1.5;
+}
+
+.gm-approach-desc {
+    text-align: center;
+    font-size: 17px;
+    color: var(--gm-text-light);
+    max-width: 900px;
+    margin: 0 auto;
+    line-height: 1.9;
+}
+
 /* ===== Programs Section ===== */
 .gm-programs {
     padding: 100px 0;
