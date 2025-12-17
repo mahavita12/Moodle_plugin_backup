@@ -140,7 +140,7 @@ $testimonials = [
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $reading_club; ?></h3>
-                        <p class="gm-program-desc"><?php echo $reading_club_desc; ?></p>
+                        <div class="gm-program-desc"><?php echo format_text($reading_club_desc, FORMAT_HTML); ?></div>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>
@@ -150,7 +150,7 @@ $testimonials = [
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
-                        <p class="gm-program-desc"><?php echo $writing_club_desc; ?></p>
+                        <div class="gm-program-desc"><?php echo format_text($writing_club_desc, FORMAT_HTML); ?></div>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>
@@ -160,7 +160,7 @@ $testimonials = [
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
-                        <p class="gm-program-desc"><?php echo $tutoring_desc; ?></p>
+                        <div class="gm-program-desc"><?php echo format_text($tutoring_desc, FORMAT_HTML); ?></div>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>

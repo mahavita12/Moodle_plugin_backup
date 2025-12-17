@@ -336,6 +336,17 @@ body {
     font-size: 15px;
     line-height: 1.7;
     margin-bottom: 24px;
+    text-align: left;
+}
+
+.gm-program-desc ul {
+    list-style: disc outside;
+    margin: 0;
+    padding: 0 0 0 24px;
+}
+
+.gm-program-desc li {
+    margin-bottom: 10px;
 }
 
 /* ===== Team Section ===== */
