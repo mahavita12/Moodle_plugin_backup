@@ -366,8 +366,6 @@ body {
     overflow: hidden;
     box-shadow: var(--gm-shadow-md);
     transition: var(--gm-transition);
-    position: relative;
-    padding-bottom: 80px;
 }
 
 .gm-program-card:hover {
