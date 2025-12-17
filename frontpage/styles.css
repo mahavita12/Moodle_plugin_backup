@@ -80,6 +80,12 @@ body {
     font-size: 28px;
 }
 
+.gm-logo-img {
+    height: 32px;
+    width: auto;
+    margin-right: 8px;
+}
+
 .gm-logo-text {
     font-size: 20px;
     font-weight: 700;

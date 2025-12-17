@@ -87,7 +87,7 @@ $testimonials = [
     <nav class="gm-nav">
         <div class="gm-nav-container">
             <a href="<?php echo $CFG->wwwroot; ?>" class="gm-logo">
-                <span class="gm-logo-icon">🌱</span>
+                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="Grow Minds" class="gm-logo-img">
                 <span class="gm-logo-text">Grow Minds Study</span>
             </a>
             <div class="gm-nav-links">
@@ -157,7 +157,7 @@ $testimonials = [
             <p class="gm-section-desc"><?php echo $programs_desc; ?></p>
             <div class="gm-programs-grid">
                 <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program1.jpg') center center / cover no-repeat;">
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs1.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $reading_club; ?></h3>
@@ -166,7 +166,7 @@ $testimonials = [
                     </div>
                 </div>
                 <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program2.jpg') center center / cover no-repeat;">
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs2.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
@@ -175,7 +175,7 @@ $testimonials = [
                     </div>
                 </div>
                 <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program3.jpg') center center / cover no-repeat;">
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs3.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
@@ -258,7 +258,7 @@ $testimonials = [
             <div class="gm-footer-grid">
                 <div class="gm-footer-brand-section">
                     <div class="gm-footer-brand">
-                        <span class="gm-logo-icon">🌱</span>
+                        <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="Grow Minds" class="gm-logo-img">
                         <span class="gm-logo-text">Grow Minds Study</span>
                     </div>
                     <p class="gm-footer-tagline">Empowering students to achieve academic excellence through personalized learning.</p>
