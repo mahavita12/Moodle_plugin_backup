@@ -492,6 +492,17 @@ body {
     color: var(--gm-white);
 }
 
+.gm-cta .gm-btn-primary {
+    background: var(--gm-white);
+    color: #764ba2;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.gm-cta .gm-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+}
+
 .gm-cta-title {
     font-size: clamp(28px, 4vw, 42px);
     font-weight: 700;
