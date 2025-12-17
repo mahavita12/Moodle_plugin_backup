@@ -15,6 +15,8 @@ $string['benefit2_title'] = 'Holistic Development';
 $string['benefit2_desc'] = 'Nurturing not just academic excellence, but also critical thinking and creativity.';
 $string['benefit3_title'] = 'Proven Success';
 $string['benefit3_desc'] = 'Our students consistently achieve outstanding results and develop lifelong learning skills.';
+$string['benefit4_title'] = 'Expert Guidance';
+$string['benefit4_desc'] = 'Learn from experienced educators who are passionate about helping students reach their full potential.';
 
 // Programs section
 $string['programs_title'] = 'Our Programs';

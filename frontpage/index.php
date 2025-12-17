@@ -19,6 +19,8 @@ $benefit2_title = get_string('benefit2_title', 'local_frontpage');
 $benefit2_desc = get_string('benefit2_desc', 'local_frontpage');
 $benefit3_title = get_string('benefit3_title', 'local_frontpage');
 $benefit3_desc = get_string('benefit3_desc', 'local_frontpage');
+$benefit4_title = get_string('benefit4_title', 'local_frontpage');
+$benefit4_desc = get_string('benefit4_desc', 'local_frontpage');
 
 $programs_title = get_string('programs_title', 'local_frontpage');
 $reading_club = get_string('reading_club', 'local_frontpage');
@@ -64,7 +66,7 @@ $testimonials = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css">
+    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=<?php echo time(); ?>">
 </head>
 <body>
     <!-- Navigation -->
@@ -113,6 +115,11 @@ $testimonials = [
                     <div class="gm-benefit-icon">🏆</div>
                     <h3 class="gm-benefit-title"><?php echo $benefit3_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit3_desc; ?></p>
+                </div>
+                <div class="gm-benefit-card">
+                    <div class="gm-benefit-icon">👨‍🏫</div>
+                    <h3 class="gm-benefit-title"><?php echo $benefit4_title; ?></h3>
+                    <p class="gm-benefit-desc"><?php echo $benefit4_desc; ?></p>
                 </div>
             </div>
         </div>

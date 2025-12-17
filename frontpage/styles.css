@@ -42,6 +42,11 @@ body {
     padding: 0 24px;
 }
 
+.gm-benefits .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
+}
+
 /* ===== Navigation ===== */
 .gm-nav {
     position: fixed;
@@ -202,17 +207,29 @@ body {
 
 .gm-benefits-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 32px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
 }
 
 .gm-benefit-card {
     background: var(--gm-white);
-    padding: 40px 32px;
+    padding: 28px 20px;
     border-radius: var(--gm-radius-lg);
     text-align: center;
     box-shadow: var(--gm-shadow-sm);
     transition: var(--gm-transition);
+}
+
+@media (max-width: 1200px) {
+    .gm-benefits-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 500px) {
+    .gm-benefits-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .gm-benefit-card:hover {
@@ -221,7 +238,7 @@ body {
 }
 
 .gm-benefit-icon {
-    font-size: 48px;
+    font-size: 56px;
     margin-bottom: 20px;
 }
 
@@ -476,7 +493,6 @@ body {
         display: none;
     }
     
-    .gm-benefits-grid,
     .gm-programs-grid {
         grid-template-columns: 1fr;
     }
