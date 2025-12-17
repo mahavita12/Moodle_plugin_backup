@@ -86,7 +86,7 @@ $testimonials = [
     </nav>
 
     <!-- Hero Section -->
-    <section class="gm-hero">
+    <section class="gm-hero" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/growminds_hero.jpg') center center / cover no-repeat;">
         <div class="gm-hero-overlay"></div>
         <div class="gm-hero-content">
             <h1 class="gm-hero-title"><?php echo $hero_title; ?></h1>
