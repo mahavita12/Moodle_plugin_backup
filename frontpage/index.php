@@ -80,7 +80,7 @@ $testimonials = [
                 <a href="#" class="gm-nav-link active">Home</a>
                 <a href="<?php echo $login_url; ?>" class="gm-nav-link">Classroom</a>
             </div>
-            <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary"><?php echo $hero_cta; ?></a>
+            <a href="<?php echo $login_url; ?>" class="gm-btn gm-btn-primary">Log In</a>
         </div>
     </nav>
 
