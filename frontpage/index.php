@@ -109,7 +109,7 @@ $testimonials = [
     </nav>
 
     <!-- Hero Section -->
-    <section class="gm-hero" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/growminds_hero.jpg') center center / cover no-repeat;">
+    <section class="gm-hero" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/hero_background.jpg') center center / cover no-repeat;">
         <div class="gm-hero-overlay"></div>
         <div class="gm-hero-content">
             <h1 class="gm-hero-title"><?php echo $hero_title; ?></h1>
@@ -150,7 +150,7 @@ $testimonials = [
     <section class="gm-approach">
         <div class="gm-container">
             <div class="gm-approach-grid">
-                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approach.jpg') center center / cover no-repeat;"></div>
+                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.jpg') center center / cover no-repeat;"></div>
                 <div class="gm-approach-content">
                     <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
                     <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
