@@ -395,17 +395,8 @@ body {
 .gm-team-avatar {
     width: 100px;
     height: 100px;
-    background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
     border-radius: 50%;
     margin: 0 auto 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.gm-team-avatar-placeholder {
-    font-size: 48px;
-    filter: grayscale(1) brightness(2);
 }
 
 .gm-team-name {

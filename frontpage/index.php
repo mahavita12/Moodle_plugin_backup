@@ -48,10 +48,10 @@ $register_url = new moodle_url('/login/signup.php');
 
 // Team members data
 $team_members = [
-    ['name' => 'Sarah Johnson', 'role' => 'Education Director'],
-    ['name' => 'Michael Chen', 'role' => 'Reading Specialist'],
-    ['name' => 'Emily Williams', 'role' => 'Writing Coach'],
-    ['name' => 'David Park', 'role' => 'Learning Advisor'],
+    ['name' => 'Sarah Johnson', 'role' => 'Education Director', 'image' => 'profile1.jpg'],
+    ['name' => 'Michael Chen', 'role' => 'Reading Specialist', 'image' => 'profile2.jpg'],
+    ['name' => 'Emily Williams', 'role' => 'Writing Coach', 'image' => 'profile3.jpg'],
+    ['name' => 'David Park', 'role' => 'Learning Advisor', 'image' => 'profile4.jpg'],
 ];
 
 // Testimonials data
@@ -178,8 +178,7 @@ $testimonials = [
                 <div class="gm-team-track">
                     <?php foreach ($team_members as $member): ?>
                     <div class="gm-team-card">
-                        <div class="gm-team-avatar">
-                            <span class="gm-team-avatar-placeholder">👤</span>
+                        <div class="gm-team-avatar" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/<?php echo $member['image']; ?>') center center / cover no-repeat;">
                         </div>
                         <h4 class="gm-team-name"><?php echo $member['name']; ?></h4>
                         <p class="gm-team-role"><?php echo $member['role']; ?></p>
