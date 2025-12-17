@@ -15,13 +15,17 @@ $string['benefit2_title'] = 'Holistic Development';
 $string['benefit2_desc'] = 'Nurturing not just academic excellence, but also critical thinking and creativity.';
 $string['benefit3_title'] = 'Proven Success';
 $string['benefit3_desc'] = 'Our students consistently achieve outstanding results and develop lifelong learning skills.';
+$string['benefit4_title'] = 'Expert Guidance';
+$string['benefit4_desc'] = 'Learn from experienced educators who are passionate about helping students reach their full potential.';
 
 // Programs section
 $string['programs_title'] = 'Our Programs';
-$string['reading_club'] = 'Reading Club Program';
-$string['reading_club_desc'] = 'Develop strong reading comprehension, vocabulary, and analytical skills through engaging literary exploration.';
-$string['writing_club'] = 'Writing Club Program';
-$string['writing_club_desc'] = 'Master the art of written expression with structured guidance in essay writing, creative writing, and communication.';
+$string['reading_club'] = 'OC, Selective, Scholarship Trial Tests';
+$string['reading_club_desc'] = '<ul><li>Unique Set of Questions in Trial Tests</li><li>Detailed Performance Feedback with Progress Report</li><li>Time Management & Exam Technique</li></ul>';
+$string['writing_club'] = 'Small Group Tutoring';
+$string['writing_club_desc'] = '<ul><li>Maximum of Four in a Class</li><li>Subject-Specific Help</li><li>Highly Personalized Study Plans</li></ul>';
+$string['tutoring'] = 'Focused Skill Workshops';
+$string['tutoring_desc'] = '<ul><li>Targeted Support for Essay Writing, Reading, Math and Thinking Skills</li><li>Confidence Building Activities (Presentation and Interview Prep Sessions)</li><li>Growth Mindset and Motivation Sessions</li></ul>';
 
 // Team section
 $string['team_title'] = 'Our Team';

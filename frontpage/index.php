@@ -19,12 +19,16 @@ $benefit2_title = get_string('benefit2_title', 'local_frontpage');
 $benefit2_desc = get_string('benefit2_desc', 'local_frontpage');
 $benefit3_title = get_string('benefit3_title', 'local_frontpage');
 $benefit3_desc = get_string('benefit3_desc', 'local_frontpage');
+$benefit4_title = get_string('benefit4_title', 'local_frontpage');
+$benefit4_desc = get_string('benefit4_desc', 'local_frontpage');
 
 $programs_title = get_string('programs_title', 'local_frontpage');
 $reading_club = get_string('reading_club', 'local_frontpage');
 $reading_club_desc = get_string('reading_club_desc', 'local_frontpage');
 $writing_club = get_string('writing_club', 'local_frontpage');
 $writing_club_desc = get_string('writing_club_desc', 'local_frontpage');
+$tutoring = get_string('tutoring', 'local_frontpage');
+$tutoring_desc = get_string('tutoring_desc', 'local_frontpage');
 
 $team_title = get_string('team_title', 'local_frontpage');
 $testimonials_title = get_string('testimonials_title', 'local_frontpage');
@@ -52,6 +56,11 @@ $testimonials = [
     ['name' => 'Emma S.', 'grade' => 'Grade 8', 'text' => 'The Reading Club helped me discover my love for literature. My comprehension skills have improved dramatically!'],
     ['name' => 'James L.', 'grade' => 'Grade 10', 'text' => 'The Writing Club transformed my essay writing. I went from struggling to achieving top marks consistently.'],
     ['name' => 'Sophie M.', 'grade' => 'Grade 7', 'text' => 'The personalized approach really works. My tutor understands exactly how I learn best.'],
+    ['name' => 'Oliver T.', 'grade' => 'Grade 9', 'text' => 'I used to dread writing assignments, but now I actually enjoy them. The feedback I get is always so helpful and encouraging.'],
+    ['name' => 'Mia K.', 'grade' => 'Grade 11', 'text' => 'Grow Minds helped me prepare for my exams with confidence. My grades have improved significantly since I joined.'],
+    ['name' => 'Ethan R.', 'grade' => 'Grade 6', 'text' => 'The teachers make learning fun! I look forward to every session and have made so much progress in reading.'],
+    ['name' => 'Ava C.', 'grade' => 'Grade 8', 'text' => 'The AI-powered feedback helps me understand my mistakes instantly. I have become a much more confident writer.'],
+    ['name' => 'Lucas W.', 'grade' => 'Grade 12', 'text' => 'Grow Minds prepared me perfectly for my final exams. The structured approach and dedicated support made all the difference.'],
 ];
 
 ?>
@@ -64,7 +73,7 @@ $testimonials = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css">
+    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=<?php echo time(); ?>">
 </head>
 <body>
     <!-- Navigation -->
@@ -76,17 +85,14 @@ $testimonials = [
             </a>
             <div class="gm-nav-links">
                 <a href="#" class="gm-nav-link active">Home</a>
-                <a href="#about" class="gm-nav-link">About</a>
-                <a href="#programs" class="gm-nav-link">Programs</a>
-                <a href="#team" class="gm-nav-link">Team</a>
-                <a href="<?php echo $login_url; ?>" class="gm-nav-link">Classroom</a>
+                <a href="<?php echo $CFG->wwwroot; ?>/my" class="gm-nav-link">Classroom</a>
             </div>
-            <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary"><?php echo $hero_cta; ?></a>
+            <a href="<?php echo $login_url; ?>" class="gm-btn gm-btn-primary">Log In</a>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <section class="gm-hero">
+    <section class="gm-hero" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/growminds_hero.jpg') center center / cover no-repeat;">
         <div class="gm-hero-overlay"></div>
         <div class="gm-hero-content">
             <h1 class="gm-hero-title"><?php echo $hero_title; ?></h1>
@@ -114,6 +120,11 @@ $testimonials = [
                     <h3 class="gm-benefit-title"><?php echo $benefit3_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit3_desc; ?></p>
                 </div>
+                <div class="gm-benefit-card">
+                    <div class="gm-benefit-icon">👨‍🏫</div>
+                    <h3 class="gm-benefit-title"><?php echo $benefit4_title; ?></h3>
+                    <p class="gm-benefit-desc"><?php echo $benefit4_desc; ?></p>
+                </div>
             </div>
         </div>
     </section>
@@ -129,7 +140,7 @@ $testimonials = [
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $reading_club; ?></h3>
-                        <p class="gm-program-desc"><?php echo $reading_club_desc; ?></p>
+                        <div class="gm-program-desc"><?php echo format_text($reading_club_desc, FORMAT_HTML); ?></div>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>
@@ -139,7 +150,17 @@ $testimonials = [
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
-                        <p class="gm-program-desc"><?php echo $writing_club_desc; ?></p>
+                        <div class="gm-program-desc"><?php echo format_text($writing_club_desc, FORMAT_HTML); ?></div>
+                        <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
+                    </div>
+                </div>
+                <div class="gm-program-card">
+                    <div class="gm-program-image gm-program-tutoring">
+                        <div class="gm-program-icon">🎓</div>
+                    </div>
+                    <div class="gm-program-content">
+                        <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
+                        <div class="gm-program-desc"><?php echo format_text($tutoring_desc, FORMAT_HTML); ?></div>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>

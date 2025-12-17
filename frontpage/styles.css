@@ -42,6 +42,11 @@ body {
     padding: 0 24px;
 }
 
+.gm-benefits .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
+}
+
 /* ===== Navigation ===== */
 .gm-nav {
     position: fixed;
@@ -87,6 +92,8 @@ body {
 .gm-nav-links {
     display: flex;
     gap: 32px;
+    margin-left: auto;
+    margin-right: 24px;
 }
 
 .gm-nav-link {
@@ -159,25 +166,7 @@ body {
     align-items: center;
     justify-content: center;
     text-align: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #43a047 100%);
     overflow: hidden;
-}
-
-.gm-hero::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></svg>');
-    background-size: 100px 100px;
-    animation: float 20s linear infinite;
-}
-
-@keyframes float {
-    0% { transform: translateY(0); }
-    100% { transform: translateY(-100px); }
 }
 
 .gm-hero-overlay {
@@ -186,7 +175,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.5);
 }
 
 .gm-hero-content {
@@ -220,17 +209,29 @@ body {
 
 .gm-benefits-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 32px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
 }
 
 .gm-benefit-card {
     background: var(--gm-white);
-    padding: 40px 32px;
+    padding: 28px 20px;
     border-radius: var(--gm-radius-lg);
     text-align: center;
     box-shadow: var(--gm-shadow-sm);
     transition: var(--gm-transition);
+}
+
+@media (max-width: 1200px) {
+    .gm-benefits-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 500px) {
+    .gm-benefits-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .gm-benefit-card:hover {
@@ -239,7 +240,7 @@ body {
 }
 
 .gm-benefit-icon {
-    font-size: 48px;
+    font-size: 56px;
     margin-bottom: 20px;
 }
 
@@ -271,6 +272,11 @@ body {
     background: var(--gm-white);
 }
 
+.gm-programs .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
+}
+
 .gm-programs-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -283,6 +289,8 @@ body {
     overflow: hidden;
     box-shadow: var(--gm-shadow-md);
     transition: var(--gm-transition);
+    position: relative;
+    padding-bottom: 80px;
 }
 
 .gm-program-card:hover {
@@ -305,6 +313,10 @@ body {
     background: linear-gradient(135deg, #11998e, #38ef7d);
 }
 
+.gm-program-tutoring {
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
 .gm-program-icon {
     font-size: 72px;
     filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
@@ -312,6 +324,12 @@ body {
 
 .gm-program-content {
     padding: 32px;
+}
+
+.gm-program-content .gm-btn {
+    position: absolute;
+    bottom: 32px;
+    left: 32px;
 }
 
 .gm-program-title {
@@ -326,6 +344,17 @@ body {
     font-size: 15px;
     line-height: 1.7;
     margin-bottom: 24px;
+    text-align: left;
+}
+
+.gm-program-desc ul {
+    list-style: disc outside;
+    margin: 0;
+    padding: 0 0 0 24px;
+}
+
+.gm-program-desc li {
+    margin-bottom: 10px;
 }
 
 /* ===== Team Section ===== */
@@ -386,6 +415,11 @@ body {
 .gm-testimonials {
     padding: 100px 0;
     background: var(--gm-white);
+}
+
+.gm-testimonials .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
 }
 
 .gm-testimonials-carousel {
@@ -494,7 +528,6 @@ body {
         display: none;
     }
     
-    .gm-benefits-grid,
     .gm-programs-grid {
         grid-template-columns: 1fr;
     }
