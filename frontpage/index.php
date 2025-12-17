@@ -312,8 +312,8 @@ $testimonials = [
                 </div>
                 <div class="gm-footer-contact">
                     <h4 class="gm-footer-heading">Contact Us</h4>
-                    <p class="gm-footer-info">📧 info@growmindsacademy.com.au</p>
-                    <p class="gm-footer-info">📞 (02) 1234 5678</p>
+                    <p class="gm-footer-info">📧 support@growminds.net</p>
+                    <p class="gm-footer-info">📞 0400 421 991</p>
                     <p class="gm-footer-info">📍 Sydney, Australia</p>
                 </div>
             </div>

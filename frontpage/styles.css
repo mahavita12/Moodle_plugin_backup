@@ -89,6 +89,10 @@ body {
 .gm-logo-text {
     font-size: 20px;
     font-weight: 700;
+    color: var(--gm-text);
+}
+
+.gm-footer .gm-logo-text {
     background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
