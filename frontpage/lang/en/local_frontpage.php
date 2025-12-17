@@ -29,10 +29,13 @@ $string['team_desc'] = 'Our dedicated team of experienced educators is passionat
 $string['testimonials_desc'] = 'Hear from our students and parents about their experiences with Grow Minds Study.';
 $string['reading_club'] = 'OC, Selective, Scholarship Trial Tests';
 $string['reading_club_desc'] = '<ul><li>Unique Set of Questions in Trial Tests</li><li>Detailed Performance Feedback with Progress Report</li><li>Time Management & Exam Technique</li></ul>';
+$string['reading_club_detail'] = 'Our Trial Tests are designed to simulate the real OC, Selective, and Scholarship exam experience. Each test features a unique set of questions that are never repeated, ensuring students are always challenged with fresh content. After each test, students receive detailed performance feedback with a comprehensive progress report highlighting strengths and areas for improvement. We also focus on time management strategies and exam techniques to help students perform their best under pressure.';
 $string['writing_club'] = 'Small Group Tutoring';
 $string['writing_club_desc'] = '<ul><li>Maximum of Four in a Class</li><li>Subject-Specific Help</li><li>Highly Personalized Study Plans</li></ul>';
+$string['writing_club_detail'] = 'Our Small Group Tutoring sessions are limited to a maximum of four students per class, ensuring each student receives personalized attention. Our experienced tutors provide subject-specific help tailored to individual learning needs. Every student receives a highly personalized study plan that targets their specific areas for improvement while building on their existing strengths.';
 $string['tutoring'] = 'Focused Skill Workshops';
 $string['tutoring_desc'] = '<ul><li>Targeted Support for Essay Writing, Reading, Math and Thinking Skills</li><li>Confidence Building Activities (Presentation and Interview Prep Sessions)</li><li>Growth Mindset and Motivation Sessions</li></ul>';
+$string['tutoring_detail'] = 'Our Focused Skill Workshops provide targeted support across Essay Writing, Reading, Math, and Thinking Skills. Beyond academic content, we offer confidence-building activities including presentation practice and interview preparation sessions. Our workshops also incorporate growth mindset and motivation sessions to help students develop resilience and a positive attitude towards learning.';
 
 // Team section
 $string['team_title'] = 'Our Team';

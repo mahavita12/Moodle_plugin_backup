@@ -33,6 +33,16 @@ $writing_club = get_string('writing_club', 'local_frontpage');
 $writing_club_desc = get_string('writing_club_desc', 'local_frontpage');
 $tutoring = get_string('tutoring', 'local_frontpage');
 $tutoring_desc = get_string('tutoring_desc', 'local_frontpage');
+$reading_club_detail = get_string('reading_club_detail', 'local_frontpage');
+$writing_club_detail = get_string('writing_club_detail', 'local_frontpage');
+$tutoring_detail = get_string('tutoring_detail', 'local_frontpage');
+
+// Programs data for modal
+$programs = [
+    ['title' => $reading_club, 'desc' => $reading_club_desc, 'detail' => $reading_club_detail, 'image' => 'programs1.jpg'],
+    ['title' => $writing_club, 'desc' => $writing_club_desc, 'detail' => $writing_club_detail, 'image' => 'programs2.jpg'],
+    ['title' => $tutoring, 'desc' => $tutoring_desc, 'detail' => $tutoring_detail, 'image' => 'programs3.jpg'],
+];
 
 $team_title = get_string('team_title', 'local_frontpage');
 $testimonials_title = get_string('testimonials_title', 'local_frontpage');
@@ -156,33 +166,16 @@ $testimonials = [
             <h2 class="gm-section-title"><?php echo $programs_title; ?></h2>
             <p class="gm-section-desc"><?php echo $programs_desc; ?></p>
             <div class="gm-programs-grid">
-                <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs1.jpg') center center / cover no-repeat;">
+                <?php foreach ($programs as $index => $program): ?>
+                <div class="gm-program-card" onclick="openProgramModal(<?php echo $index; ?>)">
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/<?php echo $program['image']; ?>') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
-                        <h3 class="gm-program-title"><?php echo $reading_club; ?></h3>
-                        <div class="gm-program-desc"><?php echo format_text($reading_club_desc, FORMAT_HTML); ?></div>
-                        
+                        <h3 class="gm-program-title"><?php echo $program['title']; ?></h3>
+                        <div class="gm-program-desc"><?php echo format_text($program['desc'], FORMAT_HTML); ?></div>
                     </div>
                 </div>
-                <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs2.jpg') center center / cover no-repeat;">
-                    </div>
-                    <div class="gm-program-content">
-                        <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
-                        <div class="gm-program-desc"><?php echo format_text($writing_club_desc, FORMAT_HTML); ?></div>
-                        
-                    </div>
-                </div>
-                <div class="gm-program-card">
-                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/programs3.jpg') center center / cover no-repeat;">
-                    </div>
-                    <div class="gm-program-content">
-                        <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
-                        <div class="gm-program-desc"><?php echo format_text($tutoring_desc, FORMAT_HTML); ?></div>
-                        
-                    </div>
-                </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>
@@ -240,6 +233,17 @@ $testimonials = [
             <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary gm-btn-large"><?php echo $cta_button; ?></a>
         </div>
     </section>
+
+    <!-- Program Modal -->
+    <div id="programModal" class="gm-modal">
+        <div class="gm-modal-content gm-modal-program">
+            <span class="gm-modal-close" onclick="closeProgramModal()">&times;</span>
+            <div class="gm-modal-program-image" id="programModalImage"></div>
+            <h3 class="gm-modal-name" id="programModalTitle"></h3>
+            <div class="gm-modal-program-summary" id="programModalSummary"></div>
+            <p class="gm-modal-bio" id="programModalDetail"></p>
+        </div>
+    </div>
 
     <!-- Team Modal -->
     <div id="teamModal" class="gm-modal">
@@ -312,9 +316,34 @@ $testimonials = [
         });
     });
 
+    // Program modal functionality
+    const programs = <?php echo json_encode($programs); ?>;
+    const wwwroot = '<?php echo $CFG->wwwroot; ?>';
+
+    function openProgramModal(index) {
+        const program = programs[index];
+        document.getElementById('programModalImage').style.background = `url('${wwwroot}/local/frontpage/public/${program.image}') center center / cover no-repeat`;
+        document.getElementById('programModalTitle').textContent = program.title;
+        document.getElementById('programModalSummary').innerHTML = program.desc;
+        document.getElementById('programModalDetail').textContent = program.detail;
+        document.getElementById('programModal').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeProgramModal() {
+        document.getElementById('programModal').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    // Close program modal on outside click
+    document.getElementById('programModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeProgramModal();
+        }
+    });
+
     // Team modal functionality
     const teamMembers = <?php echo json_encode($team_members); ?>;
-    const wwwroot = '<?php echo $CFG->wwwroot; ?>';
 
     function openTeamModal(index) {
         const member = teamMembers[index];
@@ -342,6 +371,7 @@ $testimonials = [
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeTeamModal();
+            closeProgramModal();
         }
     });
     </script>

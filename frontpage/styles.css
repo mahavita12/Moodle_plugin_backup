@@ -588,6 +588,50 @@ body {
     color: var(--gm-text-light);
 }
 
+/* Program Modal */
+.gm-modal-program {
+    max-width: 600px;
+    text-align: left;
+}
+
+.gm-modal-program-image {
+    width: 100%;
+    height: 200px;
+    border-radius: var(--gm-radius);
+    margin-bottom: 24px;
+}
+
+.gm-modal-program .gm-modal-name {
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.gm-modal-program-summary {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--gm-gray-200);
+}
+
+.gm-modal-program-summary ul {
+    list-style: disc outside;
+    margin: 0;
+    padding: 0 0 0 20px;
+    color: #667eea;
+    font-weight: 500;
+}
+
+.gm-modal-program-summary li {
+    margin-bottom: 8px;
+}
+
+.gm-modal-program .gm-modal-bio {
+    text-align: left;
+}
+
+.gm-program-card {
+    cursor: pointer;
+}
+
 /* ===== Testimonials Section ===== */
 .gm-testimonials {
     padding: 100px 0;
