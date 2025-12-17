@@ -234,10 +234,7 @@ body {
     }
 }
 
-.gm-benefit-card:hover {
-    transform: translateY(-8px);
-    box-shadow: var(--gm-shadow-lg);
-}
+
 
 .gm-benefit-icon {
     font-size: 56px;
@@ -401,6 +398,12 @@ body {
     border-radius: var(--gm-radius-lg);
     text-align: center;
     box-shadow: var(--gm-shadow-sm);
+    transition: var(--gm-transition);
+}
+
+.gm-team-card:hover {
+    transform: translateY(-10px);
+    box-shadow: var(--gm-shadow-lg);
 }
 
 .gm-team-avatar {
