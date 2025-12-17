@@ -92,6 +92,8 @@ body {
 .gm-nav-links {
     display: flex;
     gap: 32px;
+    margin-left: auto;
+    margin-right: 24px;
 }
 
 .gm-nav-link {

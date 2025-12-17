@@ -78,9 +78,6 @@ $testimonials = [
             </a>
             <div class="gm-nav-links">
                 <a href="#" class="gm-nav-link active">Home</a>
-                <a href="#about" class="gm-nav-link">About</a>
-                <a href="#programs" class="gm-nav-link">Programs</a>
-                <a href="#team" class="gm-nav-link">Team</a>
                 <a href="<?php echo $login_url; ?>" class="gm-nav-link">Classroom</a>
             </div>
             <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary"><?php echo $hero_cta; ?></a>
