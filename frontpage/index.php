@@ -129,6 +129,20 @@ $testimonials = [
         </defs>
     </svg>
 
+    <!-- Our Approach Section -->
+    <section class="gm-approach">
+        <div class="gm-container">
+            <div class="gm-approach-grid">
+                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.jpg') center center / cover no-repeat;"></div>
+                <div class="gm-approach-content">
+                    <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
+                    <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
+                    <p class="gm-approach-desc"><?php echo $approach_desc; ?></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Benefits Section -->
     <section class="gm-benefits" id="about">
         <div class="gm-container">
@@ -178,20 +192,6 @@ $testimonials = [
                     </div>
                     <h3 class="gm-benefit-title"><?php echo $benefit4_title; ?></h3>
                     <p class="gm-benefit-desc"><?php echo $benefit4_desc; ?></p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Our Approach Section -->
-    <section class="gm-approach">
-        <div class="gm-container">
-            <div class="gm-approach-grid">
-                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.jpg') center center / cover no-repeat;"></div>
-                <div class="gm-approach-content">
-                    <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
-                    <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
-                    <p class="gm-approach-desc"><?php echo $approach_desc; ?></p>
                 </div>
             </div>
         </div>
