@@ -272,6 +272,11 @@ body {
     background: var(--gm-white);
 }
 
+.gm-programs .gm-container {
+    max-width: 100%;
+    padding: 0 40px;
+}
+
 .gm-programs-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -304,6 +309,10 @@ body {
 
 .gm-program-writing {
     background: linear-gradient(135deg, #11998e, #38ef7d);
+}
+
+.gm-program-tutoring {
+    background: linear-gradient(135deg, #f093fb, #f5576c);
 }
 
 .gm-program-icon {

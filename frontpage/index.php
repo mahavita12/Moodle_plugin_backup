@@ -27,6 +27,8 @@ $reading_club = get_string('reading_club', 'local_frontpage');
 $reading_club_desc = get_string('reading_club_desc', 'local_frontpage');
 $writing_club = get_string('writing_club', 'local_frontpage');
 $writing_club_desc = get_string('writing_club_desc', 'local_frontpage');
+$tutoring = get_string('tutoring', 'local_frontpage');
+$tutoring_desc = get_string('tutoring_desc', 'local_frontpage');
 
 $team_title = get_string('team_title', 'local_frontpage');
 $testimonials_title = get_string('testimonials_title', 'local_frontpage');
@@ -149,6 +151,16 @@ $testimonials = [
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
                         <p class="gm-program-desc"><?php echo $writing_club_desc; ?></p>
+                        <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
+                    </div>
+                </div>
+                <div class="gm-program-card">
+                    <div class="gm-program-image gm-program-tutoring">
+                        <div class="gm-program-icon">🎓</div>
+                    </div>
+                    <div class="gm-program-content">
+                        <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
+                        <p class="gm-program-desc"><?php echo $tutoring_desc; ?></p>
                         <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-secondary">Learn More</a>
                     </div>
                 </div>

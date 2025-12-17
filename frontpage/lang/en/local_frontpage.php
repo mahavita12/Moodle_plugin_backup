@@ -24,6 +24,8 @@ $string['reading_club'] = 'Reading Club Program';
 $string['reading_club_desc'] = 'Develop strong reading comprehension, vocabulary, and analytical skills through engaging literary exploration.';
 $string['writing_club'] = 'Writing Club Program';
 $string['writing_club_desc'] = 'Master the art of written expression with structured guidance in essay writing, creative writing, and communication.';
+$string['tutoring'] = 'One-on-One Tutoring';
+$string['tutoring_desc'] = 'Personalized tutoring sessions tailored to your child\'s specific needs, with expert guidance and continuous progress tracking.';
 
 // Team section
 $string['team_title'] = 'Our Team';
