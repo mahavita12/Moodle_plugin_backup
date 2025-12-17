@@ -123,14 +123,14 @@ body {
 }
 
 .gm-btn-primary {
-    background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
+    background: linear-gradient(135deg, #667eea, #764ba2);
     color: var(--gm-white);
-    box-shadow: 0 4px 15px rgba(30, 136, 229, 0.35);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
 
 .gm-btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 25px rgba(30, 136, 229, 0.45);
+    box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
 }
 
 .gm-btn-secondary {
