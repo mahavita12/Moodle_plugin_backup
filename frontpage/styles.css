@@ -529,6 +529,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .gm-modal.active {
@@ -544,6 +545,8 @@ body {
     text-align: center;
     position: relative;
     animation: modalFadeIn 0.3s ease;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 @keyframes modalFadeIn {
@@ -835,6 +838,12 @@ body {
 @media (max-width: 768px) {
     .gm-nav-links {
         display: none;
+    }
+    
+    .gm-nav-container .gm-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        white-space: nowrap;
     }
     
     .gm-programs-grid {
