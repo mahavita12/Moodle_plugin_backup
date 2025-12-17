@@ -135,8 +135,7 @@ $testimonials = [
             <h2 class="gm-section-title"><?php echo $programs_title; ?></h2>
             <div class="gm-programs-grid">
                 <div class="gm-program-card">
-                    <div class="gm-program-image gm-program-reading">
-                        <div class="gm-program-icon">📚</div>
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program1.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $reading_club; ?></h3>
@@ -145,8 +144,7 @@ $testimonials = [
                     </div>
                 </div>
                 <div class="gm-program-card">
-                    <div class="gm-program-image gm-program-writing">
-                        <div class="gm-program-icon">✍️</div>
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program2.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $writing_club; ?></h3>
@@ -155,8 +153,7 @@ $testimonials = [
                     </div>
                 </div>
                 <div class="gm-program-card">
-                    <div class="gm-program-image gm-program-tutoring">
-                        <div class="gm-program-icon">🎓</div>
+                    <div class="gm-program-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/program3.jpg') center center / cover no-repeat;">
                     </div>
                     <div class="gm-program-content">
                         <h3 class="gm-program-title"><?php echo $tutoring; ?></h3>
