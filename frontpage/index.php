@@ -133,7 +133,7 @@ $testimonials = [
     <section class="gm-approach">
         <div class="gm-container">
             <div class="gm-approach-grid">
-                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.jpg') center center / cover no-repeat;"></div>
+                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png') center center / cover no-repeat;"></div>
                 <div class="gm-approach-content">
                     <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
                     <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
