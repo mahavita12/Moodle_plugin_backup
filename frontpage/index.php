@@ -114,7 +114,7 @@ $testimonials = [
         <div class="gm-hero-content">
             <h1 class="gm-hero-title"><?php echo $hero_title; ?></h1>
             <p class="gm-hero-subtitle"><?php echo $hero_subtitle; ?></p>
-            <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary gm-btn-large"><?php echo $hero_cta; ?></a>
+            <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary gm-btn-large gm-btn-tooltip" data-tooltip="We will prove it is actually quite FUN!!"><?php echo $hero_cta; ?></a>
         </div>
     </section>
 
