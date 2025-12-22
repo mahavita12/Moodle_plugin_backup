@@ -197,7 +197,7 @@ body {
 }
 
 .gm-hero-title {
-    font-size: clamp(36px, 6vw, 64px);
+    font-size: clamp(24px, 4vw, 48px);
     font-weight: 700;
     margin-bottom: 20px;
     line-height: 1.2;

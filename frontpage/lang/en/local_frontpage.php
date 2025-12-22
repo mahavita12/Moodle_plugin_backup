@@ -4,9 +4,9 @@ defined('MOODLE_INTERNAL') || die();
 $string['pluginname'] = 'Custom Frontpage';
 
 // Hero section
-$string['hero_title'] = 'Trusted Educational Support';
-$string['hero_subtitle'] = 'Empowering Students for Academic Success powered by AI and Data Analytics';
-$string['hero_cta'] = 'Register Today';
+$string['hero_title'] = 'We Achieve <br> While Enjoying Studying';
+$string['hero_subtitle'] = 'Smart Learning with Personalized and Engaging Learning Powered by AI';
+$string['hero_cta'] = 'Come and Study with Us';
 
 // Benefits section
 $string['benefit1_title'] = 'Tailored Learning Plans';
@@ -21,7 +21,7 @@ $string['benefit4_desc'] = 'Learn from experienced educators who are passionate 
 // Programs section
 $string['approach_title'] = 'Our Approach';
 $string['approach_subtitle'] = 'Preparing Students for OC, Selective and Scholarship Tests with the Latest in AI and Data Analytics';
-$string['approach_desc'] = 'At GrowMinds Academy, we are committed to transforming the way students learn. Our custom-built platform continuously tracks the latest questions released by leading assessment centres worldwide and integrates them into our practice tests. We also use advanced, in-house tools to monitor student progress across Essay Writing, Math, English and Thinking Skills. This allows us to deliver highly personalised learning materials – ensuring each student is fully prepared for the OC, Selective and Scholarship tests.';
+$string['approach_desc'] = 'At GrowMinds Academy, we are committed to transforming the way students learn using the latest in AI and Data Analytics. <br>Our custom-built platform monitors student progress across Essay Writing, Math, English and Thinking Skills delivering highly personalised and engaging learning materials. <br>We also continuously track the latest questions released by leading assessment centres and integrates them into our practice tests. This ensures each student is fully prepared for the OC, Selective and Scholarship tests.';
 
 $string['programs_title'] = 'Our Programs';
 $string['programs_desc'] = 'Discover our comprehensive range of educational programs designed to help students excel academically and develop essential skills for lifelong success.';
