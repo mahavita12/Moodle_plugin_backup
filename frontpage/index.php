@@ -262,14 +262,7 @@ $testimonials = [
     </section>
     */ ?>
 
-    <!-- CTA Section -->
-    <section class="gm-cta">
-        <div class="gm-container">
-            <h2 class="gm-cta-title"><?php echo $cta_title; ?></h2>
-            <p class="gm-cta-subtitle"><?php echo $cta_subtitle; ?></p>
-            <a href="<?php echo $register_url; ?>" class="gm-btn gm-btn-primary gm-btn-large"><?php echo $cta_button; ?></a>
-        </div>
-    </section>
+
 
     <!-- Program Modal -->
     <div id="programModal" class="gm-modal">

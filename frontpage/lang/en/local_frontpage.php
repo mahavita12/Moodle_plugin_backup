@@ -44,7 +44,7 @@ $string['team_title'] = 'Our Team';
 $string['testimonials_title'] = 'Student Feedback';
 
 // CTA section
-$string['cta_title'] = 'Ready to Nurture Your Child\'s Success?';
+$string['cta_title'] = 'Ready to Enjoy Learning?';
 $string['cta_subtitle'] = 'Start Your Journey with GrowMinds Academy Today';
 $string['cta_button'] = 'Get Started';
 
