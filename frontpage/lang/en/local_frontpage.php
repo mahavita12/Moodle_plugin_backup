@@ -25,7 +25,7 @@ $string['approach_desc'] = '<ul>
     <li><strong>Powered by Innovation:</strong> Transforming education with the latest advancements in AI and Data Analytics.</li>
     <li><strong>Tailored for Excellence:</strong> A dynamic platform that evolves with the student, delivering highly personalized content across all key subjects.</li>
     <li><strong>Ahead of the Curve:</strong> Integrating real-time questions from leading assessment centers to ensure absolute confidence for OC, Selective, and Scholarship exams.</li>
-    <li><strong>Rewarding Persistence:</strong> Our Leaderboard shifts the focus to effort-—celebrating the hard work and dedication that drives long-term success.</li>
+    <li><strong>Rewarding Persistence:</strong> Our Leaderboard shifts the focus to effort, celebrating the hard work and dedication that drives long-term success.</li>
     <li><strong>Fostering Independence:</strong> Inspiring students to take ownership of their journey and discover the profound joy of self-directed learning.</li>
 </ul>';
 

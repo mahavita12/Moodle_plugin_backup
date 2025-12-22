@@ -90,7 +90,7 @@ $testimonials = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=9999">
 </head>
 <body>
     <!-- Navigation -->
@@ -295,14 +295,14 @@ $testimonials = [
                         <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/logo_main.png" alt="GrowMinds Academy" class="gm-logo-img">
                         <span class="gm-logo-text">GrowMinds Academy</span>
                     </div>
-                    <p class="gm-footer-tagline">Empowering students to achieve academic excellence through personalized learning.</p>
+                    <p class="gm-footer-tagline">Empowering students to achieve academic excellence through discovering the joy of learning.</p>
                 </div>
 
                 <div class="gm-footer-contact">
                     <h4 class="gm-footer-heading">Contact Us</h4>
-                    <p class="gm-footer-info">📧 support@growminds.net</p>
-                    <p class="gm-footer-info">📞 0400 421 991</p>
-                    <p class="gm-footer-info">📍 Sydney, Australia</p>
+                    <p class="gm-footer-info">support@growminds.net</p>
+                    <p class="gm-footer-info">0400 421 991</p>
+                    <p class="gm-footer-info">Sydney, Australia</p>
                 </div>
             </div>
             <div class="gm-footer-bottom">
