@@ -39,9 +39,9 @@ $tutoring_detail = get_string('tutoring_detail', 'local_frontpage');
 
 // Programs data for modal
 $programs = [
-    ['title' => $writing_club, 'desc' => $writing_club_desc, 'detail' => $writing_club_detail, 'image' => 'programs2.jpg'],
-    ['title' => $reading_club, 'desc' => $reading_club_desc, 'detail' => $reading_club_detail, 'image' => 'programs1.jpg'],
-    ['title' => $tutoring, 'desc' => $tutoring_desc, 'detail' => $tutoring_detail, 'image' => 'programs3.jpg'],
+    ['title' => $writing_club, 'desc' => $writing_club_desc, 'detail' => $writing_club_detail, 'image' => 'programs2.jpg?v=1'],
+    ['title' => $reading_club, 'desc' => $reading_club_desc, 'detail' => $reading_club_detail, 'image' => 'programs1.jpg?v=1'],
+    ['title' => $tutoring, 'desc' => $tutoring_desc, 'detail' => $tutoring_detail, 'image' => 'programs3.jpg?v=1'],
 ];
 
 $team_title = get_string('team_title', 'local_frontpage');
@@ -297,12 +297,7 @@ $testimonials = [
                     </div>
                     <p class="gm-footer-tagline">Empowering students to achieve academic excellence through personalized learning.</p>
                 </div>
-                <div class="gm-footer-links">
-                    <h4 class="gm-footer-heading">Quick Links</h4>
-                    <a href="#about" class="gm-footer-link">About Us</a>
-                    <a href="#programs" class="gm-footer-link">Our Programs</a>
-                    <a href="<?php echo $login_url; ?>" class="gm-footer-link">Student Login</a>
-                </div>
+
                 <div class="gm-footer-contact">
                     <h4 class="gm-footer-heading">Contact Us</h4>
                     <p class="gm-footer-info">📧 support@growminds.net</p>
