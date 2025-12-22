@@ -5,12 +5,12 @@ $string['pluginname'] = 'Custom Frontpage';
 
 // Hero section
 $string['hero_title'] = 'We Achieve <br> While Enjoying Studying';
-$string['hero_subtitle'] = 'Smart Learning with Personalized and Engaging Learning <br> Powered by AI';
+$string['hero_subtitle'] = 'Smart Learning with Personalized and Engaging Programs <br> Powered by AI';
 $string['hero_cta'] = 'Come and Study with Us';
 
 // Benefits section
 $string['benefit1_title'] = 'Tailored Learning Plans';
-$string['benefit1_desc'] = 'We create customized learning experiences that cater to each student\'s unique strengths and challenges, ensuring maximum growth and success.';
+$string['benefit1_desc'] = 'We create personalized learning experiences that cater to each student\'s unique strengths and challenges, ensuring maximum growth and success.';
 $string['benefit2_title'] = 'Holistic Growth Focus';
 $string['benefit2_desc'] = 'Our programs emphasize personal development, fostering well-rounded students who excel both in and out of the classroom.';
 $string['benefit3_title'] = 'Outstanding Outcomes';
@@ -44,7 +44,7 @@ $string['team_title'] = 'Our Team';
 $string['testimonials_title'] = 'Student Feedback';
 
 // CTA section
-$string['cta_title'] = 'Ready to Enjoy Learning?';
+$string['cta_title'] = 'Ready to Enjoy Learing Nurture Your Child\'s Success?';
 $string['cta_subtitle'] = 'Start Your Journey with GrowMinds Academy Today';
 $string['cta_button'] = 'Get Started';
 
