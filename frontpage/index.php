@@ -39,8 +39,8 @@ $tutoring_detail = get_string('tutoring_detail', 'local_frontpage');
 
 // Programs data for modal
 $programs = [
-    ['title' => $reading_club, 'desc' => $reading_club_desc, 'detail' => $reading_club_detail, 'image' => 'programs1.jpg'],
     ['title' => $writing_club, 'desc' => $writing_club_desc, 'detail' => $writing_club_detail, 'image' => 'programs2.jpg'],
+    ['title' => $reading_club, 'desc' => $reading_club_desc, 'detail' => $reading_club_detail, 'image' => 'programs1.jpg'],
     ['title' => $tutoring, 'desc' => $tutoring_desc, 'detail' => $tutoring_detail, 'image' => 'programs3.jpg'],
 ];
 
@@ -133,7 +133,7 @@ $testimonials = [
     <section class="gm-approach">
         <div class="gm-container">
             <div class="gm-approach-grid">
-                <div class="gm-approach-image" style="background: url('<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png') center center / cover no-repeat;"></div>
+                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png?v=11" class="gm-approach-image" alt="Our Approach">
                 <div class="gm-approach-content">
                     <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
                     <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>

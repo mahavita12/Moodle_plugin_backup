@@ -62,7 +62,7 @@ body {
 .gm-nav-container {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     max-width: 1200px;
     margin: 0 auto;
     padding: 16px 24px;
@@ -310,9 +310,13 @@ body {
 }
 
 .gm-approach-image {
-    height: 450px;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    object-position: center 80%;
     border-radius: var(--gm-radius-lg);
     box-shadow: var(--gm-shadow-md);
+    display: block;
 }
 
 .gm-approach-content {
