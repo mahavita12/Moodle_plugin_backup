@@ -104,7 +104,14 @@ $testimonials = [
                 <a href="#" class="gm-nav-link active">Home</a>
                 <a href="<?php echo $CFG->wwwroot; ?>/my" class="gm-nav-link">Classroom</a>
             </div>
-            <a href="<?php echo $login_url; ?>" class="gm-btn gm-btn-primary">Log In</a>
+            <?php if (isloggedin() && !isguestuser()): ?>
+                <a href="<?php echo $CFG->wwwroot; ?>/user/profile.php" class="gm-user-profile">
+                    <span class="gm-user-name"><?php echo $USER->firstname . ' ' . $USER->lastname; ?></span>
+                    <?php echo $OUTPUT->user_picture($USER, ['size' => 35, 'class' => 'gm-user-avatar']); ?>
+                </a>
+            <?php else: ?>
+                <a href="<?php echo $login_url; ?>" class="gm-btn gm-btn-primary">Log In</a>
+            <?php endif; ?>
         </div>
     </nav>
 

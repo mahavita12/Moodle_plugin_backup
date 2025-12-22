@@ -92,6 +92,31 @@ body {
     color: var(--gm-text);
 }
 
+.gm-user-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: var(--gm-text);
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--gm-radius);
+    transition: var(--gm-transition);
+}
+
+.gm-user-profile:hover {
+    background: var(--gm-gray-100);
+}
+
+.gm-user-name {
+    font-size: 14px;
+}
+
+.gm-user-avatar {
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .gm-footer .gm-logo-text {
     background: linear-gradient(135deg, var(--gm-primary), var(--gm-secondary));
     -webkit-background-clip: text;
