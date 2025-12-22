@@ -133,7 +133,7 @@ $testimonials = [
     <section class="gm-approach">
         <div class="gm-container">
             <div class="gm-approach-grid">
-                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png?v=11" class="gm-approach-image" alt="Our Approach">
+                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png?v=12" class="gm-approach-image" alt="Our Approach">
                 <div class="gm-approach-content">
                     <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
                     <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>
