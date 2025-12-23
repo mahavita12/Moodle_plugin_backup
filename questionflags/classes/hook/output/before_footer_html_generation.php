@@ -277,76 +277,30 @@ class before_footer_html_generation {
                     
                     console.log("FEEDBACK TOGGLE: Questions count:", questions.length, "Mode:", isOnePageMode ? "one-page-at-a-time" : "show-all");
                     
-                    if (isOnePageMode) {
-                        // ONE PAGE AT A TIME MODE: Single global button
-                        var btnContainer = document.createElement("div");
-                        btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
-                        
-                        var btn = document.createElement("button");
-                        btn.id = "feedbackToggleBtn";
-                        btn.className = "btn btn-primary";
-                        btn.style.cssText = "padding: 10px 20px; font-size: 14px; font-weight: bold;";
-                        btn.textContent = "Feedback";
-                        
-                        btnContainer.appendChild(btn);
-                        
-                        // Insert button after the first question (below answer choices)
-                        var firstQuestion = questions[0];
-                        firstQuestion.parentNode.insertBefore(btnContainer, firstQuestion.nextSibling);
-                        
-                        // ALWAYS hide feedback on page load (no localStorage persistence)
-                        document.body.classList.add("hide-feedback");
-                        
-                        // Toggle on click
-                        btn.addEventListener("click", function() {
-                            var isHidden = document.body.classList.contains("hide-feedback");
-                            if (isHidden) {
-                                document.body.classList.remove("hide-feedback");
-                                btn.textContent = "Hide Feedback";
-                                btn.className = "btn btn-info";
-                            } else {
-                                document.body.classList.add("hide-feedback");
-                                btn.textContent = "Feedback";
-                                btn.className = "btn btn-primary";
+                    // Unified Logic: Support both One-Page and Multi-Page via Server-side rendering
+                        document.body.addEventListener("click", function(e) {
+                            if (e.target && e.target.classList.contains("question-feedback-btn")) {
+                                var btn = e.target;
+                                var qContainer = btn.closest(".que");
+                                
+                                if (qContainer) {
+                                    var isHidden = qContainer.classList.contains("hide-question-feedback");
+                                    if (isHidden) {
+                                        qContainer.classList.remove("hide-question-feedback");
+                                        btn.textContent = "Hide Feedback";
+                                        btn.className = "btn btn-info question-feedback-btn";
+                                    } else {
+                                        qContainer.classList.add("hide-question-feedback");
+                                        btn.textContent = "Feedback";
+                                        btn.className = "btn btn-primary question-feedback-btn";
+                                    }
+                                    // Reset styles
+                                    btn.style.padding = "8px 16px";
+                                    btn.style.fontSize = "13px";
+                                    btn.style.fontWeight = "bold";
+                                }
                             }
                         });
-                    } else {
-                        // SHOW ALL QUESTIONS MODE: Individual button per question
-                        questions.forEach(function(question, index) {
-                            // Create button container for this question
-                            var btnContainer = document.createElement("div");
-                            btnContainer.className = "question-feedback-toggle";
-                            btnContainer.style.cssText = "margin: 15px 0 15px 145px; text-align: left;";
-                            
-                            var btn = document.createElement("button");
-                            btn.className = "btn btn-primary question-feedback-btn";
-                            btn.style.cssText = "padding: 8px 16px; font-size: 13px; font-weight: bold;";
-                            btn.textContent = "Feedback";
-                            btn.dataset.questionIndex = index;
-                            
-                            btnContainer.appendChild(btn);
-                            
-                            // Insert after this question
-                            question.parentNode.insertBefore(btnContainer, question.nextSibling);
-                            
-                            // ALWAYS hide feedback on page load for this question
-                            question.classList.add("hide-question-feedback");
-                            
-                            // Toggle click handler for this specific question
-                            btn.addEventListener("click", function() {
-                                var isHidden = question.classList.contains("hide-question-feedback");
-                                if (isHidden) {
-                                    question.classList.remove("hide-question-feedback");
-                                    btn.textContent = "Hide Feedback";
-                                    btn.className = "btn btn-info question-feedback-btn";
-                                } else {
-                                    question.classList.add("hide-question-feedback");
-                                    btn.textContent = "Feedback";
-                                    btn.className = "btn btn-primary question-feedback-btn";
-                                }
-                            });
-                        });
-                    }
                 });
             })();
             </script>';
