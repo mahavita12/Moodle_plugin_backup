@@ -262,3 +262,46 @@ In `core_question_renderer::question()`, logic was added to:
 *Specific Changes:*
 - **Class Injection:** `'hide-question-feedback ' . $qa->get_state_class(...)` is added to the class array.
 - **Button Injection:** The button HTML is injected once, left-aligned (`margin: 15px 0 15px 0`), only when `$options->correctness && $qa->has_marks()` is true.
+
+---
+
+# Core File Modifications for Global Navigation
+
+**Date:** 2025-12-24
+
+## 12. `user/lib.php` (Admin Dashboards)
+
+**Path:**
+- `user/lib.php`
+
+**Purpose of change:**
+- Add specific Dashboard links (Quiz, Essay, Questions, etc.) to the User Menu for easier access.
+- These links are visible **only to Site Admins**.
+- Replaces the previous client-side "Global Navigation Panel" which was disabled due to performance lag.
+
+**Change:**
+In `user_get_user_navigation_info`, immediately after the `local_homeworkdashboard` link injection:
+
+```php
+// CUSTOM: Add Admin Dashboards (Global Navigation Migration)
+// Added by Antigravity on 2025-12-24
+if (is_siteadmin()) {
+    $dashboards = [
+        "Quiz Dashboard" => "/local/quizdashboard/index.php",
+        "Essay Dashboard" => "/local/quizdashboard/essays.php",
+        "Questions Dashboard" => "/local/quizdashboard/questions.php",
+        "EssaysMaster Dashboard" => "/local/essaysmaster/dashboard.php",
+        "Personal Course Dashboard" => "/local/personalcourse/index.php",
+        "Quiz Uploader" => "/local/quiz_uploader/index.php",
+    ];
+
+    foreach ($dashboards as $title => $path) {
+        $link = new stdClass();
+        $link->itemtype = "link";
+        $link->url = new moodle_url($path);
+        $link->title = $title;
+        $link->titleidentifier = "custom_dashboard_" . md5($title); 
+        $returnobject->navitems[] = $link;
+    }
+}
+```
