@@ -342,6 +342,9 @@ body {
     border-radius: var(--gm-radius-lg);
     box-shadow: var(--gm-shadow-md);
     display: block;
+    opacity: 0.75;
+    filter: contrast(0.85) saturate(0.6) brightness(1.1);
+    transition: var(--gm-transition);
 }
 
 .gm-approach-content {
