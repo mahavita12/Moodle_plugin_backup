@@ -162,3 +162,85 @@ This affects both Calendar and Timeline, since they use the same `homeworkstatus
 - The quiz close event **remains listed** in the Timeline even after attempts/submission/closure.
 - Homework badges supplied by `local_homeworkdashboard` (Done / Retry / To do) continue to be visible against that close event.
 - Users cannot click through to start a new attempt when the quiz is closed; the event is displayed as **non-actionable** rather than being hidden.
+
+---
+
+# Core File Modifications for Question Flags (Performance)
+
+**Date:** 2025-12-23
+
+This document records intentional changes made to **Moodle core files** to support server-side rendering of Question Flags (Blue/Red flags) in the Quiz module. This removes the need for client-side DOM injection, significantly improving performance.
+
+All flag logic (persistence, auto-flagging rules, API) remains inside the `local_questionflags` plugin. Core files are only used to consult this API and render CSS classes.
+
+---
+
+## 7. `mod/quiz/classes/output/navigation_question_button.php`
+
+**Path:**
+- `mod/quiz/classes/output/navigation_question_button.php`
+
+**Purpose of change:**
+- Add a property to store the `questionid` so correct flags can be looked up during rendering.
+
+**Change:**
+Added `public $questionid;` to the class definition.
+
+---
+
+## 8. `mod/quiz/classes/output/navigation_panel_base.php`
+
+**Path:**
+- `mod/quiz/classes/output/navigation_panel_base.php`
+
+**Purpose of change:**
+- Preload all flags for the quiz in a single DB query via `\local_questionflags\api`.
+- Populate the `$button->questionid` property during button creation.
+
+**Change:**
+1.  In `get_question_buttons()`, called `\local_questionflags\api::preload_flags(...)`.
+2.  Inside the button loop, set `$button->questionid = $qa->get_question(false)->id;`.
+
+---
+
+## 9. `mod/quiz/classes/output/renderer.php`
+
+**Path:**
+- `mod/quiz/classes/output/renderer.php`
+
+**Purpose of change:**
+- Apply the CSS class (e.g., `blue-flagged`) to the navigation button if a flag exists.
+
+**Change:**
+In `render_navigation_question_button()`, added a check:
+```php
+if (class_exists('\local_questionflags\api') && !empty($button->questionid)) {
+    if ($cls = \local_questionflags\api::get_flag_class($button->questionid)) {
+        $classes[] = $cls;
+    }
+}
+```
+
+---
+
+ 
+ # #   1 0 .   ` q u e s t i o n / e n g i n e / r e n d e r e r . p h p `  
+  
+ * * P a t h : * *  
+ -   ` q u e s t i o n / e n g i n e / r e n d e r e r . p h p `  
+  
+ * * P u r p o s e   o f   c h a n g e : * *  
+ -   A p p l y   t h e   C S S   c l a s s   ( e . g . ,   ` b l u e - f l a g g e d - r e v i e w ` )   t o   t h e   o u t e r   q u e s t i o n   c o n t a i n e r   d i v   ( ` . q u e ` ) .  
+  
+ * * C h a n g e : * *  
+ I n   ` q u e s t i o n ( ) ` ,   m o d i f i e d   t h e   c l a s s   a r r a y   c o n s t r u c t i o n   t o   i n c l u d e   t h e   f l a g   c l a s s   i f   p r e s e n t .  
+  
+ ` ` ` p h p  
+ / /   O r i g i n a l   l i n e :  
+ / /   $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > g e t _ t y p e _ n a m e ( ) ,  
+  
+ / /   U p d a t e d   l i n e :  
+ ( c l a s s _ e x i s t s ( ' \ \ l o c a l _ q u e s t i o n f l a g s \ \ a p i ' )   & &   ( $ c l s   =   \ l o c a l _ q u e s t i o n f l a g s \ a p i : : g e t _ f l a g _ c l a s s ( $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > i d ) ) )   ?   $ c l s   .   ' - r e v i e w '   :   ' ' ,  
+ $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > g e t _ t y p e _ n a m e ( ) ,  
+ ` ` `  
+ 
