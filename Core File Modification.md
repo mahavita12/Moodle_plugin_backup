@@ -223,7 +223,7 @@ if (class_exists('\local_questionflags\api') && !empty($button->questionid)) {
 
 ---
 
-## 10. `question/engine/renderer.php`
+## 10. `question/engine/renderer.php` (Flags)
 
 **Path:**
 - `question/engine/renderer.php`
@@ -242,3 +242,23 @@ In `question()`, modified the class array construction to include the flag class
 (class_exists('\\local_questionflags\\api') && ($cls = \local_questionflags\api::get_flag_class($qa->get_question(false)->id))) ? $cls . '-review' : '',
 $qa->get_question(false)->get_type_name(),
 ```
+
+---
+
+## 11. `question/engine/renderer.php` (Feedback Optimization)
+
+**Path:**
+- `question/engine/renderer.php`
+
+**Purpose of change:**
+- Optimize the "Feedback" button rendering for quiz review pages.
+- Server-side rendering mimics the "hidden by default" behavior and injects the toggle button directly, removing the need for heavy client-side JavaScript processing.
+
+**Change:**
+In `core_question_renderer::question()`, logic was added to:
+1.  Apply the `hide-question-feedback` class to the outer question div (`.que`) if the question has marks (review mode).
+2.  Inject the "Feedback" button HTML (`<div class="question-feedback-toggle">...`) immediately before the `outcome` (feedback) section.
+
+*Specific Changes:*
+- **Class Injection:** `'hide-question-feedback ' . $qa->get_state_class(...)` is added to the class array.
+- **Button Injection:** The button HTML is injected once, left-aligned (`margin: 15px 0 15px 0`), only when `$options->correctness && $qa->has_marks()` is true.
