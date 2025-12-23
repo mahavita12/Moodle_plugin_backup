@@ -223,24 +223,22 @@ if (class_exists('\local_questionflags\api') && !empty($button->questionid)) {
 
 ---
 
- 
- # #   1 0 .   ` q u e s t i o n / e n g i n e / r e n d e r e r . p h p `  
-  
- * * P a t h : * *  
- -   ` q u e s t i o n / e n g i n e / r e n d e r e r . p h p `  
-  
- * * P u r p o s e   o f   c h a n g e : * *  
- -   A p p l y   t h e   C S S   c l a s s   ( e . g . ,   ` b l u e - f l a g g e d - r e v i e w ` )   t o   t h e   o u t e r   q u e s t i o n   c o n t a i n e r   d i v   ( ` . q u e ` ) .  
-  
- * * C h a n g e : * *  
- I n   ` q u e s t i o n ( ) ` ,   m o d i f i e d   t h e   c l a s s   a r r a y   c o n s t r u c t i o n   t o   i n c l u d e   t h e   f l a g   c l a s s   i f   p r e s e n t .  
-  
- ` ` ` p h p  
- / /   O r i g i n a l   l i n e :  
- / /   $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > g e t _ t y p e _ n a m e ( ) ,  
-  
- / /   U p d a t e d   l i n e :  
- ( c l a s s _ e x i s t s ( ' \ \ l o c a l _ q u e s t i o n f l a g s \ \ a p i ' )   & &   ( $ c l s   =   \ l o c a l _ q u e s t i o n f l a g s \ a p i : : g e t _ f l a g _ c l a s s ( $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > i d ) ) )   ?   $ c l s   .   ' - r e v i e w '   :   ' ' ,  
- $ q a - > g e t _ q u e s t i o n ( f a l s e ) - > g e t _ t y p e _ n a m e ( ) ,  
- ` ` `  
- 
+## 10. `question/engine/renderer.php`
+
+**Path:**
+- `question/engine/renderer.php`
+
+**Purpose of change:**
+- Apply the CSS class (e.g., `blue-flagged-review`) to the outer question container div (`.que`).
+
+**Change:**
+In `question()`, modified the class array construction to include the flag class if present.
+
+```php
+// Original line:
+// $qa->get_question(false)->get_type_name(),
+
+// Updated line:
+(class_exists('\\local_questionflags\\api') && ($cls = \local_questionflags\api::get_flag_class($qa->get_question(false)->id))) ? $cls . '-review' : '',
+$qa->get_question(false)->get_type_name(),
+```
