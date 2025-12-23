@@ -13,6 +13,8 @@ class hooks_manager {
      * Called from after_config hook in db/hooks.php
      */
     public static function inject_global_navigation() {
+        return; // Disabled: Navigation moved to User Menu (Core Modification)
+        
         global $PAGE, $CFG, $USER;
         
         // Don't inject during CLI, AJAX, or installation

@@ -6,6 +6,8 @@
 
 // Only proceed if we're not in CLI mode and user is logged in
 if (!CLI_SCRIPT && !during_initial_install()) {
+    return; // Disabled: Navigation moved to User Menu
+    
     // Skip for print or clean views (e.g., feedback windows)
     $isclean = isset($_GET['clean']) && (int)$_GET['clean'] === 1;
     $isprint = isset($_GET['print']) && (int)$_GET['print'] === 1;
