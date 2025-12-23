@@ -90,7 +90,7 @@ $testimonials = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=10001">
+    <link rel="stylesheet" href="<?php echo $CFG->wwwroot; ?>/local/frontpage/styles.css?v=50001">
 </head>
 <body>
     <!-- Navigation -->
@@ -140,7 +140,7 @@ $testimonials = [
     <section class="gm-approach">
         <div class="gm-container">
             <div class="gm-approach-grid">
-                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png?v=13" class="gm-approach-image" alt="Our Approach">
+                <img src="<?php echo $CFG->wwwroot; ?>/local/frontpage/public/approaches.png?v=20001" class="gm-approach-img-fresh" alt="Our Approach">
                 <div class="gm-approach-content">
                     <h2 class="gm-approach-title"><?php echo $approach_title; ?></h2>
                     <h3 class="gm-approach-subtitle"><?php echo $approach_subtitle; ?></h3>

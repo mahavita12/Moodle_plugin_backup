@@ -330,20 +330,25 @@ body {
 .gm-approach-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 60px;
-    align-items: center;
+    gap: 120px;
+    align-items: stretch; /* Stretch to match height */
 }
 
 .gm-approach-image {
+    display: none !important; /* Hide old class to be safe */
+}
+
+.gm-approach-img-fresh {
     width: 100%;
-    aspect-ratio: 4 / 3;
+    height: 100%; /* Fill the height of the grid cell */
+    min-height: 400px; /* Minimum height for safety */
     object-fit: cover;
     object-position: center 80%;
     border-radius: var(--gm-radius-lg);
     box-shadow: var(--gm-shadow-md);
     display: block;
-    opacity: 0.75;
-    filter: contrast(0.85) saturate(0.6) brightness(1.1);
+    opacity: 1;
+    filter: none;
     transition: var(--gm-transition);
 }
 
