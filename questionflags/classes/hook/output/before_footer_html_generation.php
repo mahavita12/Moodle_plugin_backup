@@ -977,6 +977,7 @@ body.hide-feedback .formulation {
             return map;
         }
 
+        // Helper: Extract slot ID from button
         function getSlotFromNav(btn) {
             var slot = (btn.dataset && btn.dataset.slot) || btn.getAttribute('data-slot');
             if (!slot && btn.id) {
@@ -1010,15 +1011,12 @@ body.hide-feedback .formulation {
             });
         }
 
-        var essaySlots = collectEssaySlots();
-        updateNav(essaySlots);
+        // Optimisation 2024-12-23: Server-side rendering handles the initial paint.
+        // We do NOT call updateNav() on load anymore to save performance.
+        // We retained the function solely for the 'click' handlers above to use.
+        
+        // Remove MutationObserver as well, since core renderers now handle the class.
 
-        // In case navigation is re-rendered dynamically, observe and refresh
-        var nav = document.querySelector('#quiznavblock, .qnbuttons');
-        if (nav && window.MutationObserver) {
-            var obs = new MutationObserver(function(){ updateNav(essaySlots); });
-            obs.observe(nav, { childList: true, subtree: true });
-        }
     });
 </script>
 QFJS;
