@@ -184,6 +184,12 @@ class observers {
         // 1. Check threshold (>30%)
         // 2. Auto-flag incorrect questions (fraction=0)
         // 3. Create or sync personal quiz
+        
+        if (!method_exists('\\local_personalcourse\\generator_service', 'generate_from_source')) {
+             error_log("[local_personalcourse] CRITICAL: generator_service::generate_from_source method not found. This indicates a cache mismatch. Please purge Moodle caches.");
+             return;
+        }
+
         try {
             $result = \local_personalcourse\generator_service::generate_from_source($userid, $quizid, $attemptid);
             error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Result - quizid=" . ($result->quizid ?? 0) . " mappingid=" . ($result->mappingid ?? 0));

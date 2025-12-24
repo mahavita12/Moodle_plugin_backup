@@ -6,7 +6,7 @@ defined('MOODLE_INTERNAL') || die();
 use context_module;
 
 class quiz_builder {
-    public function create_quiz(int $courseid, int $sectionnumber, string $name, string $intro, ?string $settingsmode = 'default'): object {
+    public function create_quiz(int $courseid, int $sectionnumber, string $name, string $intro, ?string $settingsmode = 'default', ?string $sectionname = null): object {
         global $CFG;
         require_once($CFG->dirroot . '/local/quiz_uploader/classes/quiz_creator.php');
 
@@ -15,7 +15,7 @@ class quiz_builder {
         if ($settingsmode !== null) {
             $settings = \local_quiz_uploader\quiz_creator::build_quiz_settings($settingsmode, $questioncount);
         }
-        return \local_quiz_uploader\quiz_creator::create_quiz($courseid, $this->get_section_id_by_number($courseid, $sectionnumber), $name, $intro, $settings);
+        return \local_quiz_uploader\quiz_creator::create_quiz($courseid, $this->ensure_section_exists($courseid, $sectionnumber, $sectionname), $name, $intro, $settings);
     }
 
     public function add_questions(int $quizid, array $questionids): object {
@@ -138,12 +138,38 @@ class quiz_builder {
         $trans->allow_commit();
     }
 
-    private function get_section_id_by_number(int $courseid, int $sectionnumber): int {
-        global $DB;
-        $section = $DB->get_record('course_sections', ['course' => $courseid, 'section' => $sectionnumber], 'id');
-        if ($section) { return (int)$section->id; }
-        // Default to section 0 if not found.
-        $section = $DB->get_record('course_sections', ['course' => $courseid, 'section' => 0], 'id', MUST_EXIST);
-        return (int)$section->id;
+    private function ensure_section_exists(int $courseid, int $sectionnumber, ?string $sectionname = null): int {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $section = $DB->get_record('course_sections', ['course' => $courseid, 'section' => $sectionnumber], 'id, name, visible');
+        if ($section) {
+            // Update name if requested and different
+            if ($sectionname !== null && (string)$section->name !== $sectionname) {
+                $DB->set_field('course_sections', 'name', $sectionname, ['id' => $section->id]);
+                rebuild_course_cache($courseid, true);
+            }
+            return (int)$section->id;
+        }
+
+        // Section missing - create it
+        try {
+           $newsection = new \stdClass();
+           $newsection->course = $courseid;
+           $newsection->section = $sectionnumber;
+           $newsection->name = $sectionname;
+           $newsection->visible = 1;
+           $newsection->summary = '';
+           $newsection->summaryformat = FORMAT_HTML;
+           $newsection->sequence = '';
+           
+           $id = $DB->insert_record('course_sections', $newsection);
+           rebuild_course_cache($courseid, true);
+           return (int)$id;
+        } catch (\Throwable $e) {
+            // Fallback to section 0 just in case of race condition or failure
+             $section0 = $DB->get_record('course_sections', ['course' => $courseid, 'section' => 0], 'id', MUST_EXIST);
+             return (int)$section0->id;
+        }
     }
 }

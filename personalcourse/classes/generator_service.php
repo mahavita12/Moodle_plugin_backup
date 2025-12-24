@@ -118,6 +118,7 @@ class generator_service {
         if ($pq && !$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
             error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - quiz {$pq->quizid} no longer exists, deleting mapping");
             $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+            $pq = false; // RESET PQ SO IT IS TREATED AS NEW QUIZ
             $pq = null; // Treat as first generation
         }
         
@@ -162,7 +163,7 @@ class generator_service {
             $name = \local_personalcourse\naming_policy::personal_quiz_name($userid, $sourcequizid);
 
             $qb = new \local_personalcourse\quiz_builder();
-            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default');
+            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default', $prefix);
 
             // **CRITICAL: Verify quiz was actually created**
             if (empty($res->success) || empty($res->quizid) || !$DB->record_exists('quiz', ['id' => (int)$res->quizid])) {
@@ -170,6 +171,9 @@ class generator_service {
                 return $emptyresult;
             }
             error_log("[local_personalcourse] do_generate: Quiz created successfully - quizid={$res->quizid} cmid={$res->cmid}");
+
+            // Safety: Ensure deletioninprogress is 0 for the newly created PQ as well
+            $DB->set_field('course_modules', 'deletioninprogress', 0, ['id' => (int)$res->cmid]);
 
             // Create mapping record
             $pqrec = (object)[

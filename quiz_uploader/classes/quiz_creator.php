@@ -192,6 +192,11 @@ class quiz_creator {
 
             // Create the module
             $moduleinfo = add_moduleinfo($moduleinfo, $course);
+            
+            // Safety: Ensure deletioninprogress is 0
+            // Sometimes during rapid creation/deletion cycles this flag can stick
+            global $DB;
+            $DB->set_field('course_modules', 'deletioninprogress', 0, ['id' => $moduleinfo->coursemodule]);
 
             $result->success = true;
             $result->quizid = $moduleinfo->instance;
