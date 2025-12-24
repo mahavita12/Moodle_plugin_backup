@@ -113,6 +113,14 @@ class generator_service {
             'personalcourseid' => $personalcourseid,
             'sourcequizid' => $sourcequizid,
         ]);
+        
+        // **CLEANUP: Delete orphaned mapping if quiz no longer exists**
+        if ($pq && !$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+            error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - quiz {$pq->quizid} no longer exists, deleting mapping");
+            $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+            $pq = null; // Treat as first generation
+        }
+        
         $isFirstGeneration = empty($pq);
         error_log("[local_personalcourse] do_generate: personalcourseid=$personalcourseid isFirstGeneration=" . ($isFirstGeneration ? 'true' : 'false'));
 
@@ -156,6 +164,13 @@ class generator_service {
             $qb = new \local_personalcourse\quiz_builder();
             $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default');
 
+            // **CRITICAL: Verify quiz was actually created**
+            if (empty($res->success) || empty($res->quizid) || !$DB->record_exists('quiz', ['id' => (int)$res->quizid])) {
+                error_log("[local_personalcourse] do_generate: FAILED to create quiz - success=" . ($res->success ?? 'null') . " quizid=" . ($res->quizid ?? 'null') . " error=" . ($res->error ?? 'none'));
+                return $emptyresult;
+            }
+            error_log("[local_personalcourse] do_generate: Quiz created successfully - quizid={$res->quizid} cmid={$res->cmid}");
+
             // Create mapping record
             $pqrec = (object)[
                 'personalcourseid' => $personalcourseid,
@@ -176,24 +191,7 @@ class generator_service {
             }
         }
 
-        // Verify personal quiz still exists
-        if (!$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-            // Quiz was deleted, recreate
-            $sm = new \local_personalcourse\section_manager();
-            $prefix = \local_personalcourse\naming_policy::section_prefix($userid, (int)$sourcequiz->course, $sourcequizid);
-            $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-            $name = \local_personalcourse\naming_policy::personal_quiz_name($userid, $sourcequizid);
-
-            $qb = new \local_personalcourse\quiz_builder();
-            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default');
-
-            $DB->update_record('local_personalcourse_quizzes', (object)[
-                'id' => $pq->id,
-                'quizid' => (int)$res->quizid,
-                'timemodified' => time(),
-            ]);
-            $pq->quizid = (int)$res->quizid;
-        }
+        // Note: Orphaned quiz check is now done in STEP 5 above
 
         // === STEP 10: GET CURRENT PERSONAL QUIZ SLOTS ===
         $current = self::get_quiz_questionids((int)$pq->quizid, false);
@@ -388,9 +386,10 @@ class generator_service {
     /**
      * Delete all in-progress and overdue attempts for a user on a quiz
      * MUST be called before modifying quiz structure
+     * Stores redirect URL in session for the user to be redirected to the quiz view page
      */
     private static function delete_inprogress_attempts(int $quizid, int $userid): void {
-        global $DB, $CFG;
+        global $DB, $CFG, $SESSION;
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 
         $attempts = $DB->get_records_select(
@@ -415,9 +414,22 @@ class generator_service {
             return;
         }
 
+        // Store redirect URL in session BEFORE deleting attempts
+        // This allows the hook to redirect the user when they try to access the deleted attempt
+        if (isset($SESSION)) {
+            $SESSION->local_personalcourse_redirect = (object)[
+                'url' => $CFG->wwwroot . '/mod/quiz/view.php?id=' . $cm->id,
+                'quizid' => $quizid,
+                'userid' => $userid,
+                'time' => time(),
+            ];
+            error_log("[local_personalcourse] Stored redirect URL in session for quiz cmid={$cm->id}");
+        }
+
         foreach ($attempts as $attempt) {
             try {
                 quiz_delete_attempt($attempt, $quiz);
+                error_log("[local_personalcourse] Deleted in-progress attempt {$attempt->id} for quiz $quizid");
             } catch (\Throwable $e) {
                 // Log but continue
                 error_log("[local_personalcourse] Failed to delete attempt {$attempt->id}: " . $e->getMessage());

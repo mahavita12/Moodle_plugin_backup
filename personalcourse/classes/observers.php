@@ -102,41 +102,12 @@ class observers {
 
         error_log("[local_personalcourse] FLAG_CHANGE: Syncing user=$targetuserid source=$sourcequizid");
 
-        // Check if there's an in-progress attempt that will be deleted
-        $personalquiz = $DB->get_record('local_personalcourse_quizzes', [
-            'personalcourseid' => (int)$pc->id,
-            'sourcequizid' => $sourcequizid,
-        ], 'quizid');
-        
-        $hasInProgressAttempt = false;
-        $personalQuizCmid = 0;
-        if ($personalquiz) {
-            $hasInProgressAttempt = $DB->record_exists_select(
-                'quiz_attempts',
-                "quiz = ? AND userid = ? AND state IN ('inprogress', 'overdue')",
-                [(int)$personalquiz->quizid, $targetuserid]
-            );
-            if ($hasInProgressAttempt) {
-                $personalQuizCmid = (int)$DB->get_field('course_modules', 'id', [
-                    'module' => $DB->get_field('modules', 'id', ['name' => 'quiz']),
-                    'instance' => (int)$personalquiz->quizid,
-                ], IGNORE_MISSING);
-            }
-        }
-
         // === SYNCHRONOUS SYNC ===
         // Call generator_service directly to sync the personal quiz
+        // Note: Redirect is handled via session variable in lib.php's before_footer hook
         try {
             $result = \local_personalcourse\generator_service::generate_from_source($targetuserid, $sourcequizid);
             error_log("[local_personalcourse] FLAG_CHANGE: Result - toadd=" . count($result->toadd ?? []) . " toremove=" . count($result->toremove ?? []));
-            
-            // If in-progress attempt was deleted and there were structural changes, redirect to personal quiz
-            if ($hasInProgressAttempt && (!empty($result->toadd) || !empty($result->toremove)) && $personalQuizCmid > 0) {
-                global $CFG;
-                $redirecturl = new \moodle_url('/mod/quiz/view.php', ['id' => $personalQuizCmid]);
-                error_log("[local_personalcourse] FLAG_CHANGE: Redirecting to personal quiz: $redirecturl");
-                redirect($redirecturl, get_string('personalquiz_updated', 'local_personalcourse'), null, \core\output\notification::NOTIFY_INFO);
-            }
         } catch (\Throwable $e) {
             error_log("[local_personalcourse] Flag sync failed: " . $e->getMessage());
         }

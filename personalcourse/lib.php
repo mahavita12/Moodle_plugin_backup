@@ -119,5 +119,36 @@ JS;
 }
 
 function local_personalcourse_before_footer() {
-    return; // Disabled: Navigation moved to User Menu
+    global $SESSION, $PAGE, $USER;
+    
+    // Check if we need to redirect the user after an in-progress attempt was deleted
+    if (!empty($SESSION->local_personalcourse_redirect) && isloggedin() && !isguestuser()) {
+        $redirect = $SESSION->local_personalcourse_redirect;
+        
+        // Only redirect if:
+        // 1. The redirect was set recently (within 60 seconds)
+        // 2. The user is the one who had their attempt deleted
+        // 3. The current page is NOT already the quiz view page
+        $isRecent = (time() - ($redirect->time ?? 0)) < 60;
+        $isCorrectUser = ((int)$USER->id === (int)($redirect->userid ?? 0));
+        
+        // Check if current page is the quiz attempt page for a deleted attempt
+        $currentUrl = $PAGE->url->out(false);
+        $isAttemptPage = (strpos($currentUrl, '/mod/quiz/attempt.php') !== false);
+        $isViewPage = (strpos($currentUrl, '/mod/quiz/view.php') !== false && strpos($currentUrl, 'id=' . $redirect->quizid) !== false);
+        
+        if ($isRecent && $isCorrectUser && $isAttemptPage && !$isViewPage) {
+            // Clear the session variable
+            unset($SESSION->local_personalcourse_redirect);
+            
+            // Redirect to the quiz view page
+            error_log("[local_personalcourse] Redirecting user to personal quiz view: " . $redirect->url);
+            redirect($redirect->url, get_string('personalquiz_updated', 'local_personalcourse'), null, \core\output\notification::NOTIFY_INFO);
+        }
+        
+        // Clear old redirects (older than 60 seconds)
+        if (!$isRecent) {
+            unset($SESSION->local_personalcourse_redirect);
+        }
+    }
 }
