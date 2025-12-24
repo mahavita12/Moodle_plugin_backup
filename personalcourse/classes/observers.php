@@ -6,30 +6,42 @@ defined('MOODLE_INTERNAL') || die();
 use context_module;
 use context_course;
 
+/**
+ * Simplified Event Observers for Personal Course Plugin
+ * 
+ * Architecture:
+ * 1. All operations are SYNCHRONOUS (no async tasks)
+ * 2. on_quiz_attempt_submitted: Check threshold, auto-flag incorrect, generate PQ
+ * 3. on_flag_added/removed: Sync PQ slots immediately
+ * 4. Force-delete in-progress attempts handled by generator_service
+ */
 class observers {
 
     /**
-     * Lightweight logger for deploy-time diagnostics.
-     * Writes to PHP error_log with a consistent prefix so ops can grep it.
+     * Called when a flag is added
      */
-    private static function log(string $message): void {
-        // Intentionally quiet if error_log is unavailable.
-        try { @error_log('[local_personalcourse] ' . $message); } catch (\Throwable $e) {}
-    }
-
     public static function on_flag_added(\local_questionflags\event\flag_added $event): void {
         self::handle_flag_change($event, true);
     }
 
+    /**
+     * Called when a flag is removed
+     */
     public static function on_flag_removed(\local_questionflags\event\flag_removed $event): void {
         self::handle_flag_change($event, false);
     }
 
+    /**
+     * Handle flag add/remove events - sync personal quiz immediately
+     */
     private static function handle_flag_change(\core\event\base $event, bool $added): void {
         global $DB;
 
+        error_log("[local_personalcourse] FLAG_CHANGE: added=" . ($added ? 'true' : 'false'));
+
         $userid = $event->relateduserid ?? null;
         if (!$userid) {
+            error_log("[local_personalcourse] FLAG_CHANGE: No userid, returning");
             return;
         }
 
@@ -39,393 +51,108 @@ class observers {
         }
 
         $cmid = $context->instanceid;
-        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        $courseid = $cm->course;
+        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, IGNORE_MISSING);
+        if (!$cm) {
+            return;
+        }
 
-        // If this is a personal course, allow regardless of acting user's role (we will re-attribute to owner below).
-        $pcownerrow = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid,courseid');
-        if (!$pcownerrow) {
-            // Public course path: allow when the actor is the same as target user OR is a site admin;
-            // otherwise require a student role in the source course.
-            $sameuser = true; // relateduserid is the actor at this point; we re-attribute later if needed.
-            if (!$sameuser && !is_siteadmin($userid) && !self::user_has_student_role($userid, $courseid)) {
-                self::log("skip_non_student_public user={$userid} course={$courseid}");
+        $courseid = (int)$cm->course;
+        $quizid = (int)$cm->instance;
+
+        // Determine if this is a personal course or public course
+        $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid,courseid');
+        
+        if ($pcowner) {
+            // Flag changed in a PERSONAL course - DO NOT sync
+            // Flag changes in personal quiz should NOT trigger question removal
+            error_log("[local_personalcourse] FLAG_CHANGE: Ignoring - flag change from personal quiz (courseid=$courseid)");
+            return;
+        } else {
+            // Flag changed in a PUBLIC course - this quiz IS the source
+            $sourcequizid = $quizid;
+            $targetuserid = (int)$userid;
+            
+            // Verify user is a student (or admin for testing)
+            if (!is_siteadmin($targetuserid) && !self::user_has_student_role($targetuserid, $courseid)) {
                 return;
             }
         }
 
-        // Queue adhoc task to perform sync out of request context.
-        $questionid = (int)$event->other['questionid'];
-        $flagcolor = (string)$event->other['flagcolor'];
-        $quizid = isset($event->other['quizid']) ? (int)$event->other['quizid'] : null;
-        $origin = isset($event->other['origin']) ? (string)$event->other['origin'] : 'manual';
-
-        // If this CM belongs to a personal course, re-attribute the change to the personal course owner.
-        $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,courseid,userid');
-        $targetuserid = $pcowner ? (int)$pcowner->userid : (int)$userid;
-
-        // Unconditional early enqueue: always schedule a reconcile task before deeper lookups.
-        // This prevents event drops during PQ fork/rebuild windows.
-        try {
-            $sourcequizid_early = 0;
-            $ispcourse_early = ($pcowner && (int)$pcowner->courseid === (int)$courseid);
-            $frompcattempt_early = ($ispcourse_early && $origin === 'attempt');
-            if ($pcowner) {
-                // Personal course path: resolve source quiz id cheaply.
-                $src = (int)($DB->get_field('local_personalcourse_quizzes', 'sourcequizid', [
-                    'personalcourseid' => (int)$pcowner->id,
-                    'quizid' => (int)$cm->instance,
-                ], IGNORE_MISSING) ?: 0);
-                if ($src > 0) {
-                    $sourcequizid_early = $src;
-                } else {
-                    // Fallback by name to infer the source quiz id without relying on mapping readiness.
-                    $qname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$cm->instance], IGNORE_MISSING);
-                    if ($qname !== '') {
-                        $srcid = $DB->get_field_sql(
-                            "SELECT q.id FROM {quiz} q WHERE q.name = ? AND q.course <> ? ORDER BY q.id DESC",
-                            [$qname, (int)$courseid]
-                        );
-                        if (!empty($srcid)) {
-                            $sourcequizid_early = (int)$srcid;
-                        }
-                    }
-                }
-            } else {
-                // Public course path: the instance is the source quiz.
-                $sourcequizid_early = (int)($quizid ?: (int)$cm->instance);
-            }
-
-            if ($sourcequizid_early > 0) {
-                // Gate: skip entire source quiz if it contains any essay questions.
-                $hasessay_early = false;
-                try {
-                    $hasessay_early = (bool)$DB->record_exists_sql(
-                        "SELECT 1\n                           FROM {quiz_slots} qs\n                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                           JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid\n                           JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id\n                           JOIN {question} q ON q.id = qv.questionid\n                          WHERE qs.quizid = ? AND q.qtype = 'essay'",
-                        [(int)$sourcequizid_early]
-                    );
-                } catch (\Throwable $e) {
-                    try {
-                        $hasessay_early = (bool)$DB->record_exists_sql(
-                            "SELECT 1 FROM {quiz_slots} qs JOIN {question} q ON q.id = qs.questionid WHERE qs.quizid = ? AND q.qtype = 'essay'",
-                            [(int)$sourcequizid_early]
-                        );
-                    } catch (\Throwable $e2) { $hasessay_early = false; }
-                }
-                if ($hasessay_early) { self::log('skip_essay_quiz source=' . (int)$sourcequizid_early); return; }
-                $classname = '\\local_personalcourse\\task\\reconcile_view_task';
-                $cd1 = '"userid":' . (int)$targetuserid;
-                $cd2 = '"sourcequizid":' . (int)$sourcequizid_early;
-                $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
-                if (!$exists) {
-                    $task = new \local_personalcourse\task\reconcile_view_task();
-                    $task->set_component('local_personalcourse');
-                    $task->set_custom_data([
-                        'userid' => (int)$targetuserid,
-                        'sourcequizid' => (int)$sourcequizid_early,
-                        'fromattempt' => (bool)$frompcattempt_early,
-                        'origin' => (string)$origin,
-                    ]);
-                    // Small delay; longer when originating from a personal-quiz attempt to avoid race.
-                    $task->set_next_run_time(time() + ($frompcattempt_early ? 120 : 10));
-                    \core\task\manager::queue_adhoc_task($task, true);
-                    self::log("queued reconcile task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
-                } else {
-                    $rec = $DB->get_record_sql("SELECT id, nextruntime, attemptsavailable, faildelay, firststartingtime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
-                    if ($rec) {
-                        if ((int)$rec->nextruntime > time()) { $DB->set_field('task_adhoc', 'nextruntime', time(), ['id' => (int)$rec->id]); }
-                        if ($rec->attemptsavailable !== null && (int)$rec->attemptsavailable <= 0) { $DB->set_field('task_adhoc', 'attemptsavailable', 1, ['id' => (int)$rec->id]); }
-                        if (!empty($rec->firststartingtime)) { $DB->set_field('task_adhoc', 'firststartingtime', null, ['id' => (int)$rec->id]); }
-                        if ((int)$rec->faildelay > 0) { $DB->set_field('task_adhoc', 'faildelay', 0, ['id' => (int)$rec->id]); }
-                    }
-                    self::log("reconcile already queued (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
-                }
-
-                // Queue early unlock only when NOT from a personal-quiz attempt.
-                if (!$frompcattempt_early) {
-                    try {
-                        $unlockclassname = '\\local_personalcourse\\task\\unlock_reconcile_task';
-                        $uexists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$unlockclassname, "%$cd1%", "%$cd2%"]);
-                        if (!$uexists) {
-                            $unlock = new \local_personalcourse\task\unlock_reconcile_task();
-                            $unlock->set_component('local_personalcourse');
-                            $unlock->set_custom_data(['userid' => (int)$targetuserid, 'sourcequizid' => (int)$sourcequizid_early]);
-                            $unlock->set_next_run_time(time());
-                            \core\task\manager::queue_adhoc_task($unlock, true);
-                            self::log("queued unlock task (early " . ($added ? 'add' : 'remove') . ") user={$targetuserid} source={$sourcequizid_early}");
-                        } else { 
-                            $urec = $DB->get_record_sql("SELECT id, nextruntime, attemptsavailable, faildelay, firststartingtime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$unlockclassname, "%$cd1%", "%$cd2%"]); 
-                            if ($urec) {
-                                if ((int)$urec->nextruntime > time()) { $DB->set_field('task_adhoc','nextruntime', time(), ['id' => (int)$urec->id]); }
-                                if ($urec->attemptsavailable !== null && (int)$urec->attemptsavailable <= 0) { $DB->set_field('task_adhoc','attemptsavailable', 1, ['id' => (int)$urec->id]); }
-                                if (!empty($urec->firststartingtime)) { $DB->set_field('task_adhoc','firststartingtime', null, ['id' => (int)$urec->id]); }
-                                if ((int)$urec->faildelay > 0) { $DB->set_field('task_adhoc','faildelay', 0, ['id' => (int)$urec->id]); }
-                            }
-                        }
-                    } catch (\Throwable $ue) { /* best-effort */ }
-                }
-            }
-
-            // Lightweight heartbeat for ops diagnostics.
-            try {
-                $heartbeat = json_encode([
-                    'ts' => time(),
-                    'event' => $added ? 'add' : 'remove',
-                    'userid' => (int)$userid,
-                    'targetuserid' => (int)$targetuserid,
-                    'courseid' => (int)$courseid,
-                    'cmid' => (int)$cmid,
-                    'sourcequizid' => (int)$sourcequizid_early,
-                    'origin' => $origin,
-                ]);
-                if ($heartbeat !== false) {
-                    set_config('pcq_last_event', $heartbeat, 'local_personalcourse');
-                }
-            } catch (\Throwable $hb) { /* non-blocking */ }
-        } catch (\Throwable $e) {
-            // Best-effort early enqueue; continue with existing logic.
+        // Skip if source quiz has essay questions
+        if (self::quiz_has_essay($sourcequizid)) {
+            return;
         }
 
-        try {
-            if (!$quizid) { $quizid = (int)$cm->instance; }
-            // Ensure personal course mapping exists for target user; if not, we only handle removal from any existing PQ.
-            $pc = $DB->get_record('local_personalcourse_courses', ['userid' => $targetuserid], 'id,courseid');
-            if ($pc) {
-                // Determine if the flag event came from the student's personal course.
-                $ispcourse = ((int)$pc->courseid === (int)$courseid);
-                // Resolve the mapped PQ accordingly: by personal quiz id if in personal course; otherwise by source quiz id.
-                if ($ispcourse) {
-                    $pq = $DB->get_record('local_personalcourse_quizzes', [
-                        'personalcourseid' => (int)$pc->id,
-                        'quizid' => (int)$cm->instance,
-                    ], 'id, quizid, sourcequizid');
-                    // Repair: if event came from an archived copy (no mapping), resolve the active PQ by base name or archives.
-                    if (!$pq) {
-                        try {
-                            $currname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$cm->instance], IGNORE_MISSING);
-                            if ($currname !== '') {
-                                $basename = (string)preg_replace('/\\s*\\((Previous Attempt|Archived).*$/i', '', $currname);
-                                // Find another PQ in this personal course whose name matches the base.
-                                $pq2 = $DB->get_record_sql(
-                                    "SELECT pq.id, pq.quizid, pq.sourcequizid
-                                       FROM {local_personalcourse_quizzes} pq
-                                       JOIN {quiz} q2 ON q2.id = pq.quizid
-                                      WHERE pq.personalcourseid = ?
-                                        AND pq.quizid <> ?
-                                        AND (q2.name = ? OR q2.name LIKE ? OR q2.name LIKE ?)
-                                   ORDER BY pq.id DESC",
-                                    [(int)$pc->id, (int)$cm->instance, $basename, $basename . ' (Previous Attempt)%', $basename . ' (Archived)%']
-                                );
-                                if ($pq2) { $pq = $pq2; }
-                            }
-                        } catch (\Throwable $e) { /* best-effort */ }
-                    }
-                    if (!$pq) {
-                        // Last resort: map via archives table from this archived quiz to its source, then to active PQ.
-                        try {
-                            $arch = $DB->get_record('local_personalcourse_archives', [
-                                'personalcourseid' => (int)$pc->id,
-                                'archivedquizid' => (int)$cm->instance,
-                            ], 'sourcequizid', IGNORE_MISSING);
-                            if ($arch && !empty($arch->sourcequizid)) {
-                                $pq3 = $DB->get_record('local_personalcourse_quizzes', [
-                                    'personalcourseid' => (int)$pc->id,
-                                    'sourcequizid' => (int)$arch->sourcequizid,
-                                ], 'id, quizid, sourcequizid');
-                                if ($pq3) { $pq = $pq3; }
-                            }
-                        } catch (\Throwable $e) { /* best-effort */ }
-                    }
-                } else {
-                    $pq = $DB->get_record('local_personalcourse_quizzes', [
-                        'personalcourseid' => (int)$pc->id,
-                        'sourcequizid' => (int)$quizid,
-                    ], 'id, quizid, sourcequizid');
-                }
+        // Check if personal quiz mapping exists
+        $pc = $DB->get_record('local_personalcourse_courses', ['userid' => $targetuserid], 'id');
+        if (!$pc) {
+            // No personal course yet - will be created on next attempt submission
+            return;
+        }
 
-                $qb = new \local_personalcourse\quiz_builder();
+        $pqexists = $DB->record_exists('local_personalcourse_quizzes', [
+            'personalcourseid' => (int)$pc->id,
+            'sourcequizid' => $sourcequizid,
+        ]);
 
-                // Guard: ensure we only mutate legitimate PQs. If mapping exists, verify cm idnumber marker.
-                if ($pq && !empty($pq->quizid)) {
-                    try {
-                        $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pc->courseid, false, MUST_EXIST);
-                        $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmcur->id]);
-                        $srcid = !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : (int)$quizid;
-                        $ownerid = (int)$pc->userid;
-                        $expected = 'pcq:' . $ownerid . ':' . $srcid;
-                        if (trim($marker) === '') {
-                            // Legacy PQ without marker: stamp it now so we don't skip valid operations.
-                            try { $DB->set_field('course_modules', 'idnumber', $expected, ['id' => (int)$cmcur->id]); } catch (\Throwable $e) { /* non-blocking */ }
-                        } else if (stripos($marker, $expected) !== 0) {
-                            return; // Mismatched marker - likely not our PQ instance.
-                        }
-                    } catch (\Throwable $g) { return; }
-                }
+        if (!$pqexists) {
+            // Personal quiz doesn't exist yet - will be created on next attempt submission
+            return;
+        }
 
-                // Defer whenever there is an active attempt on the target personal quiz
-                // (regardless of origin). We will unlock + reconcile in an adhoc task.
-                $shoulddefer = false;
-                $ispcourse = ((int)$pc->courseid === (int)$courseid);
-                $frompcattempt = ($ispcourse && $origin === 'attempt');
-                if ($frompcattempt) {
-                    $shoulddefer = true;
-                } else if (!empty($pq) && $DB->record_exists_select(
-                        'quiz_attempts',
-                        "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                        [(int)$pq->quizid, (int)$targetuserid]
-                    )) {
-                    $shoulddefer = true;
-                }
-                self::log(($added ? 'ADD' : 'REMOVE') . " flag evt origin={$origin} cmid={$cmid} src={$quizid} pq=" . (!empty($pq)?(int)$pq->quizid:0) . " owner={$targetuserid} defer=" . ($shoulddefer ? '1':'0'));
+        error_log("[local_personalcourse] FLAG_CHANGE: Syncing user=$targetuserid source=$sourcequizid");
 
-                // 1. Update Desired State (DB Mapping)
-                if ($added) {
-                    // If we re-attributed to the owner, ensure the owner's flag row exists.
-                    if ($targetuserid !== $userid) {
-                        $existsflag = $DB->record_exists('local_questionflags', [
-                            'userid' => (int)$targetuserid,
-                            'questionid' => (int)$questionid,
-                        ]);
-                        if (!$existsflag) {
-                            $time = time();
-                            $DB->insert_record('local_questionflags', (object)[
-                                'userid' => (int)$targetuserid,
-                                'questionid' => (int)$questionid,
-                                'flagcolor' => $flagcolor ?: 'blue',
-                                'cmid' => $cmid,
-                                'quizid' => $quizid ?: (int)$cm->instance,
-                                'timecreated' => $time,
-                                'timemodified' => $time,
-                            ]);
-                        }
-                    }
-
-                    // Soft Deduplication: If this question is in another PQ inside this personal course, remove it from there (softly).
-                    if ($pq && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                        $existing = $DB->get_record('local_personalcourse_questions', [
-                            'personalcourseid' => (int)$pc->id,
-                            'questionid' => (int)$questionid,
-                        ]);
-                        if ($existing && (int)$existing->personalquizid !== (int)$pq->id) {
-                            // We only delete the MAPPING for the old quiz. The Task will handle physical removal when safe.
-                            $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                        }
-                        
-                        // Ensure mapping row exists for the new target PQ.
-                        $existingmap = $DB->get_record('local_personalcourse_questions', [
-                            'personalcourseid' => (int)$pc->id,
-                            'personalquizid' => (int)$pq->id,
-                            'questionid' => (int)$questionid,
-                        ]);
-                        if ($existingmap) {
-                            $existingmap->timemodified = time();
-                            if (empty($existingmap->flagcolor)) { $existingmap->flagcolor = ($flagcolor ?: 'blue'); }
-                            $DB->update_record('local_personalcourse_questions', $existingmap);
-                        } else {
-                            $DB->insert_record('local_personalcourse_questions', (object)[
-                                'personalcourseid' => (int)$pc->id,
-                                'personalquizid' => (int)$pq->id,
-                                'questionid' => (int)$questionid,
-                                'slotid' => null,
-                                'flagcolor' => $flagcolor ?: 'blue',
-                                'source' => ($origin === 'auto') ? 'auto' : 'manual_flag',
-                                'originalposition' => null,
-                                'currentposition' => null,
-                                'timecreated' => time(),
-                                'timemodified' => time(),
-                            ]);
-                        }
-                    }
-                } else {
-                    // Removal: Update DB to remove mapping.
-                    $existing = $DB->get_record('local_personalcourse_questions', [
-                        'personalcourseid' => (int)$pc->id,
-                        'questionid' => (int)$questionid,
-                    ]);
-                    
-                    // If we re-attributed to the owner, also remove the owner's flag rows.
-                    if ($targetuserid !== $userid) {
-                        try {
-                            $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => (int)$questionid], IGNORE_MISSING);
-                            if (!empty($qbeid)) {
-                                $siblings = $DB->get_fieldset_select('question_versions', 'questionid', 'questionbankentryid = ?', [(int)$qbeid]);
-                                if (!empty($siblings)) {
-                                    list($in, $inparams) = $DB->get_in_or_equal($siblings, SQL_PARAMS_QM);
-                                    $DB->delete_records_select('local_questionflags', 'userid = ? AND questionid ' . $in, array_merge([(int)$targetuserid], $inparams));
-                                } else {
-                                    $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
-                                }
-                            } else {
-                                $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
-                            }
-                        } catch (\Throwable $e) {
-                            $DB->delete_records('local_questionflags', ['userid' => (int)$targetuserid, 'questionid' => (int)$questionid]);
-                        }
-                    }
-
-                    if ($existing) {
-                        $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existing->id]);
-                    } else {
-                        // Fallback: ensure it's gone from this specific PQ mapping if defined
-                        if (!empty($pq)) {
-                            $DB->delete_records('local_personalcourse_questions', [
-                                'personalcourseid' => (int)$pc->id,
-                                'personalquizid' => (int)$pq->id,
-                                'questionid' => (int)$questionid,
-                            ]);
-                        }
-                    }
-                }
-
-                // 2. Queue Reconcile Task (The only way to update structure)
-                // We never call $qb->add/remove directly here.
-                try {
-                    $sourcequizid_for_task = !empty($pq) && !empty($pq->sourcequizid) ? (int)$pq->sourcequizid : ((int)$quizid ?: 0);
-                    if (!empty($sourcequizid_for_task)) {
-                        // If this event came from a personal attempt, we treat it as 'fromattempt' to respect potential races
-                        $classname = '\\local_personalcourse\\task\\reconcile_view_task';
-                        $cd1 = '"userid":' . (int)$targetuserid;
-                        $cd2 = '"sourcequizid":' . (int)$sourcequizid_for_task;
-                        
-                        // Check if task exists
-                        $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
-                        
-                        if (!$exists) {
-                            $task = new \local_personalcourse\task\reconcile_view_task();
-                            $task->set_component('local_personalcourse');
-                            $task->set_custom_data([
-                                'userid' => (int)$targetuserid,
-                                'sourcequizid' => (int)$sourcequizid_for_task,
-                                'fromattempt' => (bool)$frompcattempt,
-                                'origin' => (string)$origin
-                            ]);
-                            // Run ASAP
-                            $task->set_next_run_time(time()); 
-                            \core\task\manager::queue_adhoc_task($task, true);
-                            self::log("queued reconcile task (queue-first) user={$targetuserid} source={$sourcequizid_for_task}");
-                        } else {
-                            // Task exists, ensure it runs soon
-                            $rec = $DB->get_record_sql("SELECT id, nextruntime FROM {task_adhoc} WHERE classname = ? AND customdata LIKE ? AND customdata LIKE ? ORDER BY id DESC", [$classname, "%$cd1%", "%$cd2%"]); 
-                            if ($rec && (int)$rec->nextruntime > time()) { 
-                                $DB->set_field('task_adhoc', 'nextruntime', time(), ['id' => (int)$rec->id]); 
-                            }
-                            self::log("reconcile already queued (queue-first) user={$targetuserid} source={$sourcequizid_for_task}");
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    self::log('queue failed (queue-first): ' . $e->getMessage());
-                }
+        // Check if there's an in-progress attempt that will be deleted
+        $personalquiz = $DB->get_record('local_personalcourse_quizzes', [
+            'personalcourseid' => (int)$pc->id,
+            'sourcequizid' => $sourcequizid,
+        ], 'quizid');
+        
+        $hasInProgressAttempt = false;
+        $personalQuizCmid = 0;
+        if ($personalquiz) {
+            $hasInProgressAttempt = $DB->record_exists_select(
+                'quiz_attempts',
+                "quiz = ? AND userid = ? AND state IN ('inprogress', 'overdue')",
+                [(int)$personalquiz->quizid, $targetuserid]
+            );
+            if ($hasInProgressAttempt) {
+                $personalQuizCmid = (int)$DB->get_field('course_modules', 'id', [
+                    'module' => $DB->get_field('modules', 'id', ['name' => 'quiz']),
+                    'instance' => (int)$personalquiz->quizid,
+                ], IGNORE_MISSING);
             }
-        } catch (\Throwable $t) {
-            // Best-effort only; final reconciliation will occur in adhoc task.
-            self::log('handle_flag_change error: ' . $t->getMessage());
+        }
+
+        // === SYNCHRONOUS SYNC ===
+        // Call generator_service directly to sync the personal quiz
+        try {
+            $result = \local_personalcourse\generator_service::generate_from_source($targetuserid, $sourcequizid);
+            error_log("[local_personalcourse] FLAG_CHANGE: Result - toadd=" . count($result->toadd ?? []) . " toremove=" . count($result->toremove ?? []));
+            
+            // If in-progress attempt was deleted and there were structural changes, redirect to personal quiz
+            if ($hasInProgressAttempt && (!empty($result->toadd) || !empty($result->toremove)) && $personalQuizCmid > 0) {
+                global $CFG;
+                $redirecturl = new \moodle_url('/mod/quiz/view.php', ['id' => $personalQuizCmid]);
+                error_log("[local_personalcourse] FLAG_CHANGE: Redirecting to personal quiz: $redirecturl");
+                redirect($redirecturl, get_string('personalquiz_updated', 'local_personalcourse'), null, \core\output\notification::NOTIFY_INFO);
+            }
+        } catch (\Throwable $e) {
+            error_log("[local_personalcourse] Flag sync failed: " . $e->getMessage());
         }
     }
 
+    /**
+     * Called when a quiz attempt is submitted
+     */
     public static function on_quiz_attempt_submitted(\mod_quiz\event\attempt_submitted $event): void {
-        global $DB, $CFG, $PAGE;
+        global $DB;
+
+        error_log("[local_personalcourse] ATTEMPT_SUBMITTED event fired");
+
         $userid = $event->relateduserid ?? null;
         if (!$userid) {
+            error_log("[local_personalcourse] ATTEMPT_SUBMITTED: No userid, returning");
             return;
         }
 
@@ -435,378 +162,81 @@ class observers {
         }
 
         $cmid = $context->instanceid;
-        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        $courseid = $cm->course;
-
-        // Student-only gating: ignore admins/managers/teachers attempts.
-        if (!self::user_has_student_role($userid, $courseid)) {
+        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, IGNORE_MISSING);
+        if (!$cm) {
             return;
         }
 
-        // Handle both cases: if attempt is in personal course, map to source quiz and delegate to generator_service;
-        // otherwise proceed with the existing task path (which delegates to generator_service).
-        global $DB;
-        $pcrow = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id,courseid');
-        if ($pcrow && (int)$pcrow->courseid === (int)$courseid) {
+        $courseid = (int)$cm->course;
+        $quizid = (int)$cm->instance;
+        $attemptid = (int)$event->objectid;
+
+        // Check if this is a personal course
+        $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid');
+        if ($pcowner) {
+            // This is a PERSONAL quiz attempt submission
+            // Sync the personal quiz based on current flags (deferred from flag changes during attempt)
+            error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Personal quiz attempt - syncing deferred flag changes");
+            
+            // Find the source quiz for this personal quiz
             $pq = $DB->get_record('local_personalcourse_quizzes', [
-                'personalcourseid' => (int)$pcrow->id,
-                'quizid' => (int)$cm->instance,
+                'personalcourseid' => (int)$pcowner->id,
+                'quizid' => $quizid,
             ], 'id, sourcequizid');
+            
             if ($pq && !empty($pq->sourcequizid)) {
                 try {
-                    $svc = new \local_personalcourse\generator_service();
-                    // Flags-only reconciliation post-creation; drive solely by current global flag state.
-                    $svc->generate_from_source((int)$userid, (int)$pq->sourcequizid, (int)$event->objectid, 'flags_only');
-                } catch (\Throwable $e) { /* best-effort */ }
+                    $result = \local_personalcourse\generator_service::generate_from_source((int)$pcowner->userid, (int)$pq->sourcequizid);
+                    error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Personal quiz sync - toadd=" . count($result->toadd ?? []) . " toremove=" . count($result->toremove ?? []));
+                } catch (\Throwable $e) {
+                    error_log("[local_personalcourse] Personal quiz sync failed: " . $e->getMessage());
+                }
             }
             return;
         }
 
-        // Compute grade/attempt for notification purposes.
-        $attempt = $DB->get_record('quiz_attempts', ['id' => (int)$event->objectid], 'id,attempt,sumgrades,quiz,userid', IGNORE_MISSING);
-        $quiz = $DB->get_record('quiz', ['id' => (int)$cm->instance], 'id,sumgrades', IGNORE_MISSING);
-        $sumgrades = $attempt ? (float)($attempt->sumgrades ?? 0.0) : 0.0;
-        $totalsum = $quiz ? (float)($quiz->sumgrades ?? 0.0) : 0.0;
-        $grade = ($totalsum > 0.0) ? (($sumgrades / $totalsum) * 100.0) : 0.0;
-        $n = $attempt ? (int)$attempt->attempt : 0;
-
-        // Determine if a personal quiz already exists for this user and source quiz.
-        $hasquiz = false;
-        $pcinfo = $DB->get_record('local_personalcourse_courses', ['userid' => (int)$userid], 'id,courseid');
-        if ($pcinfo) {
-            $moduleidquiz_chk = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-            $existingquiz = $DB->get_record_sql(
-                'SELECT q.id, cm.deletioninprogress
-                   FROM {quiz} q
-                   JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?
-                  WHERE q.course = ? AND q.name = (
-                        SELECT name FROM {quiz} WHERE id = ?
-                  )
-               ORDER BY q.id DESC',
-                [$moduleidquiz_chk, (int)$pcinfo->courseid, (int)$cm->instance]
-            );
-            $hasquiz = ($existingquiz && empty($existingquiz->deletioninprogress));
-        }
-
-        // Show notification according to state.
-        if ($hasquiz) {
-            \core\notification::info(get_string('notify_pq_exists_short', 'local_personalcourse'));
-        } else {
-            if ($n === 1 && $grade < 100.0) {
-                \core\notification::warning(get_string('notify_pq_not_created_first_short', 'local_personalcourse'));
-            } else if ($n >= 2 && $grade < 100.0) {
-                \core\notification::warning(get_string('notify_pq_not_created_next_short', 'local_personalcourse'));
-            }
-        }
-
-        // Queue an adhoc task to analyze attempt, persist auto-blue flags, and apply thresholds.
-        $task = new \local_personalcourse\task\attempt_generation_task();
-        $task->set_custom_data([
-            'userid' => $userid,
-            'quizid' => (int)$cm->instance,
-            'attemptid' => (int)$event->objectid,
-            'cmid' => $cmid,
-        ]);
-        $task->set_component('local_personalcourse');
-        \core\task\manager::queue_adhoc_task($task, true);
-
-        // Fast path: immediately append incorrect questions to the student's existing Personal Quiz (append-only).
-        // Heavy work (creation/fork/visibility) remains in async task.
-        try {
-            if ($pcinfo) {
-                $pqmap = $DB->get_record('local_personalcourse_quizzes', [
-                    'personalcourseid' => (int)$pcinfo->id,
-                    'sourcequizid' => (int)$cm->instance,
-                ], 'id, quizid');
-                if ($pqmap && !empty($pqmap->quizid)) {
-                    // Skip if a personal-quiz attempt is in progress/overdue.
-                    $hasinprogress = $DB->record_exists_select('quiz_attempts',
-                        "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                        [(int)$pqmap->quizid, (int)$userid]
-                    );
-                    if (!$hasinprogress) {
-                        $an = new \local_personalcourse\attempt_analyzer();
-                        $incorrectqids = $an->get_incorrect_questionids_from_attempt((int)$event->objectid);
-                        if (!empty($incorrectqids)) {
-                            // Current qids already present in the personal quiz (Moodle 4.4 schema via references).
-                            $currqids = [];
-                            try {
-                                $currqids = $DB->get_fieldset_sql(
-                                    "SELECT qv.questionid
-                                       FROM {quiz_slots} qs
-                                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
-                                      WHERE qs.quizid = ?
-                                   ORDER BY qs.slot",
-                                    [(int)$pqmap->quizid]
-                                );
-                            } catch (\Throwable $e) { $currqids = []; }
-                            $currqids = array_map('intval', $currqids ?: []);
-                            // Also avoid duplicates present in any PQ for this personal course.
-                            $presentany = $DB->get_fieldset_select('local_personalcourse_questions', 'questionid',
-                                'personalcourseid = ?', [(int)$pcinfo->id]) ?: [];
-                            $presentany = array_map('intval', $presentany);
-                            $toadd = array_values(array_diff(array_map('intval', $incorrectqids), $currqids, $presentany));
-                            if (!empty($toadd)) {
-                                $qb = new \local_personalcourse\quiz_builder();
-                                $qb->add_questions((int)$pqmap->quizid, $toadd);
-                                $now = time();
-                                foreach ($toadd as $qid) {
-                                    if (!$DB->record_exists('local_personalcourse_questions', [
-                                        'personalcourseid' => (int)$pcinfo->id,
-                                        'questionid' => (int)$qid,
-                                    ])) {
-                                        $DB->insert_record('local_personalcourse_questions', (object)[
-                                            'personalcourseid' => (int)$pcinfo->id,
-                                            'personalquizid' => (int)$pqmap->id,
-                                            'questionid' => (int)$qid,
-                                            'slotid' => null,
-                                            'flagcolor' => 'blue',
-                                            'source' => 'auto_incorrect',
-                                            'originalposition' => null,
-                                            'currentposition' => null,
-                                            'timecreated' => $now,
-                                            'timemodified' => $now,
-                                        ]);
-                                    }
-                                }
-                                try {
-                                    \local_personalcourse\modinfo_rebuilder::queue((int)$pcinfo->courseid, 'immediate_inject');
-                                    // Sort quizzes within the same section by name for consistent ordering.
-                                    try {
-                                        $cmcur = get_coursemodule_from_instance('quiz', (int)$pqmap->quizid, (int)$pcinfo->courseid, false, MUST_EXIST);
-                                        $sm = new \local_personalcourse\section_manager();
-                                        $sm->sort_quizzes_in_section_by_name((int)$pcinfo->courseid, (int)$cmcur->section);
-                                    } catch (\Throwable $se) { }
-                                } catch (\Throwable $e) { }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (\Throwable $e) { /* best-effort immediate append; fall back to adhoc */ }
-
-        return;
-    }
-
-    /**
-     * Check if a specific question is actually present in a quiz's slots (4.4+ schema).
-     */
-    private static function question_present_in_quiz_slots(int $quizid, int $questionid): bool {
-        global $DB;
-        if ($quizid <= 0 || $questionid <= 0) { return false; }
-        $sql = "SELECT 1
-                  FROM {quiz_slots} qs
-                  JOIN {question_references} qr
-                    ON qr.itemid = qs.id
-                   AND qr.component = 'mod_quiz'
-                   AND qr.questionarea = 'slot'
-                  JOIN {question_versions} qv
-                    ON qv.questionbankentryid = qr.questionbankentryid
-                 WHERE qs.quizid = ? AND qv.questionid = ?";
-        return $DB->record_exists_sql($sql, [$quizid, $questionid]);
-    }
-
-    /**
-     * Backfill any mapped questions missing from slots for a given personal quiz.
-     * Adds missing questions after unlocking, and queues a rebuild.
-     */
-    private static function quick_reconcile_slots_for_pq(int $personalcourseid, int $pqid, int $quizid, int $ownerid): void {
-        global $DB;
-        if ($personalcourseid <= 0 || $pqid <= 0 || $quizid <= 0 || $ownerid <= 0) { return; }
-        
-        // Safety Check: Abort if there are active attempts on this quiz.
-        // We do not delete active attempts here. We let the background reconciler handle it later.
-        if ($DB->record_exists_select('quiz_attempts',
-                "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')",
-                [(int)$quizid, (int)$ownerid])) {
+        // Skip if quiz has essay questions
+        if (self::quiz_has_essay($quizid)) {
             return;
         }
 
-        $rows = $DB->get_records('local_personalcourse_questions', [
-            'personalcourseid' => $personalcourseid,
-            'personalquizid' => $pqid,
-        ], '', 'id,questionid');
-        if (empty($rows)) { return; }
-        $missing = [];
-        foreach ($rows as $r) {
-            if (!self::question_present_in_quiz_slots($quizid, (int)$r->questionid)) {
-                $missing[] = (int)$r->questionid;
-            }
+        // Verify user is a student (or admin for testing)
+        if (!is_siteadmin($userid) && !self::user_has_student_role($userid, $courseid)) {
+            return;
         }
-        if (empty($missing)) { return; }
-        // Unlock and add all missing in one pass (only if safe, already checked above).
+
+        error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Calling generator_service for user=$userid quiz=$quizid attempt=$attemptid");
+
+        // === SYNCHRONOUS GENERATION ===
+        // Call generator_service directly with the attempt ID
+        // This will:
+        // 1. Check threshold (>30%)
+        // 2. Auto-flag incorrect questions (fraction=0)
+        // 3. Create or sync personal quiz
         try {
-            $qb = new \local_personalcourse\quiz_builder();
-            $qb->add_questions((int)$quizid, $missing);
-        } catch (\Throwable $e) { /* best-effort */ }
-        try {
-            \local_personalcourse\modinfo_rebuilder::queue((int)$DB->get_field('quiz', 'course', ['id' => (int)$quizid], IGNORE_MISSING), 'quick_reconcile');
-        } catch (\Throwable $e) { }
+            $result = \local_personalcourse\generator_service::generate_from_source($userid, $quizid, $attemptid);
+            error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Result - quizid=" . ($result->quizid ?? 0) . " mappingid=" . ($result->mappingid ?? 0));
+            
+            // Show notification if quiz was created or updated
+            if (!empty($result->quizid)) {
+                if (!empty($result->toadd) || !empty($result->toremove)) {
+                    \core\notification::success(get_string('personalquiz_updated', 'local_personalcourse'));
+                } else if ($result->mappingid > 0) {
+                    \core\notification::success(get_string('personalquiz_ready', 'local_personalcourse'));
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("[local_personalcourse] Generation failed: " . $e->getMessage());
+        }
     }
 
-    public static function on_quiz_viewed(\mod_quiz\event\course_module_viewed $event): void {
-        global $DB;
-        $context = $event->get_context();
-        if (!($context instanceof context_module)) { return; }
-        $cmid = $context->instanceid;
-        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        $courseid = (int)$cm->course;
-
-        $pc = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid,courseid');
-        if (!$pc) { return; }
-
-        $pq = $DB->get_record('local_personalcourse_quizzes', [
-            'personalcourseid' => (int)$pc->id,
-            'quizid' => (int)$cm->instance,
-        ], 'id, quizid, sourcequizid');
-        if (!$pq || empty($pq->sourcequizid)) {
-            $useridowner = (int)$pc->userid;
-            $sourcequizid = 0;
-            $flagquizids = $DB->get_fieldset_sql("SELECT DISTINCT quizid FROM {local_questionflags} WHERE userid = ? AND quizid IS NOT NULL", [$useridowner]);
-            if (!empty($flagquizids) && count($flagquizids) === 1) {
-                $first = reset($flagquizids);
-                if ($first) { $sourcequizid = (int)$first; }
-            }
-            if (!$sourcequizid) {
-                $qname = $DB->get_field('quiz', 'name', ['id' => (int)$cm->instance]);
-                if ($qname) {
-                    $srcid = $DB->get_field_sql("SELECT q.id FROM {quiz} q WHERE q.name = ? AND q.course <> ? ORDER BY q.id DESC", [$qname, (int)$cm->course]);
-                    if ($srcid) { $sourcequizid = (int)$srcid; }
-                }
-            }
-            if ($sourcequizid) {
-                if (!$pq) {
-                    $pqid = (int)$DB->insert_record('local_personalcourse_quizzes', (object)[
-                        'personalcourseid' => (int)$pc->id,
-                        'quizid' => (int)$cm->instance,
-                        'sourcequizid' => (int)$sourcequizid,
-                        'sectionname' => '',
-                        'quiztype' => 'non_essay',
-                        'timecreated' => time(),
-                        'timemodified' => time(),
-                    ]);
-                } else {
-                    $pqid = (int)$pq->id;
-                    $DB->update_record('local_personalcourse_quizzes', (object)[
-                        'id' => $pqid,
-                        'sourcequizid' => (int)$sourcequizid,
-                        'timemodified' => time(),
-                    ]);
-                }
-                $pq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$pqid], 'id, quizid, sourcequizid');
-            } else {
-                return;
-            }
-        }
-        // Defer structural reconcile on review: enqueue adhoc task (deduped), do not mutate in this request.
-        try {
-            $ownerid = (int)$pc->userid;
-            if (!empty($pq) && !empty($pq->sourcequizid)) {
-                $deferview = (int)get_config('local_personalcourse', 'defer_view_enforcement');
-                if (!$deferview) {
-                    // Enforce course visibility inline only when not deferring.
-                    try {
-                        \local_personalcourse\generator_service::enforce_archive_visibility((int)$courseid, (int)$pq->sourcequizid, (int)$cm->instance);
-                    } catch (\Throwable $evis) { }
-                }
-                // Detect inconsistent section sequences only when not deferring.
-                $inconsistent = false;
-                $badexists = false;
-                if (!$deferview) {
-                    $sections = $DB->get_records('course_sections', ['course' => (int)$courseid], 'section', 'id,sequence');
-                    if (!empty($sections)) {
-                        // Build valid CM id set: existing and not deletioninprogress.
-                        $validcmids = [];
-                        $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [(int)$courseid], '', 'id');
-                        foreach ($rs as $r) { $validcmids[(int)$r->id] = true; }
-                        $rs->close();
-                        foreach ($sections as $sec) {
-                            $seq = trim((string)$sec->sequence);
-                            if ($seq === '') { continue; }
-                            $ids = array_filter(array_map('intval', explode(',', $seq)));
-                            foreach ($ids as $id) { if (!isset($validcmids[(int)$id])) { $inconsistent = true; $badexists = true; break 2; } }
-                        }
-                    }
-                }
-
-                $classname = '\\local_personalcourse\\task\\reconcile_view_task';
-                $cd1 = '"userid":' . (int)$ownerid;
-                $cd2 = '"sourcequizid":' . (int)$pq->sourcequizid;
-                $exists = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ? AND customdata LIKE ?', [$classname, "%$cd1%", "%$cd2%"]);
-                if (!$exists) {
-                    $task = new \local_personalcourse\task\reconcile_view_task();
-                    $task->set_custom_data([
-                        'userid' => $ownerid,
-                        'sourcequizid' => (int)$pq->sourcequizid,
-                        'cmid' => (int)$cmid,
-                        'fromattempt' => false,
-                        'origin' => 'view',
-                    ]);
-                    $task->set_component('local_personalcourse');
-                    // Delay to avoid race before an in-progress attempt row exists.
-                    $task->set_next_run_time(time() + 120);
-                    \core\task\manager::queue_adhoc_task($task, true);
-                    \core\notification::info(get_string('task_reconcile_scheduled', 'local_personalcourse'));
-                }
-
-                // If inconsistent or we are deferring, queue a sequence cleanup task for the course (dedup by courseid).
-                if ($inconsistent || $deferview) {
-                    $classname2 = '\\local_personalcourse\\task\\sequence_cleanup_task';
-                    $cd = '"courseid":' . (int)$courseid;
-                    $exists2 = $DB->record_exists_select('task_adhoc', 'classname = ? AND customdata LIKE ?', [$classname2, "%$cd%"]);
-                    if (!$exists2) {
-                        $cleanup = new \local_personalcourse\task\sequence_cleanup_task();
-                        $cleanup->set_component('local_personalcourse');
-                        $cleanup->set_custom_data(['courseid' => (int)$courseid]);
-                        \core\task\manager::queue_adhoc_task($cleanup, true);
-                    }
-                    // Early return to avoid any risk during rendering.
-                    return;
-                }
-            }
-        } catch (\Throwable $e) { /* best-effort */ }
-        return;
-    }
-
-    public static function on_personal_quiz_attempt_started(\core\event\base $event): void {
-        global $DB;
-        $userid = $event->relateduserid ?? null;
-
-        $context = $event->get_context();
-        if (!($context instanceof context_module)) { return; }
-        $cmid = $context->instanceid;
-        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        $courseid = (int)$cm->course;
-
-        // Resolve the personal course owner: if relateduserid is missing or not the owner, use the owner by courseid.
-        $pc = null;
-        if ($userid) {
-            $pc = $DB->get_record('local_personalcourse_courses', ['userid' => $userid], 'id,courseid');
-            if (!$pc || (int)$pc->courseid !== $courseid) {
-                $pc = null;
-            }
-        }
-        if (!$pc) {
-            $pc = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,courseid,userid');
-            if (!$pc) { return; }
-            $userid = (int)$pc->userid; // Use owner.
-        }
-
-        // Find mapping by personal quiz id to get source quiz id.
-        $pq = $DB->get_record('local_personalcourse_quizzes', [
-            'personalcourseid' => (int)$pc->id,
-            'quizid' => (int)$cm->instance,
-        ], 'id, quizid, sourcequizid');
-        if (!$pq || empty($pq->sourcequizid)) { return; }
-
-        // No structural changes on attempt start; defer to attempt_submitted and review-page flag change handling.
-        return;
-    }
-
+    /**
+     * Check if user has student role in course
+     */
     private static function user_has_student_role(int $userid, int $courseid): bool {
-        // Allow site admins to trigger tasks for testing and admin flows.
-        if (is_siteadmin($userid)) { return true; }
+        if (is_siteadmin($userid)) {
+            return true;
+        }
         $coursectx = \context_course::instance($courseid);
         $roles = get_user_roles($coursectx, $userid, true);
         foreach ($roles as $ra) {
@@ -817,20 +247,38 @@ class observers {
         return false;
     }
 
-    private static function delete_inprogress_attempts_for_user_at_quiz(int $quizid, int $userid): void {
-        global $DB, $CFG;
-        if ($quizid <= 0 || $userid <= 0) { return; }
-        $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$quizid, (int)$userid], 'id ASC');
-        if (empty($attempts)) { return; }
-        $quiz = $DB->get_record('quiz', ['id' => (int)$quizid], '*', IGNORE_MISSING);
-        if (!$quiz) { return; }
-        try { require_once($CFG->dirroot . '/mod/quiz/locallib.php'); } catch (\Throwable $e) { return; }
+    /**
+     * Called when a quiz is viewed - no-op in simplified version
+     */
+    public static function on_quiz_viewed(\mod_quiz\event\course_module_viewed $event): void {
+        // No-op: structural sync now handled entirely by flag events and attempt submission
+    }
+
+    /**
+     * Called when a personal quiz attempt starts - no-op in simplified version
+     */
+    public static function on_personal_quiz_attempt_started(\core\event\base $event): void {
+        // No-op: no pre-attempt mutations needed in synchronous model
+    }
+
+    /**
+     * Check if quiz contains essay questions
+     */
+    private static function quiz_has_essay(int $quizid): bool {
+        global $DB;
         try {
-            $cm = get_coursemodule_from_instance('quiz', (int)$quizid, (int)$quiz->course, false, MUST_EXIST);
-            if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; }
-        } catch (\Throwable $e) { }
-        foreach ($attempts as $attempt) {
-            try { quiz_delete_attempt($attempt, $quiz); } catch (\Throwable $e) { }
+            return $DB->record_exists_sql(
+                "SELECT 1
+                   FROM {quiz_slots} qs
+                   JOIN {question_references} qr ON qr.itemid = qs.id 
+                        AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                   JOIN {question} q ON q.id = qv.questionid
+                  WHERE qs.quizid = ? AND q.qtype = 'essay'",
+                [$quizid]
+            );
+        } catch (\Throwable $e) {
+            return false;
         }
     }
 }

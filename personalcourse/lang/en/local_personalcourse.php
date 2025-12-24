@@ -49,6 +49,8 @@ $string['notify_pq_preparing_short'] = 'Your personal quiz is being prepared and
 
 // Background reconcile notice.
 $string['task_reconcile_scheduled'] = 'Personal Quiz updates are being applied in the background. Please refresh shortly.';
+$string['personalquiz_ready'] = 'Your Personal Quiz is ready! Visit your Personal Course to start practicing.';
+$string['personalquiz_updated'] = 'Your Personal Quiz has been updated with your flagged questions.';
 
 // Settings.
 $string['settings'] = 'Personal Course settings';

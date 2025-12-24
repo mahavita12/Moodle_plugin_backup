@@ -181,7 +181,9 @@ class before_footer_html_generation {
                             'origin' => $origin,
                         ],
                     ]);
+                    error_log("[questionflags] Triggering flag_added event for question $questionid");
                     $event->trigger();
+                    error_log("[questionflags] flag_added event triggered successfully");
                 } else {
                     $origin = ($PAGE->pagetype === 'mod-quiz-review') ? 'review' : (($PAGE->pagetype === 'mod-quiz-attempt') ? 'attempt' : '');
                     $event = \local_questionflags\event\flag_removed::create([
@@ -196,7 +198,9 @@ class before_footer_html_generation {
                             'origin' => $origin,
                         ],
                     ]);
+                    error_log("[questionflags] Triggering flag_removed event for question $questionid");
                     $event->trigger();
+                    error_log("[questionflags] flag_removed event triggered successfully");
                 }
             }
 

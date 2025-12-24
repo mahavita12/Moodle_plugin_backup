@@ -3,808 +3,237 @@ namespace local_personalcourse;
 
 defined('MOODLE_INTERNAL') || die();
 
+/**
+ * Simplified Personal Quiz Generator Service
+ * 
+ * Architecture:
+ * 1. Synchronous execution (no async tasks)
+ * 2. Single source of truth: Blue flags (excluding Red flags)
+ * 3. Auto-flag incorrect questions (fraction=0) on first generation
+ * 4. Force-delete in-progress attempts before slot changes
+ * 5. Differential sync: toadd = desired - current, toremove = current - desired
+ */
 class generator_service {
-    public static function generate_from_source(int $userid, int $sourcequizid, ?int $attemptid = null, string $mode = 'union', bool $defer = false): object {
-        global $DB, $CFG;
+
+    /**
+     * Main entry point: generate or sync a personal quiz from a source quiz.
+     *
+     * @param int $userid Student user ID
+     * @param int $sourcequizid Source (public) quiz ID
+     * @param int|null $attemptid Optional attempt ID for first generation
+     * @return object Result with personalcourseid, quizid, cmid, toadd, toremove
+     */
+    public static function generate_from_source(int $userid, int $sourcequizid, ?int $attemptid = null): object {
+        global $DB, $CFG, $USER;
         require_once($CFG->dirroot . '/course/lib.php');
         require_once($CFG->dirroot . '/mod/quiz/lib.php');
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-        require_once($CFG->dirroot . '/question/engine/lib.php');
 
-        // Release the session lock as early as possible to avoid request timeouts.
-        try { \core\session\manager::write_close(); } catch (\Throwable $e) { }
+        // === STEP 1: SETUP ===
+        // Only release session lock in CLI mode to prevent web redirect issues
+        if (defined('CLI_SCRIPT') && CLI_SCRIPT) {
+            try { \core\session\manager::write_close(); } catch (\Throwable $e) {}
+        }
         if (function_exists('ignore_user_abort')) { @ignore_user_abort(true); }
 
-        // Apply soft cooldown/lock only for deferred/event-driven runs to avoid blocking admin synchronous actions.
-        if ($defer) {
-            $nowts = time();
-            $coolkey = 'cooldown_' . (int)$userid . '_' . (int)$sourcequizid;
-            try { $last = (int)\get_config('local_personalcourse', $coolkey); } catch (\Throwable $e) { $last = 0; }
-            if ($last && ($nowts - $last) < 8) {
-                return (object)[
-                    'personalcourseid' => 0,
-                    'mappingid' => 0,
-                    'quizid' => 0,
-                    'cmid' => 0,
-                    'toadd' => [],
-                    'toremove' => [],
-                    'deferred' => true,
-                ];
-            }
+        // Store original user for restoration
+        $originaluser = $USER;
 
-            // Soft lock to prevent concurrent duplicate generation for same user/source.
-            $lockkey = 'genlock_' . (int)$userid . '_' . (int)$sourcequizid;
-            $lockedat = (int)\get_config('local_personalcourse', $lockkey);
-            if ($lockedat && ($nowts - $lockedat) < 120) {
-                return (object)[
-                    'personalcourseid' => 0,
-                    'mappingid' => 0,
-                    'quizid' => 0,
-                    'cmid' => 0,
-                    'toadd' => [],
-                    'toremove' => [],
-                    'deferred' => true,
-                ];
-            }
-            \set_config($lockkey, $nowts, 'local_personalcourse');
-            // Always release soft-lock and set cooldown at end of request, regardless of exit path.
-            register_shutdown_function(function() use ($lockkey, $coolkey) {
-                try {
-                    \set_config($lockkey, 0, 'local_personalcourse');
-                    \set_config($coolkey, time(), 'local_personalcourse');
-                } catch (\Throwable $e) { }
-            });
+        // Switch to admin context for permissions
+        $admins = explode(',', $CFG->siteadmins);
+        $adminid = !empty($admins) ? (int)trim($admins[0]) : 2;
+        $adminuser = $DB->get_record('user', ['id' => $adminid]);
+        if ($adminuser) {
+            \core\session\manager::set_user($adminuser);
         }
 
+        try {
+            $result = self::do_generate($userid, $sourcequizid, $attemptid);
+        } finally {
+            // Restore original user
+            if ($originaluser && isset($originaluser->id)) {
+                \core\session\manager::set_user($originaluser);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Internal generation logic (runs under admin context)
+     */
+    private static function do_generate(int $userid, int $sourcequizid, ?int $attemptid): object {
+        global $DB, $CFG;
+
+        error_log("[local_personalcourse] do_generate: userid=$userid sourcequizid=$sourcequizid attemptid=" . ($attemptid ?? 'null'));
+
+        $emptyresult = (object)[
+            'personalcourseid' => 0,
+            'mappingid' => 0,
+            'quizid' => 0,
+            'cmid' => 0,
+            'toadd' => [],
+            'toremove' => [],
+        ];
+
+        // === STEP 2: VALIDATE SOURCE QUIZ ===
+        $sourcequiz = $DB->get_record('quiz', ['id' => $sourcequizid], 'id,course,name');
+        if (!$sourcequiz) {
+            error_log("[local_personalcourse] do_generate: source quiz not found");
+            return $emptyresult;
+        }
+
+        // Skip if source quiz contains essay questions
+        if (self::quiz_has_essay($sourcequizid)) {
+            error_log("[local_personalcourse] do_generate: quiz has essay - returning empty");
+            return $emptyresult;
+        }
+        error_log("[local_personalcourse] do_generate: no essays, proceeding");
+
+        // === STEP 3: ENSURE PERSONAL COURSE ===
         $cg = new \local_personalcourse\course_generator();
         $pcctx = $cg->ensure_personal_course($userid);
         $personalcourseid = (int)$pcctx->pc->id;
         $pccourseid = (int)$pcctx->course->id;
 
-        // Ensure student enrolment only (no staff sync as per requirement).
+        // Ensure student enrolment
         try {
             $enrol = new \local_personalcourse\enrollment_manager();
             $enrol->ensure_manual_instance_and_enrol_student($pccourseid, $userid);
-        } catch (\Throwable $e) { /* best-effort */ }
+        } catch (\Throwable $e) {}
 
-        $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-
-        // Only compute a latest finished attempt when operating in 'union' mode.
-        if ($mode === 'union' && empty($attemptid)) {
-            $attemptid = (int)$DB->get_field_sql(
-                "SELECT qa.id FROM {quiz_attempts} qa WHERE qa.quiz = ? AND qa.userid = ? AND qa.state = 'finished' ORDER BY COALESCE(qa.timefinish, qa.timemodified, qa.timecreated) DESC, qa.id DESC",
-                [$sourcequizid, $userid]
-            );
+        // === STEP 4: GET SOURCE QUIZ QUESTION IDS (excluding essays) ===
+        $sourceqids = self::get_quiz_questionids($sourcequizid, true);
+        if (empty($sourceqids)) {
+            return $emptyresult;
         }
 
-        // Determine section prefix from naming policy using user initials and detected subject.
-        $sourcecourseid = (int)$DB->get_field('quiz', 'course', ['id' => $sourcequizid]);
-        $srcourse = $DB->get_record('course', ['id' => $sourcecourseid], 'id,shortname,fullname', MUST_EXIST);
-        $src_cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$sourcequizid, 'course' => $sourcecourseid], IGNORE_MISSING);
-        $srsectionname = '';
-        if ($src_cmid) {
-            $src_sectionid = (int)$DB->get_field('course_modules', 'section', ['id' => $src_cmid], IGNORE_MISSING);
-            if ($src_sectionid) {
-                $src_section = $DB->get_record('course_sections', ['id' => $src_sectionid], 'id,section,name');
-                if ($src_section) { $srsectionname = (string)($src_section->name ?: ('Section ' . (int)$src_section->section)); }
-            }
-        }
-        $prefix = \local_personalcourse\naming_policy::section_prefix((int)$userid, (int)$sourcecourseid, (int)$sourcequizid);
-
-        // Settings mode based on qtypes.
-        $qtypes = [];
-        try {
-            $qtypes = $DB->get_fieldset_sql("SELECT DISTINCT q.qtype\n                                           FROM {quiz_slots} qs\n                                           JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                           JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid\n                                           JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id\n                                           JOIN {question} q ON q.id = qv.questionid\n                                          WHERE qs.quizid = ?", [$sourcequizid]);
-        } catch (\Throwable $e) { $qtypes = []; }
-        if (empty($qtypes)) {
-            try { $qtypes = $DB->get_fieldset_sql("SELECT DISTINCT q.qtype FROM {quiz_slots} qs JOIN {question} q ON q.id = qs.questionid WHERE qs.quizid = ?", [$sourcequizid]); } catch (\Throwable $e) { $qtypes = []; }
-        }
-        $qtypes = array_map('strval', $qtypes);
-        $allessay = (!empty($qtypes) && count(array_unique($qtypes)) === 1 && reset($qtypes) === 'essay');
-        $settingsmode = $allessay ? null : 'default';
-
-        $hasessay = in_array('essay', $qtypes, true);
-        if ($hasessay) {
-            return (object)[
-                'personalcourseid' => $personalcourseid,
-                'mappingid' => 0,
-                'quizid' => 0,
-                'cmid' => 0,
-                'toadd' => [],
-                'toremove' => [],
-            ];
-        }
-
-        // Ensure mapping (prefer existing mapping; otherwise reuse quiz by name; else create).
+        // === STEP 5: CHECK IF PERSONAL QUIZ EXISTS ===
         $pq = $DB->get_record('local_personalcourse_quizzes', [
             'personalcourseid' => $personalcourseid,
             'sourcequizid' => $sourcequizid,
         ]);
+        $isFirstGeneration = empty($pq);
+        error_log("[local_personalcourse] do_generate: personalcourseid=$personalcourseid isFirstGeneration=" . ($isFirstGeneration ? 'true' : 'false'));
 
-        $qb = new \local_personalcourse\quiz_builder();
-        $sm = new \local_personalcourse\section_manager();
-
-        if (!$pq) {
-            if (!\local_personalcourse\threshold_policy::allow_initial_creation((int)$userid, (int)$sourcequizid)) {
-                return (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'mappingid' => 0,
-                    'quizid' => 0,
-                    'cmid' => 0,
-                    'toadd' => [],
-                    'toremove' => [],
-                ];
+        // === STEP 6: THRESHOLD CHECK FOR FIRST GENERATION ===
+        if ($isFirstGeneration) {
+            error_log("[local_personalcourse] do_generate: First generation - checking threshold");
+            if (!\local_personalcourse\threshold_policy::allow_initial_creation($userid, $sourcequizid)) {
+                error_log("[local_personalcourse] do_generate: Threshold NOT met - returning empty");
+                $emptyresult['personalcourseid'] = $personalcourseid;
+                return $emptyresult;
             }
-            // Always create a fresh personal quiz; do not reuse by name.
+            error_log("[local_personalcourse] do_generate: Threshold passed");
+        } else {
+            error_log("[local_personalcourse] do_generate: Not first generation - skipping threshold");
+        }
+
+        // === STEP 7: AUTO-FLAG INCORRECT QUESTIONS (first generation only) ===
+        if ($isFirstGeneration && $attemptid) {
+            self::auto_flag_incorrect_questions($userid, $sourcequizid, $attemptid, $sourceqids);
+        }
+
+        // === STEP 8: GET DESIRED SET (Blue flags, excluding Red flags) ===
+        $desired = self::get_desired_questionids($userid, $sourceqids);
+
+        // If no desired questions and first generation, nothing to do
+        if (empty($desired) && $isFirstGeneration) {
+            $emptyresult['personalcourseid'] = $personalcourseid;
+            return $emptyresult;
+        }
+
+        // === STEP 9: CREATE PERSONAL QUIZ IF NOT EXISTS ===
+        $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
+
+        if ($isFirstGeneration) {
+            // Create the personal quiz
+            $sm = new \local_personalcourse\section_manager();
+            $prefix = \local_personalcourse\naming_policy::section_prefix($userid, (int)$sourcequiz->course, $sourcequizid);
             $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-            $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
+            $name = \local_personalcourse\naming_policy::personal_quiz_name($userid, $sourcequizid);
+
+            $qb = new \local_personalcourse\quiz_builder();
+            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default');
+
+            // Create mapping record
             $pqrec = (object)[
                 'personalcourseid' => $personalcourseid,
                 'quizid' => (int)$res->quizid,
                 'sourcequizid' => $sourcequizid,
                 'sectionname' => $prefix,
-                'quiztype' => $allessay ? 'essay' : 'non_essay',
+                'quiztype' => 'non_essay',
                 'timecreated' => time(),
                 'timemodified' => time(),
             ];
             $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
             $pq = $pqrec;
-            // Stamp provenance marker on CM idnumber.
-            try {
-                if (!empty($res->cmid)) {
-                    $marker = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
-                    $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
-                }
-            } catch (\Throwable $e) { }
-            // Proactively clean section sequences in the personal course to drop deleting/missing CMIDs.
-            self::cleanup_course_sequences((int)$pccourseid);
-            // Sort quizzes in the same section by name for consistent ordering.
-            try {
-                $cmcur = get_coursemodule_from_instance('quiz', (int)$res->quizid, (int)$pccourseid, false, MUST_EXIST);
-                $sm = new \local_personalcourse\section_manager();
-                $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
-            } catch (\Throwable $se) { }
-        } else {
-            // Recreate if mapped quiz is missing or CM is being deleted.
-            $needrecreate = false;
-            if (!$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) { $needrecreate = true; }
-            else {
-                $cmrow_chk = $DB->get_record('course_modules', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], 'id,deletioninprogress');
-                if (!$cmrow_chk || (!empty($cmrow_chk->deletioninprogress))) { $needrecreate = true; }
-            }
-            if ($needrecreate) {
-                $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                $name = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', $settingsmode);
-                $pq->quizid = (int)$res->quizid;
-                $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
-                // Stamp provenance marker on new CM idnumber.
-                try {
-                    if (!empty($res->cmid)) {
-                        $marker = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
-                        $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
-                    }
-                } catch (\Throwable $e) { }
-                // Heal sequences immediately after recreation to avoid stale CMIDs lingering next to the new CM.
-                self::cleanup_course_sequences((int)$pccourseid);
-                // Sort quizzes in the same section by name.
-                try {
-                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                    $sm = new \local_personalcourse\section_manager();
-                    $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
-                } catch (\Throwable $se) { }
-            } else {
-                // Ensure the active personal quiz name mirrors the latest naming policy.
-                try {
-                    $desired = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                    $current = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                    if ($desired !== '' && $current !== '' && $current !== $desired && stripos($current, '(Archived)') === false && stripos($current, '(Previous Attempt)') === false) {
-                        $DB->set_field('quiz', 'name', $desired, ['id' => (int)$pq->quizid]);
-                    }
-                } catch (\Throwable $e) { }
-                // Ensure provenance marker exists and matches expected for reused quizzes.
-                try {
-                    $cmid_existing = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => (int)$pccourseid], IGNORE_MISSING);
-                    if ($cmid_existing > 0) {
-                        $expected = 'pcq:' . (int)$userid . ':' . (int)$sourcequizid;
-                        $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmid_existing], IGNORE_MISSING);
-                        if (trim($marker) === '' || stripos($marker, $expected) !== 0) {
-                            $DB->set_field('course_modules', 'idnumber', $expected, ['id' => (int)$cmid_existing]);
-                        }
-                    }
-                } catch (\Throwable $e) { }
+
+            // Mark CM with provenance
+            if (!empty($res->cmid)) {
+                $marker = 'pcq:' . $userid . ':' . $sourcequizid;
+                $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
             }
         }
 
-        // Build desired set = (source order) ∩ (flags ∪ incorrect from attempt/latest attempt).
-        $srcquizqids = [];
-        try {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                                   FROM {quiz_slots} qs\n                                                   JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                                  WHERE qs.quizid = ?\n                                               ORDER BY qs.slot", [$sourcequizid]);
-        } catch (\Throwable $e) {
-            $srcquizqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [$sourcequizid]);
-        }
-        $flagqids = [];
-        if (!empty($srcquizqids)) {
-            list($insqlq, $inparamsq) = $DB->get_in_or_equal(array_map('intval', $srcquizqids), SQL_PARAMS_QM);
-            $flagqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insqlq} AND flagcolor IN ('blue','red')", array_merge([$userid], $inparamsq));
-        }
-        $incorrect = [];
-        if ($mode === 'union') {
-            if (!empty($attemptid)) {
-                $an = new \local_personalcourse\attempt_analyzer();
-                $incorrect = $an->get_incorrect_questionids_from_attempt((int)$attemptid);
-            }
-            $unionids = array_values(array_unique(array_merge(array_map('intval', $flagqids ?: []), array_map('intval', $incorrect ?: []))));
-            $desired = array_values(array_intersect(array_map('intval', $srcquizqids ?: []), $unionids));
-        } else { // flags_only
-            $desired = array_values(array_intersect(array_map('intval', $srcquizqids ?: []), array_map('intval', $flagqids ?: [])));
-        }
-
-        // Persist auto-blue for incorrects not already flagged.
-        $autoblue = ($mode === 'union') ? array_values(array_diff(array_map('intval', $incorrect ?: []), array_map('intval', $flagqids ?: []))) : [];
-        if (!empty($autoblue)) {
-            $qfcols = [];
-            try { $qfcols = $DB->get_columns('local_questionflags'); } catch (\Throwable $t) { $qfcols = []; }
-            $hascmid = isset($qfcols['cmid']);
-            $hasquizid = isset($qfcols['quizid']);
-            $now = time();
-            foreach ($autoblue as $qid) {
-                if (!$DB->record_exists('local_questionflags', ['userid' => $userid, 'questionid' => (int)$qid])) {
-                    $rec = (object)[
-                        'userid' => $userid,
-                        'questionid' => (int)$qid,
-                        'flagcolor' => 'blue',
-                        'timecreated' => $now,
-                        'timemodified' => $now,
-                    ];
-                    if ($hascmid) { $rec->cmid = $src_cmid ?: null; }
-                    if ($hasquizid) { $rec->quizid = $sourcequizid; }
-                    $DB->insert_record('local_questionflags', $rec);
-                }
-            }
-        }
-
-        // If we are in flags_only mode and the desired set is empty, remove the active personal quiz.
-        if ($mode === 'flags_only' && empty($desired)) {
-            if ($defer) {
-                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
-                return (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'mappingid' => (int)$pq->id,
-                    'quizid' => (int)$pq->quizid,
-                    'cmid' => $cmid,
-                    'toadd' => [],
-                    'toremove' => [],
-                    'deferred' => true,
-                ];
-            }
-            // If a mapping exists, handle quiz cleanup.
-            if ($pq && !empty($pq->quizid) && $DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-                // Delete any in-progress/overdue attempts for this user to unlock structural/CM changes.
-                $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
-                if (!empty($attempts)) {
-                    $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                    if ($quiz) {
-                        try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                        foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
-                    }
-                }
-
-                $hasfinished = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND userid = ? AND state = 'finished'", [(int)$pq->quizid, (int)$userid]);
-                if ($hasfinished) {
-                    // Archive: rename and hide on course page, then detach mapping.
-                    try {
-                        $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                        $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                        $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                        if ($oldcm) {
-                            $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                            $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
-                        }
-                        // Register archive record for full history.
-                        try {
-                            $archive = (object)[
-                                'ownerid' => (int)$userid,
-                                'personalcourseid' => (int)$personalcourseid,
-                                'sourcequizid' => (int)$sourcequizid,
-                                'archivedquizid' => (int)$pq->quizid,
-                                'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
-                                'archivedname' => (string)($oldname ?: ''),
-                                'reason' => 'flags_empty',
-                                'archivedat' => time(),
-                                'notes' => null,
-                            ];
-                            $DB->insert_record('local_personalcourse_archives', $archive);
-                        } catch (\Throwable $e3) { }
-                    } catch (\Throwable $e) {}
-                    // Remove the mapping so no active PQ exists.
-                    $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
-                } else {
-                    try {
-                        $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                        if ($cm) {
-                            $task = new \local_personalcourse\task\orchestrate_deletion_task();
-                            $task->set_component('local_personalcourse');
-                            $task->set_custom_data(['courseid' => (int)$pccourseid, 'cmids' => [(int)$cm->id]]);
-                            \core\task\manager::queue_adhoc_task($task, true);
-                        }
-                    } catch (\Throwable $e) {
-                        $DB->delete_records('quiz', ['id' => (int)$pq->quizid]);
-                    }
-                    $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id]);
-                    $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
-                }
-            }
-            // Rebuild cache and exit early; no personal quiz should remain active for this source.
-            try { self::enforce_archive_visibility((int)$pccourseid, (int)$sourcequizid, 0); } catch (\Throwable $ee) {}
-            return (object)[
-                'personalcourseid' => $personalcourseid,
-                'mappingid' => 0,
-                'quizid' => 0,
-                'cmid' => 0,
-                'toadd' => [],
-                'toremove' => [],
-            ];
-        }
-
-        // Check for in-progress/overdue attempts that block structural changes.
-        // If present, we DEFER the update unless the attempt is very old (abandoned).
-        $active_attempts = $DB->get_records_select('quiz_attempts', 
-            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
-            [(int)$pq->quizid, (int)$userid], 'id ASC');
-            
-        $has_active = !empty($active_attempts);
-        $force_break_lock = false;
-        
-        if ($has_active && !$defer) {
-            // Check if attempt is abandoned (e.g., > 24 hours old).
-            // If so, we can delete it to unblock the system.
-            foreach ($active_attempts as $at) {
-                $timemod = (int)($at->timemodified ?? $at->timecreated);
-                if ((time() - $timemod) > 24 * 3600) {
-                    $force_break_lock = true; // Found an abandoned attempt
-                } else {
-                    $force_break_lock = false; // Found a recent attempt, must respect it
-                    break; 
-                }
-            }
-            
-            if (!$force_break_lock) {
-                // Return deferred status - DO NOT MODIFY QUIZ
-                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
-                return (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'mappingid' => (int)$pq->id,
-                    'quizid' => (int)$pq->quizid,
-                    'cmid' => $cmid,
-                    'toadd' => [], 
-                    'toremove' => [],
-                    'deferred' => true,
-                    'reason' => 'active_attempt'
-                ];
-            }
-        }
-
-        // Dedupe across the student's personal course: if any desired qid exists in another personal quiz, move it here.
-        if (!$defer && !empty($desired)) {
-            foreach ($desired as $qid) {
-                $existingpcq = $DB->get_record('local_personalcourse_questions', [
-                    'personalcourseid' => (int)$personalcourseid,
-                    'questionid' => (int)$qid,
-                ]);
-                if ($existingpcq && (int)$existingpcq->personalquizid !== (int)$pq->id) {
-                    $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => (int)$existingpcq->personalquizid], 'id, quizid');
-                    if ($oldpq) {
-                        $oldhasfinished = $DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$oldpq->quizid]);
-                        $oldhasactive = $DB->record_exists_select('quiz_attempts', 
-                            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
-                            [(int)$oldpq->quizid, (int)$userid]);
-
-                        if (!$oldhasfinished && !$oldhasactive) {
-                            $qb->remove_question((int)$oldpq->quizid, (int)$qid);
-                        }
-                    }
-                    $DB->delete_records('local_personalcourse_questions', ['id' => (int)$existingpcq->id]);
-                }
-            }
-        }
-
-        // Current qids in personal quiz.
-        $currqids = [];
-        try {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                              WHERE qs.quizid = ?\n                                           ORDER BY qs.slot", [(int)$pq->quizid]);
-        } catch (\Throwable $e) {
-            $currqids = $DB->get_fieldset_sql("SELECT DISTINCT questionid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL ORDER BY slot", [(int)$pq->quizid]);
-        }
-        $currqids = array_map('intval', $currqids ?: []);
-
-        // If any finished attempts exist for this personal quiz, restrict structural changes to append-only.
-        $hasfinishedany = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND state = 'finished'", [(int)$pq->quizid]);
-
-        // Check for in-progress/overdue attempts that block structural changes.
-        // If present, we DEFER the update unless the attempt is very old (abandoned).
-        $active_attempts = $DB->get_records_select('quiz_attempts', 
-            "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", 
-            [(int)$pq->quizid, (int)$userid], 'id ASC');
-            
-        $has_active = !empty($active_attempts);
-        $force_break_lock = false;
-        
-        if ($has_active && !$defer) {
-            // Check if attempt is abandoned (e.g., > 24 hours old).
-            // If so, we can delete it to unblock the system.
-            foreach ($active_attempts as $at) {
-                $timemod = (int)($at->timemodified ?? $at->timecreated);
-                if ((time() - $timemod) > 24 * 3600) {
-                    $force_break_lock = true; // Found an abandoned attempt
-                } else {
-                    $force_break_lock = false; // Found a recent attempt, must respect it
-                    break; 
-                }
-            }
-            
-            if (!$force_break_lock) {
-                // Return deferred status - DO NOT MODIFY QUIZ
-                $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
-                return (object)[
-                    'personalcourseid' => $personalcourseid,
-                    'mappingid' => (int)$pq->id,
-                    'quizid' => (int)$pq->quizid,
-                    'cmid' => $cmid,
-                    'toadd' => [], // Pretend nothing to add
-                    'toremove' => [], // Pretend nothing to remove
-                    'deferred' => true,
-                    'reason' => 'active_attempt'
-                ];
-            }
-        }
-
-        // Detect any existing placeholder description questions in this quiz by idnumber prefix.
-        $placeholderprefix = 'pcq_placeholder_';
-        $phqids = [];
-        try {
-            $phqids = $DB->get_fieldset_sql("SELECT qv.questionid\n                                               FROM {quiz_slots} qs\n                                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'\n                                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid\n                                               JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid\n                                              WHERE qs.quizid = ? AND qbe.idnumber LIKE ?", [(int)$pq->quizid, $placeholderprefix . '%']);
-        } catch (\Throwable $e) { $phqids = []; }
-
-        $toadd = array_values(array_diff($desired, $currqids));
-        // Ensure additions are in the exact source order for consistent slot placement.
-        if (!empty($toadd)) {
-            $toadd = array_values(array_intersect($desired, $toadd));
-        }
-        $toremove = array_values(array_diff($currqids, $desired));
-
-        // If finished attempts exist and removals are needed, fork to a new quiz to preserve reviews.
-        if (!$defer && $hasfinishedany && !empty($toremove)) {
-            // Delete in-progress/overdue attempts for this user to unlock CM changes.
-            $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
-            if (!empty($attempts)) {
-                $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                if ($quiz) {
-                    try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                    foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
-                }
-            }
-            // Archive current quiz (keep visible for direct links, hide on course page).
-            try {
-                $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                if ($oldcm) {
-                    $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                    $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
-                }
-                // Archive record.
-                try {
-                    $archive = (object)[
-                        'ownerid' => (int)$userid,
-                        'personalcourseid' => (int)$personalcourseid,
-                        'sourcequizid' => (int)$sourcequizid,
-                        'archivedquizid' => (int)$pq->quizid,
-                        'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
-                        'archivedname' => (string)($oldname ?: ''),
-                        'reason' => 'fork_content_change',
-                        'archivedat' => time(),
-                        'notes' => null,
-                    ];
-                    $DB->insert_record('local_personalcourse_archives', $archive);
-                } catch (\Throwable $e3) { }
-            } catch (\Throwable $e) { }
-
-            // Create a fresh quiz and switch mapping.
+        // Verify personal quiz still exists
+        if (!$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
+            // Quiz was deleted, recreate
+            $sm = new \local_personalcourse\section_manager();
+            $prefix = \local_personalcourse\naming_policy::section_prefix($userid, (int)$sourcequiz->course, $sourcequizid);
             $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-            $newname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-            $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
-            $pq->quizid = (int)$resnew->quizid;
-            $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
+            $name = \local_personalcourse\naming_policy::personal_quiz_name($userid, $sourcequizid);
 
-            // Reset sets and plan to add everything desired to the new quiz.
-            $currqids = [];
-            $toadd = $desired;
-            $toremove = [];
-            $hasfinishedany = false;
-            // Clean sequences to ensure no stale CMIDs remain.
-            self::cleanup_course_sequences((int)$pccourseid);
-            // Enforce course page visibility: only latest archived shown as 'Previous Attempt'.
-            self::enforce_archive_visibility((int)$pccourseid, (int)$sourcequizid, (int)$pq->quizid);
-            // Sort quizzes in the same section by name.
-            try {
-                $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                $sm = new \local_personalcourse\section_manager();
-                $sm->sort_quizzes_in_section_by_name((int)$pccourseid, (int)$cmcur->section);
-            } catch (\Throwable $se) { }
+            $qb = new \local_personalcourse\quiz_builder();
+            $res = $qb->create_quiz($pccourseid, $sectionnumber, $name, '', 'default');
+
+            $DB->update_record('local_personalcourse_quizzes', (object)[
+                'id' => $pq->id,
+                'quizid' => (int)$res->quizid,
+                'timemodified' => time(),
+            ]);
+            $pq->quizid = (int)$res->quizid;
         }
 
-        // Always remove placeholder when we have real desired questions.
-        if (!empty($desired) && !empty($phqids)) {
-            $toremove = array_values(array_unique(array_merge($toremove, array_map('intval', $phqids))));
-        }
-        // When desired is empty, ensure there are no real questions left in the active personal quiz.
-        // If finished attempts exist, fork-and-switch to a fresh quiz to preserve history.
-        $needplaceholder = false;
-        if (empty($desired)) {
-            $realcurrqids = !empty($phqids) ? array_values(array_diff($currqids, array_map('intval', $phqids))) : $currqids;
-            $hasfinished = (bool)$DB->record_exists_select('quiz_attempts', "quiz = ? AND userid = ? AND state = 'finished'", [(int)$pq->quizid, (int)$userid]);
+        // === STEP 10: GET CURRENT PERSONAL QUIZ SLOTS ===
+        $current = self::get_quiz_questionids((int)$pq->quizid, false);
 
-            if (!empty($realcurrqids)) {
-                if (!$defer && $hasfinished) {
-                    // Delete in-progress/overdue attempts.
-                    $attempts = $DB->get_records_select('quiz_attempts', "quiz = ? AND userid = ? AND state IN ('inprogress','overdue')", [(int)$pq->quizid, (int)$userid], 'id ASC');
-                    if (!empty($attempts)) {
-                        $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                        if ($quiz) {
-                            try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                            foreach ($attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
-                        }
-                    }
-                    // Mark old quiz as archived and hide it from the course page (but keep accessible via direct links).
-                    try {
-                        $oldname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$pq->quizid], IGNORE_MISSING);
-                        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                        $DB->set_field('quiz', 'name', ($policybase . ' (Archived)'), ['id' => (int)$pq->quizid]);
-                        $oldcm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$pccourseid, false, MUST_EXIST);
-                        if ($oldcm) {
-                            // Keep visible=1 so direct attempt/review links still work, but hide on course page.
-                            $DB->set_field('course_modules', 'visibleoncoursepage', 0, ['id' => (int)$oldcm->id]);
-                            $DB->set_field('course_modules', 'visible', 0, ['id' => (int)$oldcm->id]);
-                            // Rebuild course cache so the change is reflected immediately in the course index.
-                        }
-                        // Register archive record for full history.
-                        try {
-                            $archive = (object)[
-                                'ownerid' => (int)$userid,
-                                'personalcourseid' => (int)$personalcourseid,
-                                'sourcequizid' => (int)$sourcequizid,
-                                'archivedquizid' => (int)$pq->quizid,
-                                'archivedcmid' => isset($oldcm->id) ? (int)$oldcm->id : null,
-                                'archivedname' => (string)($oldname ?: ''),
-                                'reason' => 'fork',
-                                'archivedat' => time(),
-                                'notes' => null,
-                            ];
-                            $DB->insert_record('local_personalcourse_archives', $archive);
-                        } catch (\Throwable $e3) { }
-                    } catch (\Throwable $e) {}
+        // === STEP 11: COMPUTE DIFFERENTIAL ===
+        $toadd = array_values(array_diff($desired, $current));
+        $toremove = array_values(array_diff($current, $desired));
 
-                    // Create a fresh quiz and switch mapping.
-                    $sectionnumber = $sm->ensure_section_by_prefix($pccourseid, $prefix);
-                    $newname = \local_personalcourse\naming_policy::personal_quiz_name((int)$userid, (int)$sourcequizid);
-                    $resnew = $qb->create_quiz($pccourseid, $sectionnumber, $newname, '', $settingsmode);
-                    $pq->quizid = (int)$resnew->quizid;
-                    $DB->update_record('local_personalcourse_quizzes', (object)['id' => (int)$pq->id, 'quizid' => (int)$pq->quizid, 'timemodified' => time()]);
-
-                    // Reset local sets; we will add a placeholder below.
-                    $currqids = [];
-                    $phqids = [];
-                    $toadd = [];
-                    $toremove = [];
-                    $needplaceholder = true;
-                } else {
-                    // Edit in place: remove all real questions.
-                    $toadd = [];
-                    $toremove = array_values(array_unique(array_merge($toremove, $realcurrqids)));
-                    $needplaceholder = true;
-                }
-            } else {
-                // No real questions currently present; ensure a placeholder exists.
-                $needplaceholder = true;
-            }
-        }
-
-        // If deferring, return summary without mutating structure.
-        if ($defer) {
-            $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
-            return (object)[
-                'personalcourseid' => $personalcourseid,
-                'mappingid' => (int)$pq->id,
-                'quizid' => (int)$pq->quizid,
-                'cmid' => $cmid,
-                'toadd' => $toadd,
-                'toremove' => $toremove,
-                'deferred' => true,
-            ];
-        }
-
-        // Delete in-progress/overdue attempts before structural changes.
-        // ONLY if we determined they are abandoned (force_break_lock) or if toadd/toremove logic mandates it (safety).
-        // Since we return deferred above if active attempts exist, this block now only runs if attempts are abandoned.
+        // === STEP 12: APPLY CHANGES ===
         if (!empty($toadd) || !empty($toremove)) {
-            if (!empty($active_attempts)) { // Re-use fetched attempts
-                $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                if ($quiz) {
-                    try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$quiz->course, false, MUST_EXIST); if ($cm && !isset($quiz->cmid)) { $quiz->cmid = (int)$cm->id; } } catch (\Throwable $e) {}
-                    foreach ($active_attempts as $a) { try { quiz_delete_attempt($a, $quiz); } catch (\Throwable $e) {} }
-                }
-            }
-        }
+            // **CRITICAL: Force-delete in-progress attempts BEFORE slot changes**
+            self::delete_inprogress_attempts((int)$pq->quizid, $userid);
 
-        if (!empty($toremove) && !$hasfinishedany) {
+            $qb = new \local_personalcourse\quiz_builder();
+
+            // Remove questions
             foreach ($toremove as $qid) {
                 $qb->remove_question((int)$pq->quizid, (int)$qid);
-                $DB->delete_records('local_personalcourse_questions', ['personalquizid' => (int)$pq->id, 'questionid' => (int)$qid]);
             }
-        }
-        if (!empty($toadd)) {
-            $qb->add_questions((int)$pq->quizid, array_map('intval', $toadd));
-            $now = time();
-            foreach ($toadd as $qid) {
-                $existsrow = $DB->get_record('local_personalcourse_questions', [
-                    'personalcourseid' => (int)$personalcourseid,
-                    'questionid' => (int)$qid,
-                ]);
-                if ($existsrow) {
-                    $existsrow->personalquizid = (int)$pq->id;
-                    if (empty($existsrow->flagcolor)) { $existsrow->flagcolor = 'blue'; }
-                    $existsrow->timemodified = $now;
-                    $DB->update_record('local_personalcourse_questions', $existsrow);
-                } else {
-                    $DB->insert_record('local_personalcourse_questions', (object)[
-                        'personalcourseid' => (int)$personalcourseid,
-                        'personalquizid' => (int)$pq->id,
-                        'questionid' => (int)$qid,
-                        'slotid' => null,
-                        'flagcolor' => in_array((int)$qid, array_map('intval', $flagqids ?: []), true) ? 'blue' : 'blue',
-                        'source' => in_array((int)$qid, array_map('intval', $flagqids ?: []), true) ? 'manual_flag' : 'auto',
-                        'originalposition' => null,
-                        'currentposition' => null,
-                        'timecreated' => $now,
-                        'timemodified' => $now,
-                    ]);
-                }
-            }
-        }
 
-        // Ensure a single zero-mark placeholder exists when needed and there are no slots.
-        if ($needplaceholder) {
-            $slotcount = (int)$DB->count_records('quiz_slots', ['quizid' => (int)$pq->quizid]);
-            if ($slotcount === 0) {
-                $placeholderprefix = 'pcq_placeholder_';
-                $phidnumber = $placeholderprefix . $userid . '_' . $sourcequizid;
-                $placeholderqid = (int)$DB->get_field_sql("SELECT qv.questionid FROM {question_versions} qv JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid WHERE qbe.idnumber = ?", [$phidnumber]);
-                if ($placeholderqid <= 0) {
-                    // Create placeholder in course context.
-                    $coursectx = \context_course::instance($pccourseid);
-                    $qcat = $DB->get_record('question_categories', ['contextid' => (int)$coursectx->id], 'id', IGNORE_MISSING);
-                    if (!$qcat) {
-                        $qcat = (object)[
-                            'name' => 'Personal Course Placeholders',
-                            'contextid' => (int)$coursectx->id,
-                            'info' => '',
-                            'infoformat' => 1,
-                            'stamp' => uniqid('pcqcat_'),
-                            'parent' => 0,
-                            'sortorder' => 9999,
-                            'idnumber' => 'pcq_placeholders',
-                        ];
-                        $qcat->id = (int)$DB->insert_record('question_categories', $qcat);
-                    }
-                    $now = time();
-                    $q = (object)[
-                        'category' => (int)$qcat->id,
-                        'parent' => 0,
-                        'name' => 'Personal Quiz Empty Placeholder',
-                        'questiontext' => '<p>No questions are currently available. Add blue/red flags on your quizzes to populate your Personal Quiz.</p>',
-                        'questiontextformat' => 1,
-                        'generalfeedback' => '',
-                        'generalfeedbackformat' => 1,
-                        'defaultmark' => 0.0,
-                        'penalty' => 0.0,
-                        'qtype' => 'truefalse',
-                        'length' => 1,
-                        'stamp' => uniqid('pcq_'),
-                        'timecreated' => $now,
-                        'timemodified' => $now,
-                        'createdby' => $userid,
-                        'modifiedby' => $userid,
-                    ];
-                    $placeholderqid = (int)$DB->insert_record('question', $q);
-                    $qbe = (object)[
-                        'questioncategoryid' => (int)$qcat->id,
-                        'idnumber' => $phidnumber,
-                    ];
-                    $qbe->id = (int)$DB->insert_record('question_bank_entries', $qbe);
-                    $qv = (object)[
-                        'questionbankentryid' => (int)$qbe->id,
-                        'version' => 1,
-                        'questionid' => (int)$placeholderqid,
-                        'status' => 'ready',
-                        'timecreated' => $now,
-                    ];
-                    $DB->insert_record('question_versions', $qv);
-                    // Answers/options.
-                    $ansTrue = (object)[
-                        'question' => (int)$placeholderqid,
-                        'answer' => get_string('true', 'qtype_truefalse'),
-                        'fraction' => 1.0,
-                        'feedback' => '',
-                        'feedbackformat' => 1,
-                    ];
-                    $ansTrue->id = (int)$DB->insert_record('question_answers', $ansTrue);
-                    $ansFalse = (object)[
-                        'question' => (int)$placeholderqid,
-                        'answer' => get_string('false', 'qtype_truefalse'),
-                        'fraction' => 0.0,
-                        'feedback' => '',
-                        'feedbackformat' => 1,
-                    ];
-                    $ansFalse->id = (int)$DB->insert_record('question_answers', $ansFalse);
-                    $opt = (object)[
-                        'question' => (int)$placeholderqid,
-                        'trueanswer' => (int)$ansTrue->id,
-                        'falseanswer' => (int)$ansFalse->id,
-                        'showstandardinstruction' => 1,
-                    ];
-                    $DB->insert_record('question_truefalse', $opt);
-                }
-                // Add placeholder as the only slot.
-                require_once($CFG->dirroot . '/local/quiz_uploader/classes/quiz_creator.php');
-                \local_quiz_uploader\quiz_creator::add_questions_to_quiz((int)$pq->quizid, [(int)$placeholderqid]);
+            // Add questions
+            if (!empty($toadd)) {
+                $qb->add_questions((int)$pq->quizid, $toadd);
             }
-        }
 
-        try {
-            $slotrows = [];
+            // Re-sequence slots to 1, 2, 3...
+            self::resequence_slots((int)$pq->quizid);
+
+            // Rebuild course cache
             try {
-                $slotrows = $DB->get_records_sql("SELECT qs.id AS slotid, qs.slot AS slotnum, qv.questionid AS qid
-                                                     FROM {quiz_slots} qs
-                                                     JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
-                                                     JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
-                                                    WHERE qs.quizid = ?", [(int)$pq->quizid]);
-            } catch (\Throwable $e) {
-                $slotrows = $DB->get_records_sql("SELECT id AS slotid, slot AS slotnum, questionid AS qid FROM {quiz_slots} WHERE quizid = ? AND questionid IS NOT NULL", [(int)$pq->quizid]);
-            }
-            if (!empty($slotrows) && !$hasfinishedany) {
-                $byqid = [];
-                foreach ($slotrows as $r) { if (!isset($byqid[(int)$r->qid])) { $byqid[(int)$r->qid] = $r; } }
-                $trans = $DB->start_delegated_transaction();
-                $pos = 1;
-                foreach ($desired as $qid) {
-                    $qid = (int)$qid;
-                    if (!isset($byqid[$qid])) { continue; }
-                    $row = $byqid[$qid];
-                    if ((int)$row->slotnum !== (int)$pos) {
-                        $DB->set_field('quiz_slots', 'slot', (int)$pos, ['id' => (int)$row->slotid]);
-                    }
-                    $pos++;
-                }
-                $quiz = $DB->get_record('quiz', ['id' => (int)$pq->quizid], '*', IGNORE_MISSING);
-                if ($quiz) {
-                    $qpp = (int)($quiz->questionsperpage ?? 1);
-                    if ($qpp <= 0) { $qpp = 1; }
-                    quiz_repaginate_questions((int)$pq->quizid, $qpp);
-                    quiz_update_sumgrades($quiz);
-                }
-                $trans->allow_commit();
-            }
-        } catch (\Throwable $e) { }
-
-        // Compute cmid for return.
-        $cmid = (int)$DB->get_field('course_modules', 'id', ['module' => $moduleidquiz, 'instance' => (int)$pq->quizid, 'course' => $pccourseid], IGNORE_MISSING);
-        if ($cmid <= 0) {
-            try { $cm = get_coursemodule_from_instance('quiz', (int)$pq->quizid, $pccourseid, false, MUST_EXIST); $cmid = (int)$cm->id; } catch (\Throwable $e) {}
+                rebuild_course_cache($pccourseid, true);
+            } catch (\Throwable $e) {}
         }
+
+        // === STEP 13: COMPUTE CMID AND RETURN ===
+        $cmid = (int)$DB->get_field('course_modules', 'id', [
+            'module' => $moduleidquiz,
+            'instance' => (int)$pq->quizid,
+            'course' => $pccourseid,
+        ], IGNORE_MISSING);
 
         return (object)[
             'personalcourseid' => $personalcourseid,
@@ -817,153 +246,209 @@ class generator_service {
     }
 
     /**
-     * Ensure only the latest archived PQ for a given source quiz remains visible on the course page
-     * as 'Previous Attempt', hiding all older archived copies from the course page.
+     * Check if a quiz contains any essay questions
      */
-    public static function enforce_archive_visibility(int $courseid, int $sourcequizid, int $activequizid): void {
+    private static function quiz_has_essay(int $quizid): bool {
         global $DB;
-        if ($courseid <= 0 || $sourcequizid <= 0) { return; }
-        $pc = $DB->get_record('local_personalcourse_courses', ['courseid' => (int)$courseid], 'id,userid,courseid');
-        if (!$pc) { return; }
-        $moduleidquiz = (int)$DB->get_field('modules', 'id', ['name' => 'quiz']);
-        if ($moduleidquiz <= 0) { return; }
-
-        $legacybase = (string)$DB->get_field('quiz', 'name', ['id' => (int)$sourcequizid], IGNORE_MISSING);
-        $policybase = \local_personalcourse\naming_policy::personal_quiz_name((int)$pc->userid, (int)$sourcequizid);
-        if ($legacybase === '' && $policybase === '') { return; }
-
-        // 1) Gather candidates by name pattern for both legacy and policy base.
-        $nameRows = [];
-        if ($policybase !== '') {
-            $polarch = $policybase . ' (Archived)%';
-            $polprev = $policybase . ' (Previous Attempt)%';
-            $rows1 = $DB->get_records_sql(
-                "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
-                "  FROM {quiz} q\n" .
-                "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
-                " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
-                " ORDER BY q.timemodified DESC, q.id DESC",
-                [$moduleidquiz, (int)$courseid, $polarch, $polprev]
+        // Moodle 4.x: quiz_slots → question_references → question_versions → question
+        try {
+            return $DB->record_exists_sql(
+                "SELECT 1
+                   FROM {quiz_slots} qs
+                   JOIN {question_references} qr ON qr.itemid = qs.id 
+                        AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                   JOIN {question} q ON q.id = qv.questionid
+                  WHERE qs.quizid = ? AND q.qtype = 'essay'",
+                [$quizid]
             );
-            if (!empty($rows1)) { foreach ($rows1 as $r) { $nameRows[] = $r; } }
-        }
-        if ($legacybase !== '') {
-            $legarch = $legacybase . ' (Archived)%';
-            $legprev = $legacybase . ' (Previous Attempt)%';
-            $rows2 = $DB->get_records_sql(
-                "SELECT q.id AS quizid, q.timemodified, cm.id AS cmid\n" .
-                "  FROM {quiz} q\n" .
-                "  JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = ?\n" .
-                " WHERE q.course = ? AND (q.name LIKE ? OR q.name LIKE ?)\n" .
-                " ORDER BY q.timemodified DESC, q.id DESC",
-                [$moduleidquiz, (int)$courseid, $legarch, $legprev]
-            );
-            if (!empty($rows2)) { foreach ($rows2 as $r) { $nameRows[] = $r; } }
-        }
-
-        // 2) Gather candidates from archives table (preferred ordering by archivedat).
-        $archives = $DB->get_records('local_personalcourse_archives', [
-            'personalcourseid' => (int)$pc->id,
-            'sourcequizid' => (int)$sourcequizid,
-        ], 'archivedat DESC, id DESC', 'id, archivedquizid, archivedcmid, archivedat');
-
-        // Build candidate map: cmid => score (archivedat preferred, else timemodified).
-        $candidates = [];
-        if (!empty($nameRows)) {
-            foreach ($nameRows as $r) {
-                if ((int)$r->quizid === (int)$activequizid) { continue; }
-                $candidates[(int)$r->cmid] = (int)($r->timemodified ?? 0);
-            }
-        }
-        if (!empty($archives)) {
-            foreach ($archives as $a) {
-                $cmid = (int)($a->archivedcmid ?? 0);
-                if ($cmid <= 0) {
-                    $cmid = (int)$DB->get_field('course_modules', 'id', [
-                        'module' => $moduleidquiz,
-                        'instance' => (int)$a->archivedquizid,
-                        'course' => (int)$courseid,
-                    ], IGNORE_MISSING);
-                }
-                if ($cmid > 0) {
-                    $score = (int)($a->archivedat ?? 0);
-                    if (!isset($candidates[$cmid]) || $score > $candidates[$cmid]) {
-                        $candidates[$cmid] = $score;
-                    }
-                }
-            }
-        }
-
-        if (empty($candidates)) { return; }
-
-        // Determine the latest candidate by highest score.
-        arsort($candidates); // Descending by score.
-        $cmids = array_keys($candidates);
-        $latestcmid = (int)reset($cmids);
-
-        // Apply only necessary changes and rebuild only if anything changed.
-        $touched = false;
-        foreach ($cmids as $cmid) {
-            $cmid = (int)$cmid;
-            $qid = (int)$DB->get_field('course_modules', 'instance', ['id' => $cmid], IGNORE_MISSING);
-            if ($qid <= 0 || $qid === (int)$activequizid) { continue; }
-
-            $islatest = ($cmid === (int)$latestcmid);
-            $targetname = $policybase . ($islatest ? ' (Previous Attempt)' : ' (Archived)');
-            $currentname = (string)$DB->get_field('quiz', 'name', ['id' => (int)$qid], IGNORE_MISSING);
-            if ($currentname !== '' && $currentname !== $targetname) {
-                $DB->set_field('quiz', 'name', $targetname, ['id' => (int)$qid]);
-                $touched = true;
-            }
-
-            $cmrec = $DB->get_record('course_modules', ['id' => (int)$cmid], 'id,visible,visibleoncoursepage');
-            if ($cmrec) {
-                $wantvis = $islatest ? 1 : 0;
-                $wantvison = $islatest ? 1 : 0;
-                if ((int)$cmrec->visible !== $wantvis) {
-                    $DB->set_field('course_modules', 'visible', $wantvis, ['id' => (int)$cmid]);
-                    $touched = true;
-                }
-                if ((int)$cmrec->visibleoncoursepage !== $wantvison) {
-                    $DB->set_field('course_modules', 'visibleoncoursepage', $wantvison, ['id' => (int)$cmid]);
-                    $touched = true;
-                }
-            }
-        }
-
-        if ($touched) {
-            try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            error_log("[local_personalcourse] quiz_has_essay error: " . $e->getMessage());
+            return false;
         }
     }
 
     /**
-     * Clean sequences for a course: remove cmids that are missing or marked deletioninprogress, then rebuild cache.
+     * Get all question IDs from a quiz (normalized to question.id)
+     * 
+     * @param int $quizid Quiz ID
+     * @param bool $excludeEssay Whether to exclude essay questions
+     * @return array Array of question IDs in slot order
      */
-    private static function cleanup_course_sequences(int $courseid): void {
+    private static function get_quiz_questionids(int $quizid, bool $excludeEssay = false): array {
         global $DB;
-        if ($courseid <= 0) { return; }
-        // Build valid set: existing CMs in this course with deletioninprogress = 0 or NULL.
-        $valid = [];
-        $rs = $DB->get_recordset_select('course_modules', 'course = ? AND (deletioninprogress = 0 OR deletioninprogress IS NULL)', [$courseid], '', 'id');
-        foreach ($rs as $r) { $valid[(int)$r->id] = true; }
-        $rs->close();
+        
+        $excludeClause = $excludeEssay ? "AND q.qtype <> 'essay'" : "";
+        
+        // Moodle 4.x: quiz_slots → question_references → question_versions → question
+        $qids = $DB->get_fieldset_sql(
+            "SELECT qv.questionid
+               FROM {quiz_slots} qs
+               JOIN {question_references} qr ON qr.itemid = qs.id 
+                    AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+               JOIN {question} q ON q.id = qv.questionid
+              WHERE qs.quizid = ? {$excludeClause}
+              ORDER BY qs.slot ASC",
+            [$quizid]
+        );
 
-        $sections = $DB->get_records('course_sections', ['course' => $courseid], 'section', 'id,sequence');
-        $changed = false;
-        foreach ($sections as $sec) {
-            $seq = trim((string)$sec->sequence);
-            if ($seq === '') { continue; }
-            $ids = array_filter(array_map('intval', explode(',', $seq)));
-            $filtered = [];
-            foreach ($ids as $id) { if (isset($valid[(int)$id])) { $filtered[] = (int)$id; } }
-            $newseq = implode(',', $filtered);
-            if ($newseq !== $seq) {
-                $DB->update_record('course_sections', (object)['id' => (int)$sec->id, 'sequence' => $newseq]);
-                $changed = true;
+        return array_values(array_unique(array_map('intval', $qids)));
+    }
+
+    /**
+     * Get desired question IDs based on flags
+     * Desired = All flagged questions (both Blue and Red) that exist in source quiz
+     */
+    private static function get_desired_questionids(int $userid, array $sourceqids): array {
+        global $DB;
+        
+        if (empty($sourceqids)) {
+            return [];
+        }
+
+        list($insql, $params) = $DB->get_in_or_equal($sourceqids, SQL_PARAMS_QM);
+        array_unshift($params, $userid);
+
+        // Get all flags (blue and red) for this user for questions in the source quiz
+        $flaggedqids = $DB->get_fieldset_sql(
+            "SELECT DISTINCT questionid FROM {local_questionflags}
+              WHERE userid = ? AND questionid {$insql} AND flagcolor IN ('blue', 'red')",
+            $params
+        );
+
+        // Maintain source quiz order
+        $ordered = [];
+        foreach ($sourceqids as $qid) {
+            if (in_array((int)$qid, array_map('intval', $flaggedqids), true)) {
+                $ordered[] = (int)$qid;
             }
         }
-        if ($changed) {
-            try { rebuild_course_cache((int)$courseid, true); } catch (\Throwable $e) {}
+
+        return $ordered;
+    }
+
+    /**
+     * Auto-flag incorrect questions as Blue (for first generation)
+     * Only flags questions that are completely wrong (fraction = 0)
+     */
+    private static function auto_flag_incorrect_questions(int $userid, int $sourcequizid, int $attemptid, array $sourceqids): void {
+        global $DB;
+
+        if (empty($sourceqids)) {
+            return;
+        }
+
+        // Get incorrect questions from the attempt
+        $analyzer = new \local_personalcourse\attempt_analyzer();
+        $incorrect = $analyzer->get_incorrect_questionids_from_attempt($attemptid);
+
+        if (empty($incorrect)) {
+            return;
+        }
+
+        // Filter to only source quiz questions
+        $incorrect = array_intersect($incorrect, $sourceqids);
+
+        if (empty($incorrect)) {
+            return;
+        }
+
+        // Get existing flags to avoid duplicates
+        list($insql, $params) = $DB->get_in_or_equal($incorrect, SQL_PARAMS_QM);
+        array_unshift($params, $userid);
+        $existingflags = $DB->get_fieldset_sql(
+            "SELECT questionid FROM {local_questionflags} WHERE userid = ? AND questionid {$insql}",
+            $params
+        );
+
+        // Insert Blue flags for incorrect questions not already flagged
+        $toflag = array_diff($incorrect, $existingflags);
+        $now = time();
+
+        foreach ($toflag as $qid) {
+            $record = (object)[
+                'userid' => $userid,
+                'questionid' => (int)$qid,
+                'questionbankentryid' => 0,
+                'flagcolor' => 'blue',
+                'quizid' => $sourcequizid,
+                'cmid' => null,
+                'timecreated' => $now,
+                'timemodified' => $now,
+            ];
+            try {
+                $DB->insert_record('local_questionflags', $record);
+            } catch (\Throwable $e) {
+                // Ignore duplicate key errors
+            }
+        }
+    }
+
+    /**
+     * Delete all in-progress and overdue attempts for a user on a quiz
+     * MUST be called before modifying quiz structure
+     */
+    private static function delete_inprogress_attempts(int $quizid, int $userid): void {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $attempts = $DB->get_records_select(
+            'quiz_attempts',
+            "quiz = ? AND userid = ? AND state IN ('inprogress', 'overdue')",
+            [$quizid, $userid]
+        );
+
+        if (empty($attempts)) {
+            return;
+        }
+
+        $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', IGNORE_MISSING);
+        if (!$quiz) {
+            return;
+        }
+
+        try {
+            $cm = get_coursemodule_from_instance('quiz', $quizid, $quiz->course, false, MUST_EXIST);
+            $quiz->cmid = (int)$cm->id;
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        foreach ($attempts as $attempt) {
+            try {
+                quiz_delete_attempt($attempt, $quiz);
+            } catch (\Throwable $e) {
+                // Log but continue
+                error_log("[local_personalcourse] Failed to delete attempt {$attempt->id}: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Re-sequence quiz slots to 1, 2, 3... with no gaps
+     */
+    private static function resequence_slots(int $quizid): void {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+
+        $slots = $DB->get_records('quiz_slots', ['quizid' => $quizid], 'slot ASC', 'id, slot');
+        
+        $pos = 1;
+        foreach ($slots as $slot) {
+            if ((int)$slot->slot !== $pos) {
+                $DB->set_field('quiz_slots', 'slot', $pos, ['id' => $slot->id]);
+            }
+            $pos++;
+        }
+
+        // Repaginate
+        $quiz = $DB->get_record('quiz', ['id' => $quizid]);
+        if ($quiz) {
+            $qpp = (int)($quiz->questionsperpage ?? 1);
+            if ($qpp <= 0) { $qpp = 1; }
+            quiz_repaginate_questions($quizid, $qpp);
+            quiz_update_sumgrades($quiz);
         }
     }
 }

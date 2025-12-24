@@ -28,7 +28,8 @@ class attempt_analyzer {
             // - fraction exists and is < 1.0 (gradedwrong/gradedpartial), OR
             // - fraction is null but the question state is finished and not gradedright (e.g., gaveup, finished without checking).
             if ($fraction !== null) {
-                if ($fraction < 1.0) { $incorrect[] = $qid; }
+                // Only consider completely wrong (fraction = 0) as incorrect
+                if ((float)$fraction === 0.0) { $incorrect[] = $qid; }
             } else {
                 if (method_exists($stateobj, 'is_finished') && $stateobj->is_finished()) {
                     if ($state !== 'gradedright') { $incorrect[] = $qid; }

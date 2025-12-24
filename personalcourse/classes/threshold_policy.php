@@ -6,7 +6,7 @@ defined('MOODLE_INTERNAL') || die();
 class threshold_policy {
     /**
      * Decide whether a student's initial Personal Quiz may be created for a source quiz.
-     * Policy: Attempt 1 must be >80%; from Attempt 2 onward require >=40%.
+     * Policy: Attempt 1 must be >30% (TESTING); from Attempt 2 onward require >=40%.
      * This mirrors existing behaviour and should be used only when no mapping exists yet.
      */
     public static function allow_initial_creation(int $userid, int $quizid): bool {
@@ -28,7 +28,13 @@ class threshold_policy {
             $grade = ($totalsum > 0.0)
                 ? (((float)($a->sumgrades ?? 0.0) / $totalsum) * 100.0)
                 : 0.0;
-            if ($grade >= 100.0) {
+            
+            // Attempt 1: require >30% (TESTING - normally 80%)
+            if ($n === 1 && $grade > 30.0) {
+                return true;
+            }
+            // Attempt 2+: require >=40%
+            if ($n >= 2 && $grade >= 40.0) {
                 return true;
             }
         }
