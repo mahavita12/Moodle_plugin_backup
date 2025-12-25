@@ -115,11 +115,46 @@ class generator_service {
         ]);
         
         // **CLEANUP: Delete orphaned mapping if quiz no longer exists**
-        if ($pq && !$DB->record_exists('quiz', ['id' => (int)$pq->quizid])) {
-            error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - quiz {$pq->quizid} no longer exists, deleting mapping");
-            $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
-            $pq = false; // RESET PQ SO IT IS TREATED AS NEW QUIZ
-            $pq = null; // Treat as first generation
+        // **CLEANUP: Delete orphaned mapping if quiz no longer exists**
+        // We check for the Course Module (CM) because mdl_quiz record might persist (e.g. Recycle Bin)
+        $cm_exists = false;
+        if ($pq) {
+            try {
+                // Check if valid CM exists in the personal course
+                // Use MUST_EXIST to ensure we throw if missing
+                $cm = get_coursemodule_from_instance('quiz', $pq->quizid, $pccourseid, false, MUST_EXIST);
+                
+                // Extra check: is it in deletion process?
+                if (!empty($cm->deletioninprogress)) {
+                     throw new \moodle_exception('deletioninprogress');
+                }
+                $cm_exists = true;
+            } catch (\Throwable $e) {
+                // CM not found or deleted
+                error_log("[local_personalcourse] do_generate: CM lookup failed for quiz {$pq->quizid}: " . $e->getMessage());
+            }
+
+            if (!$cm_exists) {
+                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing/deleted, deleting mapping and resetting");
+                $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                $pq = null; // Force null to trigger isFirstGeneration
+            }
+        }
+
+        if (false) {
+            try {
+                // Check if valid CM exists in the personal course
+                $cm = get_coursemodule_from_instance('quiz', $pq->quizid, $pccourseid, false, MUST_EXIST);
+                $cm_exists = true;
+            } catch (\Throwable $e) {
+                // CM not found
+            }
+
+            if (!$cm_exists) {
+                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing, deleting mapping");
+                $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                $pq = null; 
+            }
         }
         
         $isFirstGeneration = empty($pq);
@@ -138,7 +173,9 @@ class generator_service {
             error_log("[local_personalcourse] do_generate: Not first generation - skipping threshold");
         }
 
-        // === STEP 7: AUTO-FLAG INCORRECT QUESTIONS (first generation only) ===
+        // === STEP 7: AUTO-FLAG INCORRECT QUESTIONS (First Generation Only) ===
+        // If this is the *first time* we are creating the quiz, auto-flag incorrect questions
+        // This populates the initial set of Blue flags
         if ($isFirstGeneration && $attemptid) {
             self::auto_flag_incorrect_questions($userid, $sourcequizid, $attemptid, $sourceqids);
         }
@@ -192,6 +229,17 @@ class generator_service {
             if (!empty($res->cmid)) {
                 $marker = 'pcq:' . $userid . ':' . $sourcequizid;
                 $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
+
+                // Tag with Source Course Category (User Request)
+                try {
+                     $sourcecourse = $DB->get_record('course', ['id' => $sourcequiz->course]);
+                     if ($sourcecourse && !empty($sourcecourse->category)) {
+                          \core_tag_tag::set_item_tags('core', 'course_modules', (int)$res->cmid, \context_module::instance((int)$res->cmid), ['SourceCategory_' . $sourcecourse->category]);
+                          error_log("[local_personalcourse] Tagged CM {$res->cmid} with SourceCategory_{$sourcecourse->category}");
+                     }
+                } catch (\Throwable $e) {
+                     error_log("[local_personalcourse] Failed to set tags: " . $e->getMessage());
+                }
             }
         }
 
@@ -206,8 +254,17 @@ class generator_service {
 
         // === STEP 12: APPLY CHANGES ===
         if (!empty($toadd) || !empty($toremove)) {
+            // Check if quiz will be empty (for logging)
+            $finalcount = count($current) + count($toadd) - count($toremove);
+            if ($finalcount <= 0) {
+                 error_log("[local_personalcourse] do_generate: Quiz will be empty.");
+            }
+
+            // Always redirect to Personal Course view when attempts are deleted (per user request)
+            $redirecturl = $CFG->wwwroot . '/course/view.php?id=' . $pccourseid;
+
             // **CRITICAL: Force-delete in-progress attempts BEFORE slot changes**
-            self::delete_inprogress_attempts((int)$pq->quizid, $userid);
+            self::delete_inprogress_attempts((int)$pq->quizid, $userid, $redirecturl);
 
             $qb = new \local_personalcourse\quiz_builder();
 
@@ -236,6 +293,29 @@ class generator_service {
             'instance' => (int)$pq->quizid,
             'course' => $pccourseid,
         ], IGNORE_MISSING);
+
+        // **NEW LOGIC: If First Generation resulted in an EMPTY quiz, DELETE IT**
+        // This prevents the "Success" message leading to an empty quiz.
+        // We check actual slots in DB to be sure.
+        $slot_count = $DB->count_records('quiz_slots', ['quizid' => $pq->quizid]);
+        
+        if ($isFirstGeneration && $slot_count === 0) {
+            error_log("[local_personalcourse] do_generate: First generation resulted in EMPTY quiz (0 questions). Deleting module to avoid confusion.");
+            
+            if ($cmid) {
+                // Delete the course module (handles activity deletion too)
+                course_delete_module($cmid);
+            } else {
+                // Fallback if CM missing but quiz exists
+                quiz_delete_instance($pq->quizid);
+            }
+            
+            // Delete mapping
+            $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+            
+            // Return empty result
+            return $emptyresult;
+        }
 
         return (object)[
             'personalcourseid' => $personalcourseid,
@@ -392,7 +472,7 @@ class generator_service {
      * MUST be called before modifying quiz structure
      * Stores redirect URL in session for the user to be redirected to the quiz view page
      */
-    private static function delete_inprogress_attempts(int $quizid, int $userid): void {
+    private static function delete_inprogress_attempts(int $quizid, int $userid, ?string $redirecturl = null): void {
         global $DB, $CFG, $SESSION;
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 
@@ -421,13 +501,14 @@ class generator_service {
         // Store redirect URL in session BEFORE deleting attempts
         // This allows the hook to redirect the user when they try to access the deleted attempt
         if (isset($SESSION)) {
+            $url = $redirecturl ?? ($CFG->wwwroot . '/mod/quiz/view.php?id=' . $cm->id);
             $SESSION->local_personalcourse_redirect = (object)[
-                'url' => $CFG->wwwroot . '/mod/quiz/view.php?id=' . $cm->id,
+                'url' => $url,
                 'quizid' => $quizid,
                 'userid' => $userid,
                 'time' => time(),
             ];
-            error_log("[local_personalcourse] Stored redirect URL in session for quiz cmid={$cm->id}");
+            error_log("[local_personalcourse] Stored redirect URL in session for quiz cmid={$cm->id} to $url");
         }
 
         foreach ($attempts as $attempt) {

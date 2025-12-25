@@ -51,6 +51,8 @@ $string['notify_pq_preparing_short'] = 'Your personal quiz is being prepared and
 $string['task_reconcile_scheduled'] = 'Personal Quiz updates are being applied in the background. Please refresh shortly.';
 $string['personalquiz_ready'] = 'Your Personal Quiz is ready! Visit your Personal Course to start practicing.';
 $string['personalquiz_updated'] = 'Your Personal Quiz has been updated with your flagged questions.';
+$string['personalquiz_created_prominent'] = '<div style="background-color:#dbeafe; border:2px solid #1e40af; padding:20px; text-align:center; margin:20px 0; border-radius:8px;"><h2 style="color:#1e40af; margin-top:0;">Congratulations, your personal quiz is now available</h2><a href="{$a}" class="btn btn-primary btn-lg" style="font-size:1.2em; font-weight:bold; margin-top:10px;">Go to Personal Quiz</a></div>';
+$string['personalquiz_updated_prominent'] = '<div style="background-color:#dbeafe; border:2px solid #1e40af; padding:20px; text-align:center; margin:20px 0; border-radius:8px;"><h2 style="color:#1e40af; margin-top:0;">Congratulations, your personal quiz is now available</h2><a href="{$a}" class="btn btn-primary btn-lg" style="font-size:1.2em; font-weight:bold; margin-top:10px;">Go to Personal Quiz</a></div>';
 
 // Settings.
 $string['settings'] = 'Personal Course settings';

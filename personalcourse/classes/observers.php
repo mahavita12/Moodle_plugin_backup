@@ -197,9 +197,13 @@ class observers {
             // Show notification if quiz was created or updated
             if (!empty($result->quizid)) {
                 if (!empty($result->toadd) || !empty($result->toremove)) {
-                    \core\notification::success(get_string('personalquiz_updated', 'local_personalcourse'));
+                    $cm = get_coursemodule_from_instance('quiz', $result->quizid);
+                    $url = new \moodle_url('/mod/quiz/view.php', ['id' => $cm->id]);
+                    \core\notification::success(get_string('personalquiz_updated_prominent', 'local_personalcourse', $url->out()));
                 } else if ($result->mappingid > 0) {
-                    \core\notification::success(get_string('personalquiz_ready', 'local_personalcourse'));
+                    $cm = get_coursemodule_from_instance('quiz', $result->quizid);
+                    $url = new \moodle_url('/mod/quiz/view.php', ['id' => $cm->id]);
+                    \core\notification::success(get_string('personalquiz_created_prominent', 'local_personalcourse', $url->out()));
                 }
             }
         } catch (\Throwable $e) {

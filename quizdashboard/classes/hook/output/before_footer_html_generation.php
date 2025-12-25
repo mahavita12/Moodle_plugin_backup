@@ -14,6 +14,8 @@ class before_footer_html_generation {
         global $PAGE, $DB, $USER, $CFG;
 
         // FIRST: Load global navigation for site administrators (runs on ALL pages)
+        // DISABLED by request: user says global_nav removed.
+        /*
         if (empty($CFG->quizdashboard_disable_global_nav)) {
             $clean = isset($_GET['clean']) ? (int)$_GET['clean'] : 0;
             $printp = isset($_GET['print']) ? (int)$_GET['print'] : 0;
@@ -23,6 +25,7 @@ class before_footer_html_generation {
                 }
             }
         }
+        */
 
         // SECOND: Inject feedback summaries (only on quiz attempt pages)
         if ($PAGE->pagetype !== 'mod-quiz-attempt') {
