@@ -264,7 +264,11 @@ class generator_service {
             $redirecturl = $CFG->wwwroot . '/course/view.php?id=' . $pccourseid;
 
             // **CRITICAL: Force-delete in-progress attempts BEFORE slot changes**
-            self::delete_inprogress_attempts((int)$pq->quizid, $userid, $redirecturl);
+            // If the quiz becomes EMPTY, we must delete ALL attempts (even finished ones)
+            // to prevent summary.php from crashing on broken references.
+            // Otherwise, we only delete in-progress/overdue attempts.
+            $delete_all_attempts = ($finalcount <= 0);
+            self::delete_inprogress_attempts((int)$pq->quizid, $userid, $redirecturl, $delete_all_attempts);
 
             $qb = new \local_personalcourse\quiz_builder();
 
@@ -472,15 +476,25 @@ class generator_service {
      * MUST be called before modifying quiz structure
      * Stores redirect URL in session for the user to be redirected to the quiz view page
      */
-    private static function delete_inprogress_attempts(int $quizid, int $userid, ?string $redirecturl = null): void {
+    private static function delete_inprogress_attempts(int $quizid, int $userid, ?string $redirecturl = null, bool $delete_all = false): void {
         global $DB, $CFG, $SESSION;
         require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 
-        $attempts = $DB->get_records_select(
-            'quiz_attempts',
-            "quiz = ? AND userid = ? AND state IN ('inprogress', 'overdue')",
-            [$quizid, $userid]
-        );
+        if ($delete_all) {
+             // Delete EVERYTHING (safe/required for empty quizzes)
+             $attempts = $DB->get_records_select(
+                'quiz_attempts',
+                "quiz = ? AND userid = ?",
+                [$quizid, $userid]
+             );
+        } else {
+             // Only delete in-progress/overdue to preserve user history locally
+             $attempts = $DB->get_records_select(
+                'quiz_attempts',
+                "quiz = ? AND userid = ? AND state IN ('inprogress', 'overdue')",
+                [$quizid, $userid]
+             );
+        }
 
         if (empty($attempts)) {
             return;
