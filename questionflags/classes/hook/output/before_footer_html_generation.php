@@ -284,9 +284,11 @@ class before_footer_html_generation {
                     console.log("FEEDBACK TOGGLE: Questions count:", questions.length, "Mode:", isOnePageMode ? "one-page-at-a-time" : "show-all");
                     
                     // Unified Logic: Support both One-Page and Multi-Page via Server-side rendering
+                    // OPTIMIZATION: Button is rendered server-side. JS only handles the toggle event.
                         document.body.addEventListener("click", function(e) {
-                            if (e.target && e.target.classList.contains("question-feedback-btn")) {
-                                var btn = e.target;
+                            // use closest in case of inner elements
+                            var btn = e.target.closest(".question-feedback-btn");
+                            if (btn) {
                                 var qContainer = btn.closest(".que");
                                 
                                 if (qContainer) {
