@@ -218,7 +218,26 @@ class before_footer_html_generation {
         }
 
         // Get structure guides from question metadata
-        $guides_data = local_questionflags_get_quiz_guides($PAGE);
+        // OPTIMIZATION: Only load heavy guide data if the quiz actually contains essay questions.
+        $quizid = $PAGE->activityrecord->id ?? 0;
+        $hasessay = false;
+        if ($quizid) {
+             $hasessay = $DB->record_exists_sql(
+                "SELECT 1
+                   FROM {quiz_slots} qs
+                   JOIN {question_references} qr ON qr.itemid = qs.id
+                        AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                   JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                   JOIN {question} q ON q.id = qv.questionid
+                  WHERE qs.quizid = ? AND q.qtype = 'essay'",
+                [$quizid]
+            );
+        }
+
+        $guides_data = [];
+        if ($hasessay) {
+            $guides_data = local_questionflags_get_quiz_guides($PAGE);
+        }
 
         // ROBUST QUESTION ID MAPPING - try multiple methods
         $question_mapping = [];
