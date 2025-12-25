@@ -52,6 +52,7 @@ $string['task_reconcile_scheduled'] = 'Personal Quiz updates are being applied i
 $string['personalquiz_ready'] = 'Your Personal Quiz is ready! Visit your Personal Course to start practicing.';
 $string['personalquiz_updated'] = 'Your Personal Quiz has been updated with your flagged questions.';
 $string['personalquiz_created_prominent'] = '<div style="background-color:#dbeafe; border:2px solid #1e40af; padding:20px; text-align:center; margin:20px 0; border-radius:8px;"><h2 style="color:#1e40af; margin-top:0;">Congratulations, your personal quiz is now available</h2><a href="{$a}" class="btn btn-primary btn-lg" style="font-size:1.2em; font-weight:bold; margin-top:10px;">Go to Personal Quiz</a></div>';
+$string['personalquiz_failed_prominent'] = '<div style="background-color:#fff3cd; border:2px solid #856404; padding:20px; text-align:center; margin:20px 0; border-radius:8px;"><h2 style="color:#856404; margin-top:0;">{$a}</h2></div>';
 $string['personalquiz_updated_prominent'] = '<div style="background-color:#dbeafe; border:2px solid #1e40af; padding:20px; text-align:center; margin:20px 0; border-radius:8px;"><h2 style="color:#1e40af; margin-top:0;">Congratulations, your personal quiz is now available</h2><a href="{$a}" class="btn btn-primary btn-lg" style="font-size:1.2em; font-weight:bold; margin-top:10px;">Go to Personal Quiz</a></div>';
 
 // Settings.

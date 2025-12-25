@@ -176,6 +176,54 @@ class observers {
             return;
         }
 
+        // === THRESHOLD CHECK (80%) ===
+        $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
+        $quiz = $DB->get_record('quiz', ['id' => $quizid]);
+        
+        $percentage = 0.0;
+        if ($quiz && $quiz->sumgrades > 0 && $attempt) {
+            $percentage = ($attempt->sumgrades / $quiz->sumgrades) * 100;
+        }
+
+        if ($percentage < 80) {
+            // FAILED THRESHOLD
+            $msg = "You scored " . format_float($percentage, 0) . "%. You should score 80% or more to have the personal quiz.";
+            // Use prominent styling to mirror the success message
+            \core\notification::add(
+                get_string('personalquiz_failed_prominent', 'local_personalcourse', $msg),
+                \core\notification::WARNING
+            );
+            return;
+        }
+
+        // === ONE-TIME GENERATION CHECK ===
+        // If personal quiz already exists, do NOT re-generate (updates are flag-driven only)
+        // BUT: Check if the quiz *actually* exists (it might have been deleted)
+        $existing_pq = $DB->get_record_sql(
+            "SELECT pq.id, pq.quizid 
+             FROM {local_personalcourse_quizzes} pq
+             JOIN {local_personalcourse_courses} pc ON pq.personalcourseid = pc.id
+             WHERE pc.userid = ? AND pq.sourcequizid = ?",
+            [$userid, $quizid]
+        );
+
+        if ($existing_pq) {
+            // Check if the linked quiz still exists in Moodle
+            if ($DB->record_exists('quiz', ['id' => $existing_pq->quizid])) {
+                error_log("[local_personalcourse] Personal quiz exists (Quiz ID {$existing_pq->quizid}). Skipping re-generation.");
+                
+                // OPTIONAL: Send a "Success" notification here too?
+                // User asked for "Notification... similar to success message" but maybe they mean failing message?
+                // If they scored > 80% and quiz exists, maybe just remind them "Your personal quiz is ready"?
+                return;
+            } else {
+                // Orphaned record! The quiz was deleted.
+                // Delete the stale record and allow re-generation.
+                error_log("[local_personalcourse] Orphaned personal quiz record found (Quiz ID {$existing_pq->quizid} missing). Cleaning up.");
+                $DB->delete_records('local_personalcourse_quizzes', ['id' => $existing_pq->id]);
+            }
+        }
+
         error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Calling generator_service for user=$userid quiz=$quizid attempt=$attemptid");
 
         // === SYNCHRONOUS GENERATION ===

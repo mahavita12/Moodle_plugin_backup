@@ -48,6 +48,8 @@ class before_footer_html_generation {
             return;
         }
 
+        $quizid = (int)$PAGE->cm->instance;
+
         // Include the lib.php file for helper functions
         require_once($GLOBALS['CFG']->dirroot . '/local/questionflags/lib.php');
 
@@ -666,7 +668,7 @@ body.hide-feedback .formulation {
 
     document.addEventListener("DOMContentLoaded", function() {
         console.log("Question flags loaded:", window.questionFlagsData);
-        console.log("Structure guides loaded:", window.structureGuidesData);
+        // console.log("Structure guides loaded:", window.structureGuidesData);
         console.log("Question mapping loaded:", window.questionMapping);
         console.log("FEEDBACK TOGGLE: Page type is:", window.moodlePageType);
         
