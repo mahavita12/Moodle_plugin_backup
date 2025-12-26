@@ -124,6 +124,27 @@ class homework_injector {
             $DB->update_record('quiz', $quiz);
         }
         $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
+        
+        // Create mapping record in local_personalcourse_quizzes for tracking
+        // sourcequizid = 0 indicates this is a generated homework quiz, not copied from a public quiz
+        $now = time();
+        $mapping = (object)[
+            'personalcourseid' => (int)$pcctx->pc->id,
+            'quizid' => (int)$quizid,
+            'sourcequizid' => 0,  // 0 = generated homework (no source quiz)
+            'sourcecourseid' => 0, // 0 = essay feedback (no source course)
+            'sourcecategory' => 'Essay Feedback Homework',
+            'sectionname' => $initial . '-Essay Feedback Homework',
+            'quiztype' => 'essay',
+            'timecreated' => $now,
+            'timemodified' => $now,
+        ];
+        try {
+            $DB->insert_record('local_personalcourse_quizzes', $mapping);
+        } catch (\Throwable $e) {
+            // Ignore duplicate - quiz may already be mapped
+        }
+        
         return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questionid' => (int)$qid];
     }
 
@@ -410,6 +431,27 @@ class homework_injector {
             $DB->update_record('quiz', $quiz);
         }
         $cmid = (int)$DB->get_field('course_modules', 'id', ['instance' => (int)$quizid, 'module' => (int)$DB->get_field('modules', 'id', ['name' => 'quiz'])], \IGNORE_MISSING);
+        
+        // Create mapping record in local_personalcourse_quizzes for tracking
+        // sourcequizid = 0 indicates this is a generated homework quiz, not copied from a public quiz
+        $now = time();
+        $mapping = (object)[
+            'personalcourseid' => (int)$pcctx->pc->id,
+            'quizid' => (int)$quizid,
+            'sourcequizid' => 0,  // 0 = generated homework (no source quiz)
+            'sourcecourseid' => 0, // 0 = essay feedback (no source course)
+            'sourcecategory' => 'Essay Feedback Homework',
+            'sectionname' => $initial . '-Essay Feedback Homework',
+            'quiztype' => 'homework_json',
+            'timecreated' => $now,
+            'timemodified' => $now,
+        ];
+        try {
+            $DB->insert_record('local_personalcourse_quizzes', $mapping);
+        } catch (\Throwable $e) {
+            // Ignore duplicate - quiz may already be mapped
+        }
+        
         return (object)['quizid' => $quizid, 'cmid' => $cmid, 'courseid' => $courseid, 'questioncount' => count($import->questionids)];
     }
 }
