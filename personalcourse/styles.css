@@ -1,0 +1,26 @@
+
+/* Personal Course Notification Styles */
+/* Force White text on Blue background for Personal Course notifications */
+
+/* Target the Moodle alert container that contains our specific marker class */
+.alert:has(.local-personalcourse-notification) {
+    background-color: #0f6cbf !important; /* Moodle Link Blue */
+    color: #ffffff !important;
+    border-color: #0f6cbf !important;
+}
+
+/* Ensure links inside the alert are white/visible */
+.alert:has(.local-personalcourse-notification) a {
+    color: #ffffff !important;
+    text-decoration: underline;
+}
+
+/* Ensure the close button is visible */
+.alert:has(.local-personalcourse-notification) .close {
+    color: #ffffff !important;
+    opacity: 0.8;
+    text-shadow: none;
+}
+.alert:has(.local-personalcourse-notification) .close:hover {
+    opacity: 1;
+}

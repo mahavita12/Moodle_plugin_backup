@@ -59,6 +59,50 @@ class observers {
         $courseid = (int)$cm->course;
         $quizid = (int)$cm->instance;
 
+        // === SELF-SYNC LOGIC: Check if this is a PERSONAL QUIZ ===
+        $pq_mapping = $DB->get_record('local_personalcourse_quizzes', ['quizid' => $quizid]);
+        if ($pq_mapping) {
+            error_log("[local_personalcourse] FLAG_CHANGE: Event triggered from PERSONAL quiz $quizid (Source: {$pq_mapping->sourcequizid})");
+
+            // SAFETY CHECK: "Self-Destruction Protection" vs "Global Sync"
+            // Rule:
+            // 1. If user is IN the attempt (referer matches attempt.php?attempt=X) -> PROTECT (Abort Sync).
+            // 2. If user is REVIEWING (referer matches review.php or other) -> SYNC (Delete active attempt).
+            
+            $unfinished = $DB->get_record_select('quiz_attempts', 
+                "quiz = ? AND userid = ? AND state != 'finished'", 
+                [$quizid, $userid],
+                '*',
+                IGNORE_MULTIPLE
+            );
+
+            if ($unfinished) {
+                $referer = $_SERVER['HTTP_REFERER'] ?? '';
+                // Check if the request came from the active attempt page
+                $is_self_destruction = false;
+                if (strpos($referer, '/mod/quiz/attempt.php') !== false) {
+                    $query = parse_url($referer, PHP_URL_QUERY);
+                    parse_str($query, $params);
+                    if (isset($params['attempt']) && (int)$params['attempt'] === (int)$unfinished->id) {
+                        $is_self_destruction = true;
+                    }
+                }
+
+                if ($is_self_destruction) {
+                    error_log("[local_personalcourse] FLAG_CHANGE: ABORTING SYNC - User is inside active attempt {$unfinished->id} (Self-Destruction Protection). Referer: $referer");
+                    return;
+                } else {
+                    error_log("[local_personalcourse] FLAG_CHANGE: PROCEEDING WITH SYNC - User has unfinished attempt {$unfinished->id} but is NOT inside it (Global Sync). Referer: $referer");
+                }
+            }
+
+            // PROCEED: Sync from Source
+            error_log("[local_personalcourse] FLAG_CHANGE: Self-Sync triggered. Syncing from Source {$pq_mapping->sourcequizid}");
+            // We use the SOURCE quiz ID to regenerate/sync the personal quiz
+            \local_personalcourse\generator_service::generate_from_source($userid, $pq_mapping->sourcequizid);
+            return;
+        }
+
         // Determine if this is a personal course or public course
         $pcowner = $DB->get_record('local_personalcourse_courses', ['courseid' => $courseid], 'id,userid,courseid');
         
@@ -176,7 +220,7 @@ class observers {
             return;
         }
 
-        // === THRESHOLD CHECK (80%) ===
+        // === THRESHOLD CHECK (30%) ===
         $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
         $quiz = $DB->get_record('quiz', ['id' => $quizid]);
         
@@ -185,13 +229,23 @@ class observers {
             $percentage = ($attempt->sumgrades / $quiz->sumgrades) * 100;
         }
 
-        if ($percentage < 80) {
-            // FAILED THRESHOLD
-            $msg = "You scored " . format_float($percentage, 0) . "%. You should score 80% or more to have the personal quiz.";
-            // Use prominent styling to mirror the success message
+        // === ATTEMPT 1 CHECK ===
+        // If this is the FIRST attempt, we do NOTHING.
+        // No generation, no failure notification.
+        if ($attempt->attempt == 1) {
+            error_log("[local_personalcourse] ATTEMPT_SUBMITTED: Attempt 1 - suppressing generation and notifications (Policy).");
+            return;
+        }
+
+        if ($percentage < \local_personalcourse\threshold_policy::THRESHOLD_PERCENTAGE) {
+            // FAILED THRESHOLD (Attempt 2+)
+            $msg = "You scored " . format_float($percentage, 0) . "%. You should score " . \local_personalcourse\threshold_policy::THRESHOLD_PERCENTAGE . "% or more to have the personal quiz.";
+            // Use custom styling (White on Blue)
             \core\notification::add(
-                get_string('personalquiz_failed_prominent', 'local_personalcourse', $msg),
-                \core\notification::WARNING
+                '<span class="local-personalcourse-notification">' . 
+                get_string('personalquiz_failed_prominent', 'local_personalcourse', $msg) . 
+                '</span>',
+                \core\notification::INFO
             );
             return;
         }
@@ -247,11 +301,21 @@ class observers {
                 if (!empty($result->toadd) || !empty($result->toremove)) {
                     $cm = get_coursemodule_from_instance('quiz', $result->quizid);
                     $url = new \moodle_url('/mod/quiz/view.php', ['id' => $cm->id]);
-                    \core\notification::success(get_string('personalquiz_updated_prominent', 'local_personalcourse', $url->out()));
+                    \core\notification::add(
+                        '<span class="local-personalcourse-notification">' . 
+                        get_string('personalquiz_updated_prominent', 'local_personalcourse', $url->out()) . 
+                        '</span>',
+                        \core\notification::INFO
+                    );
                 } else if ($result->mappingid > 0) {
                     $cm = get_coursemodule_from_instance('quiz', $result->quizid);
                     $url = new \moodle_url('/mod/quiz/view.php', ['id' => $cm->id]);
-                    \core\notification::success(get_string('personalquiz_created_prominent', 'local_personalcourse', $url->out()));
+                    \core\notification::add(
+                        '<span class="local-personalcourse-notification">' . 
+                        get_string('personalquiz_created_prominent', 'local_personalcourse', $url->out()) . 
+                        '</span>',
+                        \core\notification::INFO
+                    );
                 }
             }
         } catch (\Throwable $e) {

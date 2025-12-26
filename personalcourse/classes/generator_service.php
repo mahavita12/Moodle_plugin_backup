@@ -141,7 +141,7 @@ class generator_service {
             }
         }
 
-        if (false) {
+        if ($pq) {
             try {
                 // Check if valid CM exists in the personal course
                 $cm = get_coursemodule_from_instance('quiz', $pq->quizid, $pccourseid, false, MUST_EXIST);
@@ -165,7 +165,7 @@ class generator_service {
             error_log("[local_personalcourse] do_generate: First generation - checking threshold");
             if (!\local_personalcourse\threshold_policy::allow_initial_creation($userid, $sourcequizid)) {
                 error_log("[local_personalcourse] do_generate: Threshold NOT met - returning empty");
-                $emptyresult['personalcourseid'] = $personalcourseid;
+                $emptyresult->personalcourseid = $personalcourseid;
                 return $emptyresult;
             }
             error_log("[local_personalcourse] do_generate: Threshold passed");
@@ -185,7 +185,7 @@ class generator_service {
 
         // If no desired questions and first generation, nothing to do
         if (empty($desired) && $isFirstGeneration) {
-            $emptyresult['personalcourseid'] = $personalcourseid;
+            $emptyresult->personalcourseid = $personalcourseid;
             return $emptyresult;
         }
 
@@ -212,11 +212,28 @@ class generator_service {
             // Safety: Ensure deletioninprogress is 0 for the newly created PQ as well
             $DB->set_field('course_modules', 'deletioninprogress', 0, ['id' => (int)$res->cmid]);
 
+            // Fetch Source Category Name
+            $sourcecatname = '';
+            try {
+                $sourcecourseid = $sourcequiz->course;
+                $catname = $DB->get_field_sql(
+                    "SELECT cc.name FROM {course_categories} cc 
+                     JOIN {course} c ON c.category = cc.id 
+                     WHERE c.id = ?", 
+                    [$sourcecourseid]
+                );
+                if ($catname) {
+                    $sourcecatname = $catname;
+                }
+            } catch (\Throwable $e) {}
+
             // Create mapping record
             $pqrec = (object)[
                 'personalcourseid' => $personalcourseid,
                 'quizid' => (int)$res->quizid,
                 'sourcequizid' => $sourcequizid,
+                'sourcecourseid' => (int)($sourcequiz->course ?? 0),
+                'sourcecategory' => $sourcecatname,
                 'sectionname' => $prefix,
                 'quiztype' => 'non_essay',
                 'timecreated' => time(),
