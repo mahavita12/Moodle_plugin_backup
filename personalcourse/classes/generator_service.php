@@ -135,9 +135,9 @@ class generator_service {
             }
 
             if (!$cm_exists) {
-                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing/deleted, deleting mapping and resetting");
-                $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
-                $pq = null; // Force null to trigger isFirstGeneration
+                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing/deleted. NOT deleting mapping to preserve Source ID.");
+                // $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                // $pq = null; // Don't force null, keep the record
             }
         }
 
@@ -150,10 +150,10 @@ class generator_service {
                 // CM not found
             }
 
-            if (!$cm_exists) {
-                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing, deleting mapping");
-                $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
-                $pq = null; 
+             if (!$cm_exists) {
+                error_log("[local_personalcourse] do_generate: Found orphaned mapping id={$pq->id} - CM missing, NOT deleting mapping.");
+                // $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+                // $pq = null; 
             }
         }
         
@@ -320,7 +320,36 @@ class generator_service {
         // We check actual slots in DB to be sure.
         $slot_count = $DB->count_records('quiz_slots', ['quizid' => $pq->quizid]);
         
+        // If no questions remain, we MUST PRESERVE the mapping record so we don't lose the Source Course ID.
+        // We will just hide the quiz module.
         if ($isFirstGeneration && $slot_count === 0) {
+            error_log("[local_personalcourse] do_generate: First generation resulted in EMPTY quiz (0 questions). Hiding module but preserving map.");
+            
+            // Hide instead of deleting
+             if ($cmid) {
+                set_coursemodule_visible($cmid, 0); 
+            }
+            
+            // DO NOT delete the map record
+            return (object)[
+                'status' => 'hidden',
+                'quizid' => $pq->quizid,
+                'cmid' => $cmid
+            ];
+        }
+
+        // === UNHIDE IF QUOTA MET ===
+        // If we have questions, ensure the quiz is visible (it might have been hidden previously)
+        if ($slot_count > 0 && $cmid) {
+            $cm = get_coursemodule_from_id('quiz', $cmid);
+            if ($cm && !$cm->visible) {
+                set_coursemodule_visible($cmid, 1);
+                error_log("[local_personalcourse] do_generate: Unhiding quiz $cmid because it now has $slot_count questions.");
+            }
+        }
+
+        // ORIGINAL DELETION BLOCK BYPASSED
+        if (false && $isFirstGeneration && $slot_count === 0) {
             error_log("[local_personalcourse] do_generate: First generation resulted in EMPTY quiz (0 questions). Deleting module to avoid confusion.");
             
             if ($cmid) {
@@ -331,11 +360,17 @@ class generator_service {
                 quiz_delete_instance($pq->quizid);
             }
             
-            // Delete mapping
-            $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+            // Delete mapping - DISABLED to preserve Source Course ID
+            // $DB->delete_records('local_personalcourse_quizzes', ['id' => (int)$pq->id]);
+            // error_log("[local_personalcourse] do_generate: Sync resulted in empty quiz (orphan check), but NOT deleting mapping to preserve Source ID.");
             
             // Return empty result
             return $emptyresult;
+        }
+
+        // Fix attempt history to match current quiz structure (Smart Sync)
+        if ($toremove || $toadd) {
+            self::fix_attempt_history((int)$pq->quizid);
         }
 
         return (object)[
@@ -577,6 +612,97 @@ class generator_service {
             if ($qpp <= 0) { $qpp = 1; }
             quiz_repaginate_questions($quizid, $qpp);
             quiz_update_sumgrades($quiz);
+        }
+    }
+
+    /**
+     * Fix attempt history to match current quiz structure (Smart Sync).
+     * This prevents "Review Page Mismatch" where deleted/moved questions collide.
+     */
+    private static function fix_attempt_history(int $quizid): void {
+        global $DB;
+        
+        // 1. Get current valid map: QuestionID -> Slot
+        // Moodle 4.x: We need to map Slots -> Entries -> ALL Question Versions
+        // 1. Get Slots and their Entry IDs
+        $sql_slots = "SELECT qs.id AS id, qs.slot, qr.questionbankentryid
+                      FROM {quiz_slots} qs
+                      JOIN {question_references} qr ON qr.itemid = qs.id
+                      WHERE qs.quizid = :quizid 
+                        AND qr.component = 'mod_quiz' 
+                        AND qr.questionarea = 'slot'
+                      ORDER BY qs.slot";
+        $slots = $DB->get_records_sql($sql_slots, ['quizid' => $quizid]);
+
+        $qid_to_slot = [];
+        $valid_qids = [];
+        $slot_ids_in_order = []; // For layout string
+        $entry_ids = [];
+
+        foreach ($slots as $s) {
+            $slot_ids_in_order[] = $s->id;
+            $entry_ids[$s->questionbankentryid] = $s->slot;
+        }
+
+        // 2. Get ALL Question IDs for these Entries (Historical + Current)
+        if (!empty($entry_ids)) {
+            list($esql, $eparams) = $DB->get_in_or_equal(array_keys($entry_ids));
+            $versions = $DB->get_records_select('question_versions', "questionbankentryid $esql", $eparams, '', 'questionid, questionbankentryid');
+            
+            foreach ($versions as $v) {
+                // Map THIS version of the question to the slot of its Entry
+                if (isset($entry_ids[$v->questionbankentryid])) {
+                    $slot = $entry_ids[$v->questionbankentryid];
+                    $qid_to_slot[$v->questionid] = $slot;
+                    $valid_qids[] = $v->questionid;
+                }
+            }
+        }
+
+        // 2. Get all attempts for this quiz
+        $attempts = $DB->get_records('quiz_attempts', ['quiz' => $quizid]);
+        if (!$attempts) { return; }
+
+        $usageids = array_column($attempts, 'uniqueid');
+        if (empty($usageids)) { return; }
+
+        // Clean up invalid question_attempts (Use PHP to iterate safely)
+        // Fetch all QAs for these usages
+        list($usql, $uparams) = $DB->get_in_or_equal($usageids);
+        $qas = $DB->get_records_select('question_attempts', "questionusageid $usql", $uparams, '', 'id, questionusageid, questionid, slot');
+        
+        $qas_to_delete = [];
+        $qas_to_update = []; // id => new_slot
+
+        foreach ($qas as $qa) {
+            if (!in_array($qa->questionid, $valid_qids)) {
+                // Question no longer in quiz -> Delete QA
+                $qas_to_delete[] = $qa->id;
+            } elseif (isset($qid_to_slot[$qa->questionid]) && $qa->slot != $qid_to_slot[$qa->questionid]) {
+                // Question moved -> Update QA Slot
+                $qas_to_update[$qa->id] = $qid_to_slot[$qa->questionid];
+            }
+        }
+
+        // Execute Deletions
+        if (!empty($qas_to_delete)) {
+            $DB->delete_records_list('question_attempts', 'id', $qas_to_delete);
+        }
+
+        // Execute Updates
+        foreach ($qas_to_update as $qaid => $newslot) {
+            $DB->set_field('question_attempts', 'slot', $newslot, ['id' => $qaid]);
+        }
+
+        // 3. Fix Layout String
+        $layout_parts = [];
+        foreach ($slot_ids_in_order as $sid) {
+            $layout_parts[] = $sid; // Slot ID
+            $layout_parts[] = 0;    // Page Break
+        }
+        $new_layout = implode(',', $layout_parts);
+        if ($new_layout !== '') {
+            $DB->set_field('quiz_attempts', 'layout', $new_layout, ['quiz' => $quizid]);
         }
     }
 }

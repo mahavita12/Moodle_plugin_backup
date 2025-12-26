@@ -37,9 +37,18 @@ class observers {
     private static function handle_flag_change(\core\event\base $event, bool $added): void {
         global $DB;
 
-        error_log("[local_personalcourse] FLAG_CHANGE: added=" . ($added ? 'true' : 'false'));
+        // Recursion Guard: Prevent infinite loops if sync triggers other events
+        static $processing = false;
+        if ($processing) {
+            error_log("[local_personalcourse] FLAG_CHANGE: Recursive call detected. Skipping.");
+            return;
+        }
+        $processing = true;
 
-        $userid = $event->relateduserid ?? null;
+        try {
+            error_log("[local_personalcourse] FLAG_CHANGE: added=" . ($added ? 'true' : 'false'));
+
+            $userid = $event->relateduserid ?? null;
         if (!$userid) {
             error_log("[local_personalcourse] FLAG_CHANGE: No userid, returning");
             return;
@@ -155,6 +164,11 @@ class observers {
         } catch (\Throwable $e) {
             error_log("[local_personalcourse] Flag sync failed: " . $e->getMessage());
         }
+    } catch (\Throwable $e) {
+        error_log("[local_personalcourse] FATAL error in handle_flag_change: " . $e->getMessage());
+    } finally {
+        $processing = false;
+    }
     }
 
     /**

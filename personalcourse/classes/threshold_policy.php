@@ -30,16 +30,18 @@ class threshold_policy {
 
         foreach ($attempts as $a) {
             $n = (int)$a->attempt;
-            $grade = ($totalsum > 0.0)
+            // Grade calculation with precision safety (2 decimal places)
+            $raw_grade = ($totalsum > 0.0)
                 ? (((float)($a->sumgrades ?? 0.0) / $totalsum) * 100.0)
                 : 0.0;
+            $grade = round($raw_grade, 4); // Avoid 69.999999 issues
             
             // Attempt 1: NEVER generate (User Requirement)
             if ($n === 1) {
-                continue; // Skip valid attempt 1
+                continue; 
             }
             
-            // Attempt 2+: require >= THRESHOLD_PERCENTAGE (30%)
+            // Attempt 2+: require >= THRESHOLD_PERCENTAGE
             if ($n >= 2 && $grade >= self::THRESHOLD_PERCENTAGE) {
                 return true;
             }

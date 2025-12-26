@@ -997,6 +997,10 @@ body.hide-feedback .formulation {
         // We retained the function solely for the 'click' handlers above to use.
         
         // Remove MutationObserver as well, since core renderers now handle the class.
+        
+        // RE-ENABLE 2024-12-26: Server-side rendering is NOT handling Personal Quizzes correctly yet.
+        // We must call updateNav() on load to ensure flags appear.
+        updateNav([]);
 
     });
 </script>
