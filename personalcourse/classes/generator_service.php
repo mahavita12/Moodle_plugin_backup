@@ -369,9 +369,8 @@ class generator_service {
         }
 
         // Fix attempt history to match current quiz structure (Smart Sync)
-        if ($toremove || $toadd) {
-            self::fix_attempt_history((int)$pq->quizid);
-        }
+        // ALWAYS call this - even if no toadd/toremove, old attempts may have stale data
+        self::fix_attempt_history((int)$pq->quizid);
 
         return (object)[
             'personalcourseid' => $personalcourseid,
@@ -618,91 +617,135 @@ class generator_service {
     /**
      * Fix attempt history to match current quiz structure (Smart Sync).
      * This prevents "Review Page Mismatch" where deleted/moved questions collide.
+     * 
+     * CORRECTED VERSION:
+     * - Uses slot NUMBERS in layout (not slot IDs) - Moodle expects slot numbers
+     * - Does NOT delete question_attempts - preserves historical data
+     * - Only updates slot numbers in question_attempts to match new structure
+     * - Only processes finished attempts (in-progress are deleted before sync)
      */
     private static function fix_attempt_history(int $quizid): void {
         global $DB;
         
-        // 1. Get current valid map: QuestionID -> Slot
-        // Moodle 4.x: We need to map Slots -> Entries -> ALL Question Versions
-        // 1. Get Slots and their Entry IDs
-        $sql_slots = "SELECT qs.id AS id, qs.slot, qr.questionbankentryid
-                      FROM {quiz_slots} qs
-                      JOIN {question_references} qr ON qr.itemid = qs.id
-                      WHERE qs.quizid = :quizid 
-                        AND qr.component = 'mod_quiz' 
-                        AND qr.questionarea = 'slot'
-                      ORDER BY qs.slot";
-        $slots = $DB->get_records_sql($sql_slots, ['quizid' => $quizid]);
-
-        $qid_to_slot = [];
-        $valid_qids = [];
-        $slot_ids_in_order = []; // For layout string
-        $entry_ids = [];
-
-        foreach ($slots as $s) {
-            $slot_ids_in_order[] = $s->id;
-            $entry_ids[$s->questionbankentryid] = $s->slot;
-        }
-
-        // 2. Get ALL Question IDs for these Entries (Historical + Current)
-        if (!empty($entry_ids)) {
-            list($esql, $eparams) = $DB->get_in_or_equal(array_keys($entry_ids));
-            $versions = $DB->get_records_select('question_versions', "questionbankentryid $esql", $eparams, '', 'questionid, questionbankentryid');
-            
-            foreach ($versions as $v) {
-                // Map THIS version of the question to the slot of its Entry
-                if (isset($entry_ids[$v->questionbankentryid])) {
-                    $slot = $entry_ids[$v->questionbankentryid];
-                    $qid_to_slot[$v->questionid] = $slot;
-                    $valid_qids[] = $v->questionid;
-                }
-            }
-        }
-
-        // 2. Get all attempts for this quiz
-        $attempts = $DB->get_records('quiz_attempts', ['quiz' => $quizid]);
-        if (!$attempts) { return; }
-
-        $usageids = array_column($attempts, 'uniqueid');
-        if (empty($usageids)) { return; }
-
-        // Clean up invalid question_attempts (Use PHP to iterate safely)
-        // Fetch all QAs for these usages
-        list($usql, $uparams) = $DB->get_in_or_equal($usageids);
-        $qas = $DB->get_records_select('question_attempts', "questionusageid $usql", $uparams, '', 'id, questionusageid, questionid, slot');
+        error_log("[local_personalcourse] fix_attempt_history: Starting for quiz $quizid");
         
-        $qas_to_delete = [];
-        $qas_to_update = []; // id => new_slot
-
-        foreach ($qas as $qa) {
-            if (!in_array($qa->questionid, $valid_qids)) {
-                // Question no longer in quiz -> Delete QA
-                $qas_to_delete[] = $qa->id;
-            } elseif (isset($qid_to_slot[$qa->questionid]) && $qa->slot != $qid_to_slot[$qa->questionid]) {
-                // Question moved -> Update QA Slot
-                $qas_to_update[$qa->id] = $qid_to_slot[$qa->questionid];
-            }
+        // 1. Get current quiz structure: slot NUMBER and questionid mapping
+        // We need to map questionid -> slot NUMBER (not slot ID!)
+        $sql = "SELECT qs.slot AS slot_number, qs.id AS slot_id, qv.questionid, qr.questionbankentryid
+                FROM {quiz_slots} qs
+                JOIN {question_references} qr ON qr.itemid = qs.id 
+                    AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                WHERE qs.quizid = :quizid
+                ORDER BY qs.slot";
+        $current_structure = $DB->get_records_sql($sql, ['quizid' => $quizid]);
+        
+        if (empty($current_structure)) {
+            error_log("[local_personalcourse] fix_attempt_history: No slots found for quiz $quizid");
+            return;
         }
-
-        // Execute Deletions
-        if (!empty($qas_to_delete)) {
-            $DB->delete_records_list('question_attempts', 'id', $qas_to_delete);
+        
+        // Build mappings
+        $qid_to_new_slot = [];      // questionid -> new slot NUMBER
+        $valid_slot_numbers = [];    // slot NUMBER -> true (for layout)
+        
+        foreach ($current_structure as $row) {
+            $qid_to_new_slot[$row->questionid] = (int)$row->slot_number;
+            $valid_slot_numbers[(int)$row->slot_number] = true;
         }
-
-        // Execute Updates
-        foreach ($qas_to_update as $qaid => $newslot) {
-            $DB->set_field('question_attempts', 'slot', $newslot, ['id' => $qaid]);
+        
+        error_log("[local_personalcourse] fix_attempt_history: Found " . count($valid_slot_numbers) . " valid slots, " . count($qid_to_new_slot) . " question mappings");
+        
+        // 2. Get all FINISHED attempts for this quiz
+        // Note: In-progress attempts should already be deleted before sync
+        $attempts = $DB->get_records('quiz_attempts', ['quiz' => $quizid, 'state' => 'finished']);
+        if (empty($attempts)) {
+            error_log("[local_personalcourse] fix_attempt_history: No finished attempts to fix");
+            return;
         }
-
-        // 3. Fix Layout String
+        
+        error_log("[local_personalcourse] fix_attempt_history: Processing " . count($attempts) . " finished attempts");
+        
+        // Build expected layout ONCE (same for all attempts)
         $layout_parts = [];
-        foreach ($slot_ids_in_order as $sid) {
-            $layout_parts[] = $sid; // Slot ID
-            $layout_parts[] = 0;    // Page Break
+        ksort($valid_slot_numbers);
+        foreach (array_keys($valid_slot_numbers) as $slot_num) {
+            $layout_parts[] = $slot_num;
+            $layout_parts[] = 0;
         }
         $new_layout = implode(',', $layout_parts);
-        if ($new_layout !== '') {
-            $DB->set_field('quiz_attempts', 'layout', $new_layout, ['quiz' => $quizid]);
+        
+        // 3. Process each attempt
+        foreach ($attempts as $attempt) {
+            // Skip if layout already correct
+            if ($attempt->layout === $new_layout) {
+                continue;
+            }
+            
+            // Get question_attempts for this attempt
+            $qas = $DB->get_records('question_attempts', 
+                ['questionusageid' => $attempt->uniqueid], 
+                'slot ASC', 
+                'id, questionid, slot');
+            
+            if (empty($qas)) {
+                continue;
+            }
+            
+            // Check if any slot changes are actually needed
+            $needs_update = false;
+            $valid_qas = [];
+            foreach ($qas as $qa) {
+                if (isset($qid_to_new_slot[$qa->questionid])) {
+                    $expected_slot = $qid_to_new_slot[$qa->questionid];
+                    if ((int)$qa->slot !== $expected_slot) {
+                        $needs_update = true;
+                    }
+                    $valid_qas[$qa->id] = $expected_slot;
+                } elseif ((int)$qa->slot > 0) {
+                    // QA not in quiz but has positive slot - needs to be hidden
+                    $needs_update = true;
+                }
+            }
+            
+            if (!$needs_update) {
+                // Just update layout if different
+                $DB->set_field('quiz_attempts', 'layout', $new_layout, ['id' => $attempt->id]);
+                continue;
+            }
+            
+            // TWO-PHASE UPDATE using batch SQL to minimize queries
+            // Phase 1: Move ALL QAs with positive slots to negative (single query)
+            $qa_ids = array_keys((array)$qas);
+            if (!empty($qa_ids)) {
+                list($insql, $params) = $DB->get_in_or_equal($qa_ids, SQL_PARAMS_NAMED);
+                $DB->execute(
+                    "UPDATE {question_attempts} SET slot = -id WHERE id $insql AND slot > 0",
+                    $params
+                );
+            }
+            
+            // Phase 2: Set valid QAs to final slots (batch with CASE statement)
+            if (!empty($valid_qas)) {
+                $cases = [];
+                $ids = [];
+                foreach ($valid_qas as $qa_id => $new_slot) {
+                    $cases[] = "WHEN id = $qa_id THEN $new_slot";
+                    $ids[] = $qa_id;
+                }
+                $case_sql = implode(' ', $cases);
+                list($insql, $params) = $DB->get_in_or_equal($ids, SQL_PARAMS_NAMED);
+                $DB->execute(
+                    "UPDATE {question_attempts} SET slot = CASE $case_sql END WHERE id $insql",
+                    $params
+                );
+            }
+            
+            // Update layout
+            $DB->set_field('quiz_attempts', 'layout', $new_layout, ['id' => $attempt->id]);
+            error_log("[local_personalcourse] fix_attempt_history: Fixed attempt {$attempt->id}");
         }
+        
+        error_log("[local_personalcourse] fix_attempt_history: Completed for quiz $quizid");
     }
 }

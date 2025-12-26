@@ -276,8 +276,17 @@ class observers {
         );
 
         if ($existing_pq) {
-            // Check if the linked quiz still exists in Moodle
-            if ($DB->record_exists('quiz', ['id' => $existing_pq->quizid])) {
+            // Check if the linked quiz AND its course module still exist in Moodle
+            // Note: Quiz record may persist in recycle bin even after UI deletion
+            // We must verify the course_module exists and is not being deleted
+            $cm_exists = $DB->record_exists_sql(
+                "SELECT 1 FROM {course_modules} cm
+                 JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                 WHERE cm.instance = ? AND cm.deletioninprogress = 0",
+                [$existing_pq->quizid]
+            );
+            
+            if ($cm_exists) {
                 error_log("[local_personalcourse] Personal quiz exists (Quiz ID {$existing_pq->quizid}). Skipping re-generation.");
                 
                 // OPTIONAL: Send a "Success" notification here too?
@@ -285,9 +294,9 @@ class observers {
                 // If they scored > 80% and quiz exists, maybe just remind them "Your personal quiz is ready"?
                 return;
             } else {
-                // Orphaned record! The quiz was deleted.
-                // Delete the stale record and allow re-generation.
-                error_log("[local_personalcourse] Orphaned personal quiz record found (Quiz ID {$existing_pq->quizid} missing). Cleaning up.");
+                // Orphaned record! The quiz was deleted or course module is missing/deleting.
+                // Delete the stale mapping and allow re-generation.
+                error_log("[local_personalcourse] Orphaned personal quiz record found (Quiz ID {$existing_pq->quizid} - CM missing or deleting). Cleaning up mapping.");
                 $DB->delete_records('local_personalcourse_quizzes', ['id' => $existing_pq->id]);
             }
         }
@@ -357,15 +366,83 @@ class observers {
     /**
      * Called when a quiz is viewed - no-op in simplified version
      */
+    /**
+     * Called when user views a quiz page.
+     * For Personal Quizzes: Run sync to ensure structure matches current flags.
+     * This handles edge cases like two-tab scenario where flags changed elsewhere.
+     */
     public static function on_quiz_viewed(\mod_quiz\event\course_module_viewed $event): void {
-        // No-op: structural sync now handled entirely by flag events and attempt submission
+        global $DB;
+        
+        try {
+            $context = $event->get_context();
+            if (!($context instanceof \context_module)) {
+                return;
+            }
+            
+            $cmid = $context->instanceid;
+            $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, IGNORE_MISSING);
+            if (!$cm) {
+                return;
+            }
+            
+            $quizid = (int)$cm->instance;
+            $userid = $event->userid;
+            
+            // Check if this is a Personal Quiz
+            $pq_mapping = $DB->get_record('local_personalcourse_quizzes', ['quizid' => $quizid]);
+            if (!$pq_mapping) {
+                return; // Not a PQ, ignore
+            }
+            
+            // Sync structure based on current flags
+            // This ensures the quiz is up-to-date before user starts a new attempt
+            error_log("[local_personalcourse] QUIZ_VIEWED: Syncing PQ $quizid for user $userid");
+            
+            \local_personalcourse\generator_service::generate_from_source($userid, $pq_mapping->sourcequizid);
+            
+        } catch (\Throwable $e) {
+            error_log("[local_personalcourse] on_quiz_viewed error: " . $e->getMessage());
+        }
     }
 
     /**
-     * Called when a personal quiz attempt starts - no-op in simplified version
+     * Called when a personal quiz attempt starts.
+     * Safety check: Ensure structure matches flags (handles stale tab edge case).
      */
     public static function on_personal_quiz_attempt_started(\core\event\base $event): void {
-        // No-op: no pre-attempt mutations needed in synchronous model
+        global $DB;
+        
+        try {
+            $context = $event->get_context();
+            if (!($context instanceof \context_module)) {
+                return;
+            }
+            
+            $cmid = $context->instanceid;
+            $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, IGNORE_MISSING);
+            if (!$cm) {
+                return;
+            }
+            
+            $quizid = (int)$cm->instance;
+            $userid = $event->relateduserid ?? $event->userid;
+            
+            // Check if this is a Personal Quiz
+            $pq_mapping = $DB->get_record('local_personalcourse_quizzes', ['quizid' => $quizid]);
+            if (!$pq_mapping) {
+                return; // Not a PQ, ignore
+            }
+            
+            // Run sync to ensure structure is current
+            // This catches edge case where user started attempt from stale view page
+            error_log("[local_personalcourse] ATTEMPT_STARTED: Ensuring PQ $quizid sync for user $userid");
+            
+            \local_personalcourse\generator_service::generate_from_source($userid, $pq_mapping->sourcequizid);
+            
+        } catch (\Throwable $e) {
+            error_log("[local_personalcourse] on_personal_quiz_attempt_started error: " . $e->getMessage());
+        }
     }
 
     /**

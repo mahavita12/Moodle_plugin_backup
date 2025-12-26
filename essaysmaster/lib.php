@@ -129,15 +129,13 @@ function local_essaysmaster_get_quiz_config($quizid) {
 function local_essaysmaster_before_footer() {
     global $PAGE, $DB;
     
-    error_log("Essays Master LEGACY: Function called on page: " . $PAGE->url->out(false));
-
-    // Only on mod/quiz attempt pages
+    // Only on mod/quiz attempt pages - check early to avoid unnecessary processing
     if (strpos($PAGE->url->out(false), '/mod/quiz/attempt.php') === false) {
-        error_log("Essays Master LEGACY: Not a quiz attempt page, exiting");
         return;
     }
     
-    error_log("Essays Master LEGACY: On quiz attempt page, proceeding...");
+    // Debug logging disabled for performance
+    // error_log("Essays Master LEGACY: On quiz attempt page, proceeding...");
 
     // Get attempt ID from URL
     $attemptid = optional_param('attempt', 0, PARAM_INT);
