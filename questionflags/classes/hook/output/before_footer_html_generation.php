@@ -84,6 +84,25 @@ class before_footer_html_generation {
             redirect($PAGE->url);
         }
 
+        // Handle save_reason AJAX (auto-save from textarea blur)
+        if ($_POST && isset($_POST['save_reason']) && confirm_sesskey()) {
+            $questionid = required_param('questionid', PARAM_INT);
+            $reason = optional_param('reason', '', PARAM_RAW);
+            
+            // Update existing flag record with the reason
+            $existing = $DB->get_record('local_questionflags', ['userid' => $USER->id, 'questionid' => $questionid]);
+            if ($existing) {
+                $existing->reason = $reason;
+                $existing->timemodified = time();
+                $DB->update_record('local_questionflags', $existing);
+            }
+            
+            // Return JSON response (no redirect for AJAX)
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true]);
+            exit;
+        }
+
         // Handle structure guide updates - NOW STORES IN QUESTION METADATA
         if ($_POST && isset($_POST['update_guide']) && confirm_sesskey()) {
             error_log("Structure guide update request received");
@@ -212,9 +231,13 @@ class before_footer_html_generation {
         // Get existing flags
         $existing_flags = $DB->get_records('local_questionflags', ['userid' => $USER->id]);
         $user_flags = [];
+        $user_reasons = [];
         
         foreach ($existing_flags as $flag) {
             $user_flags[$flag->questionid] = $flag->flagcolor;
+            if (!empty($flag->reason)) {
+                $user_reasons[$flag->questionid] = $flag->reason;
+            }
         }
 
         // Get structure guides from question metadata
@@ -277,6 +300,7 @@ class before_footer_html_generation {
 
         $sesskey = sesskey();
         $user_flags_json = json_encode($user_flags);
+        $user_reasons_json = json_encode($user_reasons);
         $guides_json = json_encode($guides_data);
         $question_mapping_json = json_encode($question_mapping);
         $page_type = $PAGE->pagetype;
@@ -284,7 +308,10 @@ class before_footer_html_generation {
         
         // Output CSS and JavaScript via hook API (avoid direct echo)
         ob_start();
-        self::output_question_flags_assets($user_flags_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey);
+        self::output_question_flags_assets($user_flags_json, $user_reasons_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey);
+        
+        // Load AMD module for flag box textarea functionality
+        $PAGE->requires->js_call_amd('local_questionflags/flagbox', 'init');
         
         // Add feedback toggle button HTML directly for review pages  
         if ($page_type === 'mod-quiz-review') {
@@ -346,7 +373,7 @@ class before_footer_html_generation {
      * @param bool $is_teacher Whether user is a teacher
      * @param string $sesskey Session key
      */
-    private static function output_question_flags_assets($user_flags_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey) {
+    private static function output_question_flags_assets($user_flags_json, $user_reasons_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey) {
         // Output CSS styles
         echo '<style>
 /* QUESTION FLAGS PLUGIN STYLES */
@@ -664,6 +691,7 @@ body.hide-feedback .formulation {
         // Output JavaScript with proper formatting function
         echo '<script>
     window.questionFlagsData = ' . $user_flags_json . ';
+    window.questionFlagReasons = ' . $user_reasons_json . ';
     window.structureGuidesData = ' . $guides_json . ';
     window.questionMapping = ' . $question_mapping_json . ';
     window.moodlePageType = "' . $page_type . '";
