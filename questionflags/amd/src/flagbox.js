@@ -124,15 +124,21 @@ define(['jquery'], function($) {
             statusDiv.style.cssText = 'font-size:11px; color:#666; text-align:right; min-height:16px;';
             wrapperDiv.appendChild(statusDiv);
 
-            // Inject after .qtext if it exists, otherwise prepend to .content
+            // Inject after .qtext if it exists
             var qtext = contentArea.querySelector('.qtext');
-            if (qtext && qtext.nextSibling) {
-                contentArea.insertBefore(wrapperDiv, qtext.nextSibling);
-            } else if (qtext) {
-                contentArea.appendChild(wrapperDiv);
+            if (qtext && qtext.parentNode === contentArea) {
+                 if (qtext.nextSibling) {
+                    contentArea.insertBefore(wrapperDiv, qtext.nextSibling);
+                 } else {
+                    contentArea.appendChild(wrapperDiv);
+                 }
             } else {
-                // Fallback: prepend to content
-                contentArea.insertBefore(wrapperDiv, contentArea.firstChild);
+                // Fallback: prepend to content if qtext not found or nested differently
+                if (contentArea.firstChild) {
+                    contentArea.insertBefore(wrapperDiv, contentArea.firstChild);
+                } else {
+                    contentArea.appendChild(wrapperDiv);
+                }
             }
         });
 
