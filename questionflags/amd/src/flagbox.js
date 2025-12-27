@@ -62,8 +62,9 @@ define(['jquery'], function($) {
 
         var questions = document.querySelectorAll('.que');
         questions.forEach(function(question) {
-            var flagContainer = question.querySelector('.question-flag-container');
-            if (!flagContainer) {
+            // Find the content area to inject below question text
+            var contentArea = question.querySelector('.content');
+            if (!contentArea) {
                 return;
             }
 
@@ -83,38 +84,110 @@ define(['jquery'], function($) {
             }
 
             // Check if textarea already exists
-            if (document.getElementById('flag-reason-' + questionId)) {
+            if (document.getElementById('reason-wrapper-' + questionId)) {
                 return;
             }
 
             // Get current flag state and reason
             var currentFlag = (window.questionFlagsData && window.questionFlagsData[questionId]) || '';
             var reasonText = (window.questionFlagReasons && window.questionFlagReasons[questionId]) || '';
-            var displayStyle = (currentFlag === 'blue' || currentFlag === 'red') ? 'block' : 'none';
+            var isVisible = (currentFlag === 'blue' || currentFlag === 'red');
 
-            // Create textarea container
-            var reasonDiv = document.createElement('div');
-            reasonDiv.id = 'reason-container-' + questionId;
-            reasonDiv.style.cssText = 'display:' + displayStyle + '; width:100%; margin-top:5px;';
+            // Create wrapper for the notes section
+            var wrapperDiv = document.createElement('div');
+            wrapperDiv.id = 'reason-wrapper-' + questionId;
+            wrapperDiv.className = 'flag-notes-area';
+            wrapperDiv.style.cssText = 'margin-top: 15px; margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: ' + (isVisible ? 'block' : 'none') + ';';
 
+            // Add Label "My Notes"
+            var label = document.createElement('label');
+            label.htmlFor = 'flag-reason-' + questionId;
+            label.textContent = 'My Notes';
+            label.style.cssText = 'font-weight: bold; display: block; margin-bottom: 5px; color: #333;';
+            wrapperDiv.appendChild(label);
+
+            // Create textarea
             var textarea = document.createElement('textarea');
             textarea.id = 'flag-reason-' + questionId;
             textarea.className = 'form-control';
-            textarea.placeholder = 'Why did you get this wrong?';
-            textarea.style.cssText = 'width:100%; height:60px; font-size:12px; resize:vertical;';
+            textarea.placeholder = 'Add your notes here...';
+            textarea.style.cssText = 'width:100%; height:80px; font-size:14px; resize:vertical; margin-bottom: 5px;';
             textarea.value = reasonText;
             textarea.onblur = function() {
                 submitReason(questionId);
             };
+            wrapperDiv.appendChild(textarea);
 
+            // Status indicator
             var statusDiv = document.createElement('div');
             statusDiv.id = 'reason-status-' + questionId;
-            statusDiv.style.cssText = 'font-size:10px; color:#888; text-align:right; height:15px;';
+            statusDiv.style.cssText = 'font-size:11px; color:#666; text-align:right; min-height:16px;';
+            wrapperDiv.appendChild(statusDiv);
 
-            reasonDiv.appendChild(textarea);
-            reasonDiv.appendChild(statusDiv);
-            flagContainer.appendChild(reasonDiv);
+            // Inject after .qtext if it exists, otherwise prepend to .content
+            var qtext = contentArea.querySelector('.qtext');
+            if (qtext && qtext.nextSibling) {
+                contentArea.insertBefore(wrapperDiv, qtext.nextSibling);
+            } else if (qtext) {
+                contentArea.appendChild(wrapperDiv);
+            } else {
+                // Fallback: prepend to content
+                contentArea.insertBefore(wrapperDiv, contentArea.firstChild);
+            }
         });
+
+        // Hook into the global submitFlag function to toggle visibility
+        // We need to wrap the original function or use an event if possible.
+        // Since submitFlag is defined in global scope by PHP, we can wrap it.
+        if (typeof window.originalSubmitFlag === 'undefined' && typeof window.submitFlag === 'function') {
+            window.originalSubmitFlag = window.submitFlag;
+            window.submitFlag = function(questionId, flagColor, currentCmd) {
+                // Call original logic
+                window.originalSubmitFlag(questionId, flagColor, currentCmd);
+
+                // Update visibility based on action
+                // If currentCmd is 'flag', we are flagging -> show
+                // If currentCmd is 'unflag', we are unflagging -> hide
+                // Wait small delay for DOM to update or just use logic
+                
+                // Logic based on toggle behavior:
+                // If we clicked Blue and it was NOT Blue, we are flagging Blue.
+                // If we clicked Blue and it WAS Blue, we are unflagging.
+                
+                var wrapper = document.getElementById('reason-wrapper-' + questionId);
+                if (wrapper) {
+                    // This logic is tricky because we don't know the exact outcome state synchronously 
+                    // without duplicating the toggle logic.
+                    // However, the original submitFlag updates the UI classes.
+                    // Let's polling check the UI state or rely on the fact that if we click, we toggle.
+                    
+                    // Simple heuristic: check immediately after execution (sync) or small timeout
+                    setTimeout(function() {
+                        var btn = document.querySelector('#question-' + questionId + ' .flag-btn.active'); // Assuming active class added? 
+                        // Actually the PHP inline script reloads or updates UI. 
+                        // The inline script provided earlier updates classes.
+                        // Let's assume we want to show if ANY flag button is active/disabled?
+                        // Actually the previous script reloaded the page often unless AJAX.
+                        // With AJAX, we need to know the new state.
+                        
+                        // Let's look at the implementation of submitFlag in the PHP file.
+                        // It does: ... fetch ... then update UI.
+                        
+                        // Better approach: Observe DOM changes or listen to custom event if we emitted one.
+                        // We did NOT emit a custom JS event in the PHP script.
+                        
+                        // Quick fix: The PHP script updates window.questionFlagsData[questionId].
+                        // We can check that.
+                        var newState = window.questionFlagsData && window.questionFlagsData[questionId];
+                         if (newState === 'blue' || newState === 'red') {
+                             wrapper.style.display = 'block';
+                         } else {
+                             wrapper.style.display = 'none';
+                         }
+                    }, 500); // 500ms delay to allow AJAX to return and update global state
+                }
+            };
+        }
     }
 
     return {
