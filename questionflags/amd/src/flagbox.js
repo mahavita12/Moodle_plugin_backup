@@ -110,7 +110,7 @@ define(['jquery'], function ($) {
             var textarea = document.createElement('textarea');
             textarea.id = 'flag-reason-' + questionId;
             textarea.className = 'form-control';
-            textarea.placeholder = 'Add your notes here...';
+            textarea.placeholder = 'Add why you flagged this question';
             textarea.style.cssText = 'width:100%; height:80px; font-size:14px; resize:vertical; margin-bottom: 5px;';
             textarea.value = reasonText;
             textarea.onblur = function () {
