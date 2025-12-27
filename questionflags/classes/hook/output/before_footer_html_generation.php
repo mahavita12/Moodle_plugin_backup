@@ -89,12 +89,32 @@ class before_footer_html_generation {
             $questionid = required_param('questionid', PARAM_INT);
             $reason = optional_param('reason', '', PARAM_RAW);
             
-            // Update existing flag record with the reason
-            $existing = $DB->get_record('local_questionflags', ['userid' => $USER->id, 'questionid' => $questionid]);
-            if ($existing) {
-                $existing->reason = $reason;
-                $existing->timemodified = time();
-                $DB->update_record('local_questionflags', $existing);
+            // Get Question Bank Entry ID to find siblings
+            $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => $questionid]);
+            
+            $target_questionids = [$questionid];
+            
+            // If we found a QBE ID, get all sibling question IDs (versions of the same question)
+            if ($qbeid) {
+                // Get all question IDs that belong to this entry
+                $siblings = $DB->get_fieldset_select('question_versions', 'questionid', 'questionbankentryid = ?', [$qbeid]);
+                if ($siblings) {
+                    $target_questionids = array_unique(array_merge($target_questionids, $siblings));
+                }
+            }
+            
+            // Update all existing flag records for these questions
+            if (!empty($target_questionids)) {
+                list($insql, $inparams) = $DB->get_in_or_equal($target_questionids);
+                
+                // We only update EXISTING records. The note box only shows if a flag exists.
+                // If a flag exists, a record exists.
+                $sql = "UPDATE {local_questionflags} 
+                        SET reason = ?, timemodified = ? 
+                        WHERE userid = ? AND questionid $insql";
+                        
+                $params = array_merge([$reason, time(), $USER->id], $inparams);
+                $DB->execute($sql, $params);
             }
             
             // Return JSON response (no redirect for AJAX)
@@ -782,256 +802,188 @@ body.hide-feedback .formulation {
             }
             return null;
         }
-        
-        function isEssayQuestion(questionElement) {
-            var textareas = questionElement.querySelectorAll("textarea[name*=\\"answer\\"]");
-            var fileUpload = questionElement.querySelector("input[type=\\"file\\"]");
-            var richTextEditor = questionElement.querySelector(".editor_atto");
+
+        function createStructureGuide(questionId) {
+            var box = document.createElement("div");
+            box.className = "structure-guide-box";
+            box.id = "guide-box-" + questionId;
             
-            return textareas.length > 0 || fileUpload || richTextEditor;
-        }
-        
-        function addStructureGuideBox(question, questionId) {
-            if (question.querySelector(".structure-guide-box")) {
-                return; // Already added
+            var existingContent = window.structureGuidesData && window.structureGuidesData[questionId];
+            var isExpanded = false;
+            
+            // Header
+            var header = document.createElement("div");
+            header.className = "guide-header";
+            header.innerHTML = "<span>Guide to Structure your Response</span><span class=\\"toggle-arrow\\">▼</span>";
+            box.appendChild(header);
+            
+            // Content Area
+            var content = document.createElement("div");
+            content.className = "guide-content";
+            content.style.display = "none";
+            content.innerHTML = formatGuideContent(existingContent);
+            box.appendChild(content);
+            
+            // Edit Area (Teachers only)
+            var editArea = null;
+            if (window.isTeacher) {
+                editArea = document.createElement("div");
+                editArea.className = "guide-edit";
+                
+                var textarea = document.createElement("textarea");
+                textarea.value = existingContent || "";
+                editArea.appendChild(textarea);
+                
+                var saveBtn = document.createElement("button");
+                saveBtn.className = "save-btn";
+                saveBtn.textContent = "Save Guide";
+                editArea.appendChild(saveBtn);
+                
+                // Add Generate Button
+                var generateBtn = document.createElement("button");
+                generateBtn.className = "btn btn-info";
+                generateBtn.style.cssText = "margin-right: 10px; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; color: white; background-color: #17a2b8;";
+                generateBtn.textContent = "Generate with AI";
+                editArea.appendChild(generateBtn);
+                
+                var cancelBtn = document.createElement("button");
+                cancelBtn.className = "cancel-btn";
+                cancelBtn.textContent = "Cancel";
+                editArea.appendChild(cancelBtn);
+                
+                box.appendChild(editArea);
+                
+                // Add Edit Button to header if content exists
+                var editBtn = document.createElement("span");
+                editBtn.style.fontSize = "12px";
+                editBtn.style.color = "#666";
+                editBtn.style.marginLeft = "10px";
+                editBtn.style.cursor = "pointer";
+                editBtn.textContent = "[Edit]";
+                editBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    content.style.display = "none";
+                    editArea.style.display = "block";
+                };
+                header.firstChild.appendChild(editBtn);
+                
+                // Save Handler
+                saveBtn.onclick = function() {
+                    // Create hidden form to submit
+                    var form = document.createElement("form");
+                    form.method = "POST";
+                    form.action = window.location.href;
+                    
+                    var inputId = document.createElement("input");
+                    inputId.type = "hidden";
+                    inputId.name = "questionid";
+                    inputId.value = questionId;
+                    form.appendChild(inputId);
+                    
+                    var inputContent = document.createElement("input");
+                    inputContent.type = "hidden";
+                    inputContent.name = "guide_content";
+                    inputContent.value = textarea.value;
+                    form.appendChild(inputContent);
+                    
+                    var sesskey = document.createElement("input");
+                    sesskey.type = "hidden";
+                    sesskey.name = "update_guide";
+                    sesskey.value = "1";
+                    form.appendChild(sesskey);
+                    
+                    var token = document.createElement("input");
+                    token.type = "hidden";
+                    token.name = "sesskey";
+                    token.value = window.qfSesskey;
+                    form.appendChild(token);
+                    
+                    document.body.appendChild(form);
+                    form.submit();
+                };
+
+                // Generate Handler
+                generateBtn.onclick = function() {
+                    if (!confirm("This will use AI to generate a structure guide based on the question prompt. Continue?")) {
+                        return;
+                    }
+                    
+                    generateBtn.textContent = "Generating...";
+                    generateBtn.disabled = true;
+
+                    // Create hidden form to submit
+                    var form = document.createElement("form");
+                    form.method = "POST";
+                    form.action = window.location.href;
+                    
+                    var inputId = document.createElement("input");
+                    inputId.type = "hidden";
+                    inputId.name = "questionid";
+                    inputId.value = questionId;
+                    form.appendChild(inputId);
+                    
+                    var actionInput = document.createElement("input");
+                    actionInput.type = "hidden";
+                    actionInput.name = "generate_guide";
+                    actionInput.value = "1";
+                    form.appendChild(actionInput);
+                    
+                    var token = document.createElement("input");
+                    token.type = "hidden";
+                    token.name = "sesskey";
+                    token.value = window.qfSesskey;
+                    form.appendChild(token);
+                    
+                    document.body.appendChild(form);
+                    form.submit();
+                };
+                
+                cancelBtn.onclick = function() {
+                    editArea.style.display = "none";
+                    if (isExpanded) {
+                        content.style.display = "block";
+                    }
+                };
             }
             
-            var guideContent = window.structureGuidesData[questionId] || "";
-            
-            // Always show the guide box for teachers, only show for students if there is content
-            if (!guideContent && !window.isTeacher) {
-                return; // No content for students
-            }
-            
-            // Convert plain text to HTML with proper formatting
-            var formattedContent = guideContent ? formatGuideContent(guideContent) : "No structure guide set yet.";
-            
-            var guideBox = document.createElement("div");
-            guideBox.className = "structure-guide-box";
-            guideBox.innerHTML = 
-                "<div class=\\"guide-header\\" onclick=\\"toggleGuide(" + questionId + ")\\" id=\\"guide-header-" + questionId + "\\">Structure Guide <span class=\\"toggle-arrow\\" id=\\"arrow-" + questionId + "\\">▼</span></div>" +
-                "<div class=\\"guide-content\\" id=\\"guide-content-" + questionId + "\\" style=\\"display:none;\\">" +
-                    formattedContent +
-                "</div>" +
-                (window.isTeacher ? 
-                    "<div class=\\"guide-edit\\" id=\\"guide-edit-" + questionId + "\\">"+
-                        "<div style=\\"display:flex; gap:8px; margin-bottom:8px;\\">"+
-                            "<form method=\\"post\\" style=\\"display:inline;\\">"+
-                                "<input type=\\"hidden\\" name=\\"sesskey\\" value=\\"" + window.qfSesskey + "\\">"+
-                                "<input type=\\"hidden\\" name=\\"generate_guide\\" value=\\"1\\">"+
-                                "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
-                                "<button type=\\"submit\\" class=\\"save-btn\\" style=\\"background:#1f8ce6;\\">Generate Structure Guide</button>"+
-                            "</form>"+
-                            "<button type=\\"button\\" class=\\"cancel-btn\\" onclick=\\"cancelEdit(" + questionId + ")\\">Close</button>"+
-                        "</div>"+
-                        "<textarea id=\\"guide-textarea-" + questionId + "\\" placeholder=\\"Enter structure guide...\\">"+guideContent+"</textarea>"+
-                        "<button type=\\"button\\" class=\\"save-btn\\" onclick=\\"saveGuide(" + questionId + ")\\">Save</button>"+
-                        "<button type=\\"button\\" class=\\"cancel-btn\\" onclick=\\"cancelEdit(" + questionId + ")\\">Cancel</button>"+
-                    "</div>"
-                : "");
-            
-            var qtext = question.querySelector(".qtext");
-            if (qtext && qtext.nextSibling) {
-                qtext.parentNode.insertBefore(guideBox, qtext.nextSibling);
-            }
-        }
-        
-        window.toggleGuide = function(questionId) {
-            var content = document.getElementById("guide-content-" + questionId);
-            var arrow = document.getElementById("arrow-" + questionId);
-            
-            if (!window.isTeacher) {
-                // For students: just toggle content visibility
-                if (content.style.display === "none") {
+            // Toggle Handler
+            header.onclick = function(e) {
+                // Don\'t toggle if clicking buttons
+                if (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+                
+                isExpanded = !isExpanded;
+                var arrow = header.querySelector(".toggle-arrow");
+                
+                if (isExpanded) {
                     content.style.display = "block";
+                    if (editArea) editArea.style.display = "none";
                     arrow.classList.add("expanded");
                 } else {
                     content.style.display = "none";
+                    if (editArea) editArea.style.display = "none";
                     arrow.classList.remove("expanded");
                 }
-                return;
-            }
+            };
             
-            // For teachers: handle edit mode
-            var edit = document.getElementById("guide-edit-" + questionId);
-            
-            if (edit.style.display === "none" || !edit.style.display) {
-                // Show edit mode
-                content.style.display = "none";
-                edit.style.display = "block";
-                arrow.classList.add("expanded");
-                document.getElementById("guide-textarea-" + questionId).focus();
-            } else {
-                // Hide edit mode, show content
-                edit.style.display = "none";
-                content.style.display = "block";
-                arrow.classList.add("expanded");
-            }
-        };
-        
-        window.saveGuide = function(questionId) {
-            var textarea = document.getElementById("guide-textarea-" + questionId);
-            var content = textarea.value;
-            
-            var form = document.createElement("form");
-            form.method = "POST";
-            form.innerHTML = 
-                "<input type=\\"hidden\\" name=\\"sesskey\\" value=\\"' . $sesskey . '\\">"+
-                "<input type=\\"hidden\\" name=\\"update_guide\\" value=\\"1\\">"+
-                "<input type=\\"hidden\\" name=\\"questionid\\" value=\\""+questionId+"\\">"+
-                "<input type=\\"hidden\\" name=\\"guide_content\\" value=\\""+content.replace(/"/g, "&quot;")+"\\>";
-            document.body.appendChild(form);
-            form.submit();
-        };
-        
-        window.cancelEdit = function(questionId) {
-            var content = document.getElementById("guide-content-" + questionId);
-            var edit = document.getElementById("guide-edit-" + questionId);
-            var textarea = document.getElementById("guide-textarea-" + questionId);
-            var arrow = document.getElementById("arrow-" + questionId);
-            
-            edit.style.display = "none";
-            content.style.display = "none";
-            arrow.classList.remove("expanded");
-            textarea.value = window.structureGuidesData[questionId] || "";
-        };
-
-        function applyFlagState(question, questionId, currentFlag) {
-            var normalized = currentFlag === "blue" || currentFlag === "red" ? currentFlag : "";
-
-            question.classList.remove("question-flagged-blue", "question-flagged-red");
-            question.querySelectorAll(".flag-btn").forEach(function(btn) {
-                btn.classList.remove("active");
-            });
-
-            if (normalized) {
-                question.classList.add("question-flagged-" + normalized);
-                var activeBtn = question.querySelector(".flag-btn." + normalized);
-                if (activeBtn) {
-                    activeBtn.classList.add("active");
-                }
-            }
-
-            question.querySelectorAll("input[name=\'current_state\']").forEach(function(inputEl) {
-                inputEl.value = normalized;
-            });
+            return box;
         }
-        
-        // Add flag buttons and structure guides to questions
-        var questions = document.querySelectorAll(".que");
-        questions.forEach(function(question) {
-            var questionId = getQuestionId(question);
-            if (!questionId) return;
 
-            var currentFlag = window.questionFlagsData[questionId] || "";
-            
-            // Add flag buttons
-            if (!question.querySelector(".question-flag-container")) {
-                
-                var flagDiv = document.createElement("div");
-                flagDiv.className = "question-flag-container";
-                flagDiv.innerHTML = 
-                    "<button type=\"button\" class=\"flag-btn blue\" onclick=\"submitFlag("+questionId+", \'blue\', \'"+currentFlag+"\')\"><span class=\"emoji\">🏳️</span> <span class=\"text\">Blue flag</span></button>"+
-                    "<button type=\"button\" class=\"flag-btn red\" onclick=\"submitFlag("+questionId+", \'red\', \'"+currentFlag+"\')\"><span class=\"emoji\">🚩</span> <span class=\"text\">Red flag</span></button>";
-                
-                var infoDiv = question.querySelector(".info");
-                if (infoDiv) {
-                    infoDiv.appendChild(flagDiv);
+        // Initialize Structure Guides (only on Essay questions)
+        var questions = document.querySelectorAll(".que.essay");
+        questions.forEach(function(q) {
+            var qId = getQuestionId(q);
+            if (qId) {
+                // Only show if we have data or user is teacher
+                if ((window.structureGuidesData && window.structureGuidesData[qId]) || window.isTeacher) {
+                    var formulation = q.querySelector(".formulation");
+                    if (formulation) {
+                        var guide = createStructureGuide(qId);
+                        formulation.parentNode.insertBefore(guide, formulation.nextSibling);
+                    }
                 }
             }
-            
-            // Add structure guide for essay questions
-            if (isEssayQuestion(question)) {
-                addStructureGuideBox(question, questionId);
-            }
-
-            applyFlagState(question, questionId, currentFlag);
         });
     });
-    </script>';
-        // Append safe, isolated script to exclude essay flags and update navigation panel
-        echo <<<'QFJS'
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        function isEssay(question) {
-            var hasTextarea = question.querySelectorAll("textarea[name*='answer']").length > 0;
-            var hasFile = !!question.querySelector("input[type='file']");
-            var hasRTE = !!question.querySelector(".editor_atto");
-            return hasTextarea || hasFile || hasRTE;
-        }
-
-        function getSlotFromQuestion(question) {
-            var id = question && question.id ? question.id : '';
-            if (id.indexOf('question-') !== -1) {
-                var parts = id.split('-');
-                return parts[parts.length - 1];
-            }
-            return null;
-        }
-
-        function collectEssaySlots() {
-            var map = {};
-            var nodes = document.querySelectorAll('.que');
-            nodes.forEach(function(q){
-                var slot = getSlotFromQuestion(q);
-                if (!slot) { return; }
-                if (isEssay(q)) {
-                    map[slot] = true;
-                    // Remove any flag UI if it exists
-                    var flag = q.querySelector('.question-flag-container');
-                    if (flag && flag.parentNode) { flag.parentNode.removeChild(flag); }
-                    q.classList.remove('question-flagged-blue','question-flagged-red');
-                }
-            });
-            return map;
-        }
-
-        // Helper: Extract slot ID from button
-        function getSlotFromNav(btn) {
-            var slot = (btn.dataset && btn.dataset.slot) || btn.getAttribute('data-slot');
-            if (!slot && btn.id) {
-                var m = btn.id.match(/quiznavbutton(\d+)/);
-                if (m) { slot = m[1]; }
-            }
-            if (!slot) {
-                var a = btn.querySelector('a');
-                var href = a ? a.getAttribute('href') : btn.getAttribute('href');
-                if (href) {
-                    var mh = href.match(/[?&]slot=(\d+)/);
-                    if (mh) { slot = mh[1]; }
-                }
-            }
-            return slot;
-        }
-
-        function updateNav(essaySlots) {
-            var buttons = document.querySelectorAll('.qnbutton');
-            buttons.forEach(function(b){
-                b.classList.remove('blue-flagged','red-flagged');
-                var slot = getSlotFromNav(b);
-                if (!slot) { return; }
-                if (essaySlots && essaySlots[slot]) { return; }
-                if (!window.questionMapping) { return; }
-                var qid = window.questionMapping[slot];
-                if (!qid) { return; }
-                var color = (window.questionFlagsData || {})[qid];
-                if (color === 'blue') { b.classList.add('blue-flagged'); }
-                else if (color === 'red') { b.classList.add('red-flagged'); }
-            });
-        }
-
-        // Optimisation 2024-12-23: Server-side rendering handles the initial paint.
-        // We do NOT call updateNav() on load anymore to save performance.
-        // We retained the function solely for the 'click' handlers above to use.
-        
-        // Remove MutationObserver as well, since core renderers now handle the class.
-        
-        // RE-ENABLE 2024-12-26: Server-side rendering is NOT handling Personal Quizzes correctly yet.
-        // We must call updateNav() on load to ensure flags appear.
-        updateNav([]);
-
-    });
-</script>
-QFJS;
+</script>';
     }
 }
