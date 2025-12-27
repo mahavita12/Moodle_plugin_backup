@@ -21,10 +21,11 @@ class flag_question extends external_api {
             'flagcolor' => new external_value(PARAM_ALPHA, 'Flag color (blue or red)'),
             'isflagged' => new external_value(PARAM_BOOL, 'Is question flagged'),
             'cmid' => new external_value(PARAM_INT, 'Course module ID'),
+            'reason' => new external_value(PARAM_TEXT, 'Reason for flag', VALUE_DEFAULT, null),
         ]);
     }
 
-    public static function execute($questionid, $flagcolor, $isflagged, $cmid) {
+    public static function execute($questionid, $flagcolor, $isflagged, $cmid, $reason = null) {
         global $DB, $USER;
 
         $params = self::validate_parameters(self::execute_parameters(), [
@@ -32,6 +33,7 @@ class flag_question extends external_api {
             'flagcolor' => $flagcolor,
             'isflagged' => $isflagged,
             'cmid' => $cmid,
+            'reason' => $reason,
         ]);
 
         // Validate context
@@ -77,22 +79,29 @@ class flag_question extends external_api {
             $record->quizid = $quizid;
             $record->timecreated = $time;
             $record->timemodified = $time;
+            $record->reason = $params['reason'];
 
             $insertid = $DB->insert_record('local_questionflags', $record);
+
+            // History Log for Flagging
+            $history = new \stdClass();
+            $history->userid = $USER->id;
+            $history->questionid = $params['questionid'];
+            $history->quizid = $quizid;
+            $history->cmid = $params['cmid'];
+            $history->flagcolor = $params['flagcolor'];
+            $history->action = 'flagged';
+            $history->timecreated = $time;
+            $history->reason = $params['reason'];
+            try { $DB->insert_record('local_questionflags_history', $history); } catch (\Throwable $e) {}
 
             if (!empty($siblings)) {
                 foreach ($siblings as $sid) {
                     $sid = (int)$sid;
                     if ($sid === (int)$params['questionid']) { continue; }
                     if (!$DB->record_exists('local_questionflags', ['userid' => (int)$USER->id, 'questionid' => $sid])) {
-                        $r2 = new \stdClass();
-                        $r2->userid = (int)$USER->id;
+                        $r2 = clone $record;
                         $r2->questionid = $sid;
-                        $r2->flagcolor = $params['flagcolor'];
-                        $r2->cmid = $params['cmid'];
-                        $r2->quizid = $quizid;
-                        $r2->timecreated = $time;
-                        $r2->timemodified = $time;
                         try { $DB->insert_record('local_questionflags', $r2, false); } catch (\Throwable $e) {}
                     }
                 }
@@ -120,6 +129,21 @@ class flag_question extends external_api {
                     'questionid' => $params['questionid']
                 ]);
             }
+            
+            // History Log for Unflagging
+            $history = new \stdClass();
+            $history->userid = $USER->id;
+            $history->questionid = $params['questionid'];
+            // We need to fetch quizid for history if possible, or leave null. 
+            // In unflagging, we might not have quizid unless passed or fetched. 
+            // We have $quizid calculated earlier in valid_context check if cmid was passed.
+            $history->quizid = $quizid;
+            $history->cmid = $params['cmid'];
+            $history->flagcolor = $params['flagcolor'];
+            $history->action = 'unflagged';
+            $history->timecreated = time();
+            $history->reason = $params['reason'];
+            try { $DB->insert_record('local_questionflags_history', $history); } catch (\Throwable $e) {}
 
             $event = \local_questionflags\event\flag_removed::create([
                 'context' => $context,
