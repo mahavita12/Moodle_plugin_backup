@@ -222,9 +222,9 @@ class gemini_helper {
                 $course_str = $act['coursename'] ?? 'Unknown';
                 $classification = $act['classification'] ?? 'Unknown';
 
-                if ($classification === 'Active Revision') {
+                if ($classification === 'Revision Note' || $classification === 'Active Revision') {
                      // Handle Active Revision (Notes)
-                     $prompt .= "- Activity: Active Revision [{$act['name']}] (Course: {$course_str})\n";
+                     $prompt .= "- Activity: Revision Note [{$act['name']}] (Course: {$course_str})\n";
                      $prompt .= "  - Status: {$status_str} (Active Notes added this week)\n";
                      $prompt .= "  - Points Earned: {$act['score_display']} (Total notes validated)\n";
                 } else {

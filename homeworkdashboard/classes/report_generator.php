@@ -90,7 +90,7 @@ class report_generator {
                     JOIN {course} c ON c.id = s.courseid
                     WHERE s.userid = :userid 
                       AND s.timeclose = :duedate 
-                      AND s.classification = 'Active Revision'";
+                      AND s.classification = 'Revision Note'";
         
         $revisions = $DB->get_records_sql($rev_sql, ['duedate' => $duedate, 'userid' => $userid]);
         

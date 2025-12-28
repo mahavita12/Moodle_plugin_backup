@@ -2459,7 +2459,7 @@ class homework_manager {
                 'due_date_formatted' => userdate($rev_end, get_string('strftimedate')),
                 'course_name' => $r->coursename,
                 'quiz_name' => 'Revision: ' . $r->quizname,
-                'classification' => 'Active Revision',
+                'classification' => 'Revision Note',
                 'status' => $r->note_count . ' Notes Added',
                 'duration' => '-',
                 'score_display' => $r->total_points . ' pts', // Show points directly
@@ -2701,7 +2701,7 @@ class homework_manager {
                 'userid' => $userid, 
                 'quizid' => $quizid, 
                 'timeclose' => $end, // Keyed by Week End Date
-                'classification' => 'Active Revision'
+                'classification' => 'Revision Note'
             ]);
             
             $record = new \stdClass();
