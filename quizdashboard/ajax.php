@@ -659,7 +659,25 @@ try {
             if (!class_exists('\\local_quizdashboard\\homework_injector')) {
                 require_once(__DIR__ . '/classes/homework_injector.php');
             }
-            $res = \local_quizdashboard\homework_injector::inject_single_essay((int)$userid, (string)$label, $norm);
+
+            // Resolve source details from attempt (Systematic Linkage)
+            $scid = 0;
+            $scat = '';
+            if ($attemptid > 0) {
+                $source_details = $DB->get_record_sql("
+                    SELECT c.id as sourcecourseid, cc.name as sourcecategory 
+                    FROM {quiz_attempts} qa 
+                    JOIN {quiz} q ON q.id = qa.quiz 
+                    JOIN {course} c ON c.id = q.course 
+                    JOIN {course_categories} cc ON cc.id = c.category 
+                    WHERE qa.id = ?", [$attemptid]);
+                if ($source_details) {
+                    $scid = (int)$source_details->sourcecourseid;
+                    $scat = (string)$source_details->sourcecategory;
+                }
+            }
+
+            $res = \local_quizdashboard\homework_injector::inject_single_essay((int)$userid, (string)$label, $norm, $scid, $scat);
             $cmid = (int)($res->cmid ?? 0);
             $url = $cmid > 0 ? (new moodle_url('/mod/quiz/view.php', ['id' => $cmid]))->out(false) : '';
             // Record injection metadata onto grading row if available

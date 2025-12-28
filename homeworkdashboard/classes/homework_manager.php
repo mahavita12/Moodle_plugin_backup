@@ -408,7 +408,7 @@ class homework_manager {
         $sql = "SELECT
                     s.id,
                     s.userid,
-                    s.courseid,
+                    COALESCE(sc.id, s.courseid) AS courseid,
                     s.cmid,
                     s.quizid,
                     s.timeclose,
@@ -429,10 +429,10 @@ class homework_manager {
                     q.name      AS quizname,
                     (SELECT MIN(q2.timeclose) FROM {quiz} q2 WHERE q2.course = s.courseid AND q2.timeclose > s.timeclose AND q2.timeclose > 0) AS next_due_date,
                     q.grade,
-                    c.fullname  AS coursename,
-                    c.shortname AS courseshortname,
-                    cat.id      AS categoryid,
-                    cat.name    AS categoryname,
+                    COALESCE(sc.fullname, c.fullname)  AS coursename,
+                    COALESCE(sc.shortname, c.shortname) AS courseshortname,
+                    COALESCE(pq.sourcecategory, cat.name) AS categoryname,
+                    COALESCE(sc.category, cat.id) AS categoryid,
                     cm.id       AS cmid_real,
                     cs.id       AS sectionid,
                     cs.name     AS sectionname,
@@ -441,6 +441,8 @@ class homework_manager {
                 JOIN {quiz} q ON q.id = s.quizid
                 JOIN {course} c ON c.id = s.courseid
                 JOIN {course_categories} cat ON cat.id = c.category
+                LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = s.quizid
+                LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
                 JOIN {course_modules} cm ON cm.id = s.cmid
                 JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
                 JOIN {course_sections} cs ON cs.id = cm.section
@@ -1992,10 +1994,10 @@ class homework_manager {
                 u.alternatename,
                 u.email,
                 u.idnumber,
-                c.id AS courseid,
-                c.fullname AS coursename,
-                cc.id AS categoryid,
-                cc.name AS categoryname,
+                COALESCE(sc.id, c.id) AS courseid,
+                COALESCE(sc.fullname, c.fullname) AS coursename,
+                COALESCE(sc.category, cc.id) AS categoryid,
+                COALESCE(pq.sourcecategory, cc.name) AS categoryname,
                 q.id AS quizid,
                 q.name AS quizname,
                 q.timeclose,
@@ -2003,6 +2005,8 @@ class homework_manager {
             FROM {quiz} q
             JOIN {course} c ON c.id = q.course
             JOIN {course_categories} cc ON cc.id = c.category
+            LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
+            LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             JOIN {course_modules} cm ON cm.instance = q.id
             JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
             JOIN {user_enrolments} ue ON ue.enrolid IN (SELECT id FROM {enrol} WHERE courseid = c.id)
@@ -2033,10 +2037,10 @@ class homework_manager {
                 u.alternatename,
                 u.email,
                 u.idnumber,
-                lbs.courseid,
-                c.fullname AS coursename,
-                cc.id AS categoryid,
-                cc.name AS categoryname,
+                COALESCE(sc.id, lbs.courseid) AS courseid,
+                COALESCE(sc.fullname, c.fullname) AS coursename,
+                COALESCE(sc.category, cc.id) AS categoryid,
+                COALESCE(pq.sourcecategory, cc.name) AS categoryname,
                 lbs.timeclose AS due_date,
                 lbs.points AS points,
                 lbs.status AS status,
@@ -2053,6 +2057,8 @@ class homework_manager {
             JOIN {user} u ON u.id = lbs.userid
             JOIN {course} c ON c.id = lbs.courseid
             JOIN {course_categories} cc ON c.category = cc.id
+            LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = lbs.quizid
+            LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             LEFT JOIN {quiz} q ON q.id = lbs.quizid
             WHERE u.deleted = 0
               $course_filter_sql
@@ -2072,6 +2078,7 @@ class homework_manager {
             $catid = (int)$r->categoryid;
             $catname = $r->categoryname ?? '';
             
+            // Restore Anchor Filter: Skip Personal Review category so it doesn't become an anchor
             if (strcasecmp($catname, $personal_review_category_name) === 0) {
                 continue;
             }
@@ -2329,7 +2336,7 @@ class homework_manager {
             $cid = (int)$r->courseid;
             $due_date = (int)$r->due_date;
             
-            // Personal Review merges into Category 1
+            // Personal Review merges into Category 1 (Restored as fallback for unmapped quizzes)
             if (strcasecmp($catname, $personal_review_category_name) === 0) {
                 $cat1_anchor = null;
                 foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
@@ -2338,9 +2345,10 @@ class homework_manager {
                         break;
                     }
                 }
-                if (!$cat1_anchor) continue;
-                $catid = $cat1_anchor['categoryid'];
-                $catname = $cat1_anchor['categoryname'];
+                if ($cat1_anchor) {
+                    $catid = $cat1_anchor['categoryid'];
+                    $catname = $cat1_anchor['categoryname'];
+                }
             }
             
             $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
@@ -2460,6 +2468,32 @@ class homework_manager {
             if ($cat_cmp !== 0) return $cat_cmp;
             return strcasecmp($a->fullname, $b->fullname);
         });
+
+        // =====================================================
+        // STEP 8: Sort breakdown details (Date DESC, then New before Revision)
+        // =====================================================
+        foreach ($final_rows as &$row) {
+            $sort_breakdown = function($a, $b) {
+                // Primary sort: due date DESC
+                if ($a['due_date'] !== $b['due_date']) {
+                    return $b['due_date'] <=> $a['due_date'];
+                }
+                
+                // Secondary sort: classification (New < Revision, i.e., New comes first)
+                $class_a = strtoupper(trim((string)($a['classification'] ?? '')));
+                $class_b = strtoupper(trim((string)($b['classification'] ?? '')));
+                
+                return strcmp($class_a, $class_b);
+            };
+
+            if (!empty($row->breakdown_2w)) {
+                usort($row->breakdown_2w, $sort_breakdown);
+            }
+            if (!empty($row->breakdown_4w)) {
+                usort($row->breakdown_4w, $sort_breakdown);
+            }
+        }
+        unset($row);
 
         return $final_rows;
     }

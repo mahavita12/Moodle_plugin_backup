@@ -539,6 +539,18 @@ class before_footer_html_generation {
     z-index: 10;
 }
 
+/* NOTE INDICATOR */
+.qnbutton.has-note::before {
+    content: "📝";
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 10px;
+    line-height: 1;
+    z-index: 10;
+    opacity: 0.8;
+}
+
 .info .flag,
 .info a.qabtn,
 a.qabtn[title*="Flag"],
@@ -1061,6 +1073,13 @@ body.hide-feedback .formulation {
                 var color = (window.questionFlagsData || {})[qid];
                 if (color === 'blue') { b.classList.add('blue-flagged'); }
                 else if (color === 'red') { b.classList.add('red-flagged'); }
+                
+                // Add Note Indicator
+                var reason = (window.questionFlagReasons || {})[qid];
+                if (reason && reason.trim() !== '') {
+                    b.classList.add('has-note');
+                    b.setAttribute('title', (b.getAttribute('title') || '') + ' [Has Note]');
+                }
             });
         }
 

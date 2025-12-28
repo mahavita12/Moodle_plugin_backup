@@ -4,7 +4,7 @@ namespace local_quizdashboard;
 defined('MOODLE_INTERNAL') || die();
 
 class homework_injector {
-    public static function inject_single_essay(int $userid, string $label, array $items): object {
+    public static function inject_single_essay(int $userid, string $label, array $items, int $source_course_id = 0, string $source_category = ''): object {
         global $DB, $CFG, $USER;
         require_once($CFG->dirroot . '/local/personalcourse/classes/course_generator.php');
         require_once($CFG->dirroot . '/local/personalcourse/classes/enrollment_manager.php');
@@ -128,12 +128,31 @@ class homework_injector {
         // Create mapping record in local_personalcourse_quizzes for tracking
         // sourcequizid = 0 indicates this is a generated homework quiz, not copied from a public quiz
         $now = time();
+
+        // Use provided source details if available, otherwise default
+        $final_source_course_id = $source_course_id > 0 ? $source_course_id : 0;
+        $final_source_category = $source_category !== '' ? $source_category : 'Essay Feedback Homework';
+
+        // Fallback: If no source provided, try to parse from label (legacy/backup behavior)
+        if ($final_source_course_id === 0 && preg_match('/^\s*([0-9]+[A-Za-z]?)\s*-\s*(.+)$/u', (string)$label, $m)) {
+            $prefix = $m[1];
+            $course = $DB->get_record_sql("SELECT c.id, cc.name as catname 
+                                         FROM {course} c 
+                                         JOIN {course_categories} cc ON cc.id = c.category 
+                                         WHERE c.shortname = ? OR c.fullname LIKE ? OR c.shortname = ?", 
+                                         [$prefix, "Year $prefix%", "Year $prefix"]);
+            if ($course) {
+                $final_source_course_id = (int)$course->id;
+                $final_source_category = $course->catname;
+            }
+        }
+
         $mapping = (object)[
             'personalcourseid' => (int)$pcctx->pc->id,
             'quizid' => (int)$quizid,
             'sourcequizid' => 0,  // 0 = generated homework (no source quiz)
-            'sourcecourseid' => 0, // 0 = essay feedback (no source course)
-            'sourcecategory' => 'Essay Feedback Homework',
+            'sourcecourseid' => $final_source_course_id,
+            'sourcecategory' => $final_source_category,
             'sectionname' => $initial . '-Essay Feedback Homework',
             'quiztype' => 'essay',
             'timecreated' => $now,
@@ -435,12 +454,31 @@ class homework_injector {
         // Create mapping record in local_personalcourse_quizzes for tracking
         // sourcequizid = 0 indicates this is a generated homework quiz, not copied from a public quiz
         $now = time();
+
+        // Use provided source details if available, otherwise default
+        $final_source_course_id = $source_course_id > 0 ? $source_course_id : 0;
+        $final_source_category = $source_category !== '' ? $source_category : 'Essay Feedback Homework';
+
+        // Fallback: If no source provided, try to parse from label (legacy/backup behavior)
+        if ($final_source_course_id === 0 && preg_match('/^\s*([0-9]+[A-Za-z]?)\s*-\s*(.+)$/u', (string)$label, $m)) {
+            $prefix = $m[1];
+            $course = $DB->get_record_sql("SELECT c.id, cc.name as catname 
+                                         FROM {course} c 
+                                         JOIN {course_categories} cc ON cc.id = c.category 
+                                         WHERE c.shortname = ? OR c.fullname LIKE ? OR c.shortname = ?", 
+                                         [$prefix, "Year $prefix%", "Year $prefix"]);
+            if ($course) {
+                $final_source_course_id = (int)$course->id;
+                $final_source_category = $course->catname;
+            }
+        }
+
         $mapping = (object)[
             'personalcourseid' => (int)$pcctx->pc->id,
             'quizid' => (int)$quizid,
             'sourcequizid' => 0,  // 0 = generated homework (no source quiz)
-            'sourcecourseid' => 0, // 0 = essay feedback (no source course)
-            'sourcecategory' => 'Essay Feedback Homework',
+            'sourcecourseid' => $final_source_course_id,
+            'sourcecategory' => $final_source_category,
             'sectionname' => $initial . '-Essay Feedback Homework',
             'quiztype' => 'homework_json',
             'timecreated' => $now,

@@ -798,15 +798,23 @@ class questions_manager {
         }
 
         // Strictly user-specific flags
-        $color = $DB->get_field('local_questionflags', 'flagcolor', [
+        $record = $DB->get_record('local_questionflags', [
             'userid'     => $userid,
             'questionid' => $questionid,
-        ]);
+        ], 'flagcolor, reason');
 
-        if ($color === 'blue') {
-            $flags .= '<span style="color:#007cba;" title="Blue Flag">🟦</span>';
-        } else if ($color === 'red') {
-            $flags .= '<span style="color:#dc3545;" title="Red Flag">🟥</span>';
+        if ($record) {
+            if ($record->flagcolor === 'blue') {
+                $flags .= '<span style="color:#007cba;" title="Blue Flag">🟦</span>';
+            } else if ($record->flagcolor === 'red') {
+                $flags .= '<span style="color:#dc3545;" title="Red Flag">🟥</span>';
+            }
+            
+            // Add Note Icon if a reason exists
+            if (!empty($record->reason)) {
+                $note_preview = htmlspecialchars(substr(strip_tags($record->reason), 0, 50));
+                $flags .= ' <span style="font-size:12px; cursor:help;" title="Note: ' . $note_preview . '">📝</span>';
+            }
         }
 
         return $flags;

@@ -1048,19 +1048,24 @@ document.addEventListener('DOMContentLoaded', function() {
     window.showBreakdown = function(student, period, dataKey) {
         var breakdown = breakdownData[dataKey] || [];
         
-        // Sort by Due Date (desc), Type/Classification (desc), Activity (desc)
+        // Sort by Due Date (desc), then Classification (New before Revision), then Activity
         breakdown.sort(function(a, b) {
-            // Due date descending
+
+            // 1. Due date descending (Newest first)
             if (b.due_date !== a.due_date) {
                 return b.due_date - a.due_date;
             }
-            // Classification descending
+            
+            // 2. Classification: New comes before Revision
+            // "new" < "revision", so standard string compare works
             var classA = (a.classification || '').toLowerCase();
             var classB = (b.classification || '').toLowerCase();
-            if (classB !== classA) {
-                return classB.localeCompare(classA);
+            
+            if (classA !== classB) {
+                return classA.localeCompare(classB);
             }
-            // Activity name descending
+
+            // 3. Activity name descending
             var nameA = (a.quiz_name || '').toLowerCase();
             var nameB = (b.quiz_name || '').toLowerCase();
             return nameB.localeCompare(nameA);
