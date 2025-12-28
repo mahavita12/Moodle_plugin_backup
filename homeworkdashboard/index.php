@@ -25,8 +25,15 @@ $tab           = optional_param('tab', 'leaderboard', PARAM_ALPHA);
 $userids       = optional_param_array('userid', [], PARAM_INT); // Retrieve user IDs from dropdown
 $categoryid    = optional_param('categoryid', 0, PARAM_INT);
 // Handle both single courseid (leaderboard) and courseid[] (other tabs)
-$_courseid_single = optional_param('courseid', null, PARAM_INT);
+// Fix: Check if input is array first to avoid "clean() can not process arrays" error
+$raw_courseid = $_REQUEST['courseid'] ?? null;
+if (is_array($raw_courseid)) {
+    $_courseid_single = null;
+} else {
+    $_courseid_single = optional_param('courseid', null, PARAM_INT);
+}
 $_courseid_array = optional_param_array('courseid', [], PARAM_INT);
+
 if ($_courseid_single !== null) {
     $courseids = [$_courseid_single];
 } elseif (!empty($_courseid_array)) {

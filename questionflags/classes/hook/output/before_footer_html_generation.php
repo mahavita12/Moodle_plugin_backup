@@ -37,7 +37,7 @@ class before_footer_html_generation {
      */
     public static function callback(\core\hook\output\before_footer_html_generation $hook): void {
         global $PAGE, $DB, $USER;
-
+        
         // Only load on quiz pages
         if ($PAGE->pagetype !== 'mod-quiz-attempt' && $PAGE->pagetype !== 'mod-quiz-review') {
             return;
@@ -715,7 +715,11 @@ body.hide-feedback .que.notanswered {
 body.hide-feedback .formulation {
     background-color: transparent !important;
 }
+</style>';
 
+        // Only include feedback hiding CSS for Review pages
+        if ($page_type === 'mod-quiz-review') {
+            echo '<style>
 /* Hide feedback for individual questions - PER-QUESTION MODE (show all questions) */
 .que.hide-question-feedback .specificfeedback,
 .que.hide-question-feedback .generalfeedback,
@@ -743,6 +747,7 @@ body.hide-feedback .formulation {
     background-color: transparent !important;
 }
 </style>';
+        }
         
         // Output JavaScript with proper formatting function
         echo '<script>
