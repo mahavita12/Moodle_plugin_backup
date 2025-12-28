@@ -1083,7 +1083,9 @@ body.hide-feedback .formulation {
                 var reason = (window.questionFlagReasons || {})[qid];
                 if (reason && reason.trim() !== '') {
                     b.classList.add('has-note');
-                    b.setAttribute('title', (b.getAttribute('title') || '') + ' [Has Note]');
+                    // Simplify tooltip: Show ONLY the note content, overwriting default behavior
+                    var shortReason = reason.length > 150 ? reason.substring(0, 150) + '...' : reason;
+                    b.setAttribute('title', 'Note: ' + shortReason);
                 }
             });
         }
