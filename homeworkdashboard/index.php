@@ -1098,7 +1098,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision</span>';
                 } else if (classification === 'revision note') {
                      // Reuse Revision style but with specific text (or just 'Revision' if preferred, but user requested 'Revision Note' classification)
-                    classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision Note</span>';
+                    classificationBadge = '<span class="hw-classification-badge" style="background-color: #0d6efd; color: white;">Revision Note</span>';
                 }
                 
                 // Status badge (using exact CSS classes from styles.css)
