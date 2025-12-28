@@ -1641,6 +1641,9 @@ class homework_manager {
     public function compute_due_snapshots() {
         global $DB;
 
+        // Process Weekly Revision Snapshots (Active Revisions for past week)
+        $this->snapshot_recent_revisions();
+
         // 1. Find quizzes that closed in the last 24 hours (or since last run).
         // For robustness, we look back 2 days to ensure we don't miss anything if cron failed.
         $now = time();
@@ -2328,6 +2331,154 @@ class homework_manager {
             }
         }
 
+        // =====================================================
+        // STEP 2.5: Process ACTIVE REVISION (Weekly Reflection Points)
+        // =====================================================
+        // Revisions count if they happen within the current active week
+        [$rev_start, $rev_end] = $this->get_latest_sunday_week();
+
+        // 1. Fetch revision points (notes with points_earned > 0) in this window
+        // Group by user and quiz to create "Active Revision" rows
+        $rev_sql = "
+            SELECT
+                " . $DB->sql_concat('lqf.userid', "'_'", 'q.id') . " AS unique_key,
+                lqf.userid,
+                q.id AS quizid,
+                q.name AS quizname,
+                COALESCE(sc.id, c.id) AS courseid,
+                COALESCE(sc.fullname, c.fullname) AS coursename,
+                COALESCE(sc.category, cc.id) AS categoryid,
+                COALESCE(pq.sourcecategory, cc.name) AS categoryname,
+                SUM(lqf.points_earned) AS total_points,
+                COUNT(lqf.id) AS note_count
+            FROM {local_questionflags} lqf
+            JOIN {quiz} q ON q.id = lqf.quizid
+            JOIN {course} c ON c.id = q.course
+            JOIN {course_categories} cc ON cc.id = c.category
+            LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
+            LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
+            WHERE lqf.timemodified BETWEEN :start AND :end
+              AND lqf.points_earned > 0
+              $course_filter_sql
+            GROUP BY lqf.userid, q.id, q.name, c.id, c.fullname, cc.id, cc.name, pq.sourcecategory, sc.id, sc.category, sc.fullname
+        ";
+
+        $rev_params = array_merge(['start' => $rev_start, 'end' => $rev_end], $course_params);
+        
+        // Add User/Staff filters if needed
+        if ($userwhere) {
+            $rev_sql .= " HAVING lqf.userid $user_insql"; // HAVING because it's after GROUP BY, though WHERE is better if possible. 
+                                                          // Actually, lqf.userid is available in WHERE. 
+                                                          // Let's safe-move it to WHERE for performance.
+            // Simplified: $userwhere uses 'u.id', here we have 'lqf.userid'.
+            // I'll rebuild the filter for lqf.
+        }
+
+        // Re-construct robust WHERE clauses
+        $rev_where = "lqf.timemodified BETWEEN :start AND :end AND lqf.points_earned > 0";
+        if (!empty($courseids) && !in_array(0, $courseids)) {
+             $rev_where .= " AND c.id $insql"; // reusing $insql from line 1972
+        }
+        
+        // User Filter
+        if (!empty($userids) && !in_array(0, $userids)) {
+            list($rus_sql, $rus_params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'ruid');
+            $rev_where .= " AND lqf.userid $rus_sql";
+            $rev_params = array_merge($rev_params, $rus_params);
+        }
+        
+        // Staff Filter
+        if ($excludestaff && !empty($excluded_staff_ids)) {
+            list($rs_sql, $rs_params) = $DB->get_in_or_equal($excluded_staff_ids, SQL_PARAMS_NAMED, 'rstaff', false);
+            $rev_where .= " AND lqf.userid $rs_sql";
+            $rev_params = array_merge($rev_params, $rs_params);
+        }
+
+        $rev_sql = "
+            SELECT
+                " . $DB->sql_concat('lqf.userid', "'_'", 'q.id') . " AS unique_key,
+                lqf.userid,
+                u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber,
+                q.id AS quizid,
+                q.name AS quizname,
+                COALESCE(sc.id, c.id) AS courseid,
+                COALESCE(sc.fullname, c.fullname) AS coursename,
+                COALESCE(sc.category, cc.id) AS categoryid,
+                COALESCE(pq.sourcecategory, cc.name) AS categoryname,
+                SUM(lqf.points_earned) AS total_points,
+                COUNT(lqf.id) AS note_count
+            FROM {local_questionflags} lqf
+            JOIN {user} u ON u.id = lqf.userid
+            JOIN {quiz} q ON q.id = lqf.quizid
+            JOIN {course} c ON c.id = q.course
+            JOIN {course_categories} cc ON cc.id = c.category
+            LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
+            LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
+            WHERE $rev_where
+            GROUP BY lqf.userid, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber, 
+                     q.id, q.name, c.id, c.fullname, cc.id, cc.name, pq.sourcecategory, sc.id, sc.category, sc.fullname
+        ";
+        
+        $rev_rows = $DB->get_records_sql($rev_sql, $rev_params);
+
+        // 2. Merge revisions into aggregation
+        foreach ($rev_rows as $r) {
+            $uid = $r->userid;
+            $catid = (int)$r->categoryid;
+            $catname = $r->categoryname ?? '';
+            $cid = (int)$r->courseid;
+            
+            // Personal Review merges into Category 1
+            if (strcasecmp($catname, $personal_review_category_name) === 0) {
+                 $cat1_anchor = null;
+                 foreach ($user_anchors[$uid] ?? [] as $anchor_info) {
+                     if (strcasecmp($anchor_info['categoryname'], 'Category 1') === 0) {
+                         $cat1_anchor = $anchor_info;
+                         break;
+                     }
+                 }
+                 if (!$cat1_anchor) continue;
+                 $catid = $cat1_anchor['categoryid'];
+                 $catname = $cat1_anchor['categoryname'];
+            }
+
+            $row = $get_or_create_row($uid, $catid, $catname, $r, $aggregated, $user_anchors);
+            
+            $pts = (float)$r->total_points;
+            
+            // Add to ALL relevant columns (Live, +2w, etc.) because it is "Active" (happening now)
+            $row->points_live += $pts;
+            $row->points_2w += $pts;
+            $row->points_4w += $pts;
+            $row->points_10w += $pts;
+            $row->points_all += $pts;
+            
+            // Detail row
+            $detail = [
+                'due_date' => $rev_end, // Align to current week end
+                'due_date_formatted' => userdate($rev_end, get_string('strftimedate')),
+                'course_name' => $r->coursename,
+                'quiz_name' => 'Revision: ' . $r->quizname,
+                'classification' => 'Active Revision',
+                'status' => $r->note_count . ' Notes Added',
+                'duration' => '-',
+                'score_display' => $r->total_points . ' pts', // Show points directly
+                'score_percent' => '-',
+                'points' => $pts,
+            ];
+            
+            // Add to all breakdown arrays
+            $row->breakdown_live[] = $detail;
+            $row->breakdown_2w[] = $detail;
+            $row->breakdown_4w[] = $detail;
+            $row->breakdown_10w[] = $detail;
+            $row->breakdown_all[] = $detail;
+            
+            if (!isset($row->courses[$cid])) {
+                $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
+            }
+        }
+
         // Process SNAPSHOT rows (add to appropriate time buckets)
         foreach ($snap_rows as $r) {
             $uid = $r->userid;
@@ -2496,5 +2647,93 @@ class homework_manager {
         unset($row);
 
         return $final_rows;
+    }
+    /**
+     * Snapshot Active Revision points for the most recently completed week.
+     * This ensures granular revision history is permanently recorded.
+     */
+    public function snapshot_recent_revisions() {
+        global $DB;
+        
+        // 1. Identify the most recently closed week (Sunday)
+        // If today is Tuesday, 'last sunday' is 2 days ago.
+        // If today is Sunday, 'last sunday' was a week ago (standard PHP behavior differs slightly based on time, explicit is better)
+        $last_sunday = strtotime('last sunday 23:59:59');
+        [$start, $end] = $this->get_week_bounds(date('Y-m-d', $last_sunday));
+        
+        mtrace("Snapshotting revisions for week ending: " . userdate($end));
+
+        // 2. Fetch all valid revision points for that week
+        // Granularity: User + Quiz
+        $sql = "
+            SELECT
+                " . $DB->sql_concat('lqf.userid', "'_'", 'q.id') . " AS unique_key,
+                lqf.userid,
+                q.id AS quizid,
+                q.course AS courseid,
+                cm.id AS cmid,
+                q.grade AS quizgrade,
+                SUM(lqf.points_earned) AS total_points,
+                COUNT(lqf.id) AS note_count
+            FROM {local_questionflags} lqf
+            JOIN {quiz} q ON q.id = lqf.quizid
+            JOIN {course_modules} cm ON cm.instance = q.id
+            JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+            WHERE lqf.timemodified BETWEEN :start AND :end
+              AND lqf.points_earned > 0
+            GROUP BY lqf.userid, q.id, q.course, cm.id, q.grade
+        ";
+
+        $revisions = $DB->get_records_sql($sql, ['start' => $start, 'end' => $end]);
+        
+        $inserted = 0;
+        $updated = 0;
+        
+        foreach ($revisions as $rev) {
+            $userid = (int)$rev->userid;
+            $quizid = (int)$rev->quizid;
+            $courseid = (int)$rev->courseid;
+            $cmid = (int)$rev->cmid;
+            $points = (float)$rev->total_points;
+            
+            // Check if snapshot exists
+            $existing = $DB->get_record('local_homework_status', [
+                'userid' => $userid, 
+                'quizid' => $quizid, 
+                'timeclose' => $end, // Keyed by Week End Date
+                'classification' => 'Active Revision'
+            ]);
+            
+            $record = new \stdClass();
+            $record->userid = $userid;
+            $record->courseid = $courseid;
+            $record->cmid = $cmid;
+            $record->quizid = $quizid;
+            $record->timeclose = $end;
+            $record->windowdays = 7;
+            $record->windowstart = $start;
+            $record->classification = 'Active Revision';
+            $record->status = $rev->note_count . ' Notes Added';
+            $record->quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
+            $record->quizgrade = (float)$rev->quizgrade;
+            $record->points = $points;
+            $record->score = 0; // Usage score N/A for revision
+            $record->attempts = 0;
+            $record->computedat = time();
+
+            if ($existing) {
+                // Update if points changed (re-run of cron)
+                if ((float)$existing->points != $points) {
+                    $record->id = $existing->id;
+                    $DB->update_record('local_homework_status', $record);
+                    $updated++;
+                }
+            } else {
+                $DB->insert_record('local_homework_status', $record);
+                $inserted++;
+            }
+        }
+        
+        mtrace("Revision Snapshots: Inserted $inserted, Updated $updated.");
     }
 }

@@ -80,7 +80,36 @@ class report_generator {
                 AND ue.status = 0 
                 AND e.status = 0"; // Active enrolments
         
-        return $DB->get_records_sql($sql, ['duedate' => $duedate, 'userid' => $userid]);
+
+        $quizzes = $DB->get_records_sql($sql, ['duedate' => $duedate, 'userid' => $userid]);
+
+        // Also fetch "Active Revision" snapshots for this date (if it's a Sunday close)
+        $rev_sql = "SELECT s.id, s.quizid, s.points, q.name, c.fullname as coursename
+                    FROM {local_homework_status} s
+                    JOIN {quiz} q ON q.id = s.quizid
+                    JOIN {course} c ON c.id = s.courseid
+                    WHERE s.userid = :userid 
+                      AND s.timeclose = :duedate 
+                      AND s.classification = 'Active Revision'";
+        
+        $revisions = $DB->get_records_sql($rev_sql, ['duedate' => $duedate, 'userid' => $userid]);
+        
+        foreach ($revisions as $rev) {
+            // Mock the structure to match quiz objects
+            $obj = new \stdClass();
+            $obj->id = 'rev_' . $rev->id; // Unique ID to avoid collision
+            $obj->course = 0; // Not needed
+            $obj->name = 'Revision: ' . $rev->name;
+            $obj->coursename = $rev->coursename;
+            $obj->cmid = 0;
+            $obj->is_revision = true;
+            $obj->points = $rev->points;
+            
+            // Append to quizzes array with unique key
+            $quizzes[$obj->id] = $obj;
+        }
+
+        return $quizzes;
     }
 
     /**

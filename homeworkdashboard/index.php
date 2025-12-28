@@ -1093,22 +1093,25 @@ document.addEventListener('DOMContentLoaded', function() {
             breakdown.forEach(function(item) {
                 // Classification badge (using exact CSS classes from styles.css)
                 var classification = (item.classification || '').toLowerCase();
-                var classificationBadge = '-';
+                var classificationBadge = item.classification || '-';
                 if (classification === 'new') {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-new">New</span>';
-                } else if (classification === 'revision') {
+                } else if (classification === 'revision' || classification === 'active revision') {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision</span>';
                 }
                 
                 // Status badge (using exact CSS classes from styles.css)
                 var status = (item.status || 'unknown').toLowerCase();
-                var statusBadge = '-';
+                var statusBadge = item.status || '-';
                 if (status === 'completed') {
                     statusBadge = '<span class="hw-badge hw-badge-completed">Done</span>';
                 } else if (status === 'lowgrade') {
                     statusBadge = '<span class="hw-badge hw-badge-lowgrade">Retry</span>';
                 } else if (status === 'noattempt') {
                     statusBadge = '<span class="hw-badge hw-badge-noattempt">To do</span>';
+                } else if (classification === 'active revision') {
+                     // For active revision, status contains note count
+                     statusBadge = '<span class="hw-badge" style="background-color: #17a2b8; color: white;">' + item.status + '</span>';
                 }
                 
                 content += '<tr>';

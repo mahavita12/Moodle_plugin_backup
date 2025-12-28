@@ -220,17 +220,27 @@ class gemini_helper {
                 $q_count = $act['question_count'] ?? 'Unknown';
                 $status_str = $act['status'] ?? 'Unknown';
                 $course_str = $act['coursename'] ?? 'Unknown';
-                $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
-                if (empty($act['attempts'])) {
-                    $prompt .= "  - No attempts made.\n";
+                $classification = $act['classification'] ?? 'Unknown';
+
+                if ($classification === 'Active Revision') {
+                     // Handle Active Revision (Notes)
+                     $prompt .= "- Activity: Active Revision [{$act['name']}] (Course: {$course_str})\n";
+                     $prompt .= "  - Status: {$status_str} (Active Notes added this week)\n";
+                     $prompt .= "  - Points Earned: {$act['score_display']} (Total notes validated)\n";
                 } else {
-                    foreach ($act['attempts'] as $att) {
-                        $duration_min = round($att['duration'] / 60, 1);
-                        $prompt .= "  - Attempt {$att['attempt']}: Score {$att['score']}, Duration {$duration_min} mins ({$att['duration']} sec).";
-                         if ($att['duration'] < 180) {
-                            $prompt .= " [RUSHED/SKIPPED]";
+                    // Standard Quiz Revision with attempts
+                    $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
+                    if (empty($act['attempts'])) {
+                        $prompt .= "  - No attempts made.\n";
+                    } else {
+                        foreach ($act['attempts'] as $att) {
+                            $duration_min = round($att['duration'] / 60, 1);
+                            $prompt .= "  - Attempt {$att['attempt']}: Score {$att['score']}, Duration {$duration_min} mins ({$att['duration']} sec).";
+                            if ($att['duration'] < 180) {
+                                $prompt .= " [RUSHED/SKIPPED]";
+                            }
+                            $prompt .= "\n";
                         }
-                        $prompt .= "\n";
                     }
                 }
             }

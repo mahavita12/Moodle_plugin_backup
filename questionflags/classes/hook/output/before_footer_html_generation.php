@@ -89,6 +89,15 @@ class before_footer_html_generation {
             $questionid = required_param('questionid', PARAM_INT);
             $reason = optional_param('reason', '', PARAM_RAW);
             
+            // Calculate points for the reflection note
+            $clean_reason = trim($reason);
+            $length = mb_strlen($clean_reason);
+            // Count unique words to prevent "a a a a a" spam
+            $word_count = count(array_unique(preg_split('/\s+/', $clean_reason, -1, PREG_SPLIT_NO_EMPTY)));
+            
+            // Validation Rule: >= 10 chars AND >= 2 unique words
+            $points = ($length >= 10 && $word_count >= 2) ? 3 : 0;
+
             // Get Question Bank Entry ID to find siblings
             $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => $questionid]);
             
@@ -110,10 +119,10 @@ class before_footer_html_generation {
                 // We only update EXISTING records. The note box only shows if a flag exists.
                 // If a flag exists, a record exists.
                 $sql = "UPDATE {local_questionflags} 
-                        SET reason = ?, timemodified = ? 
+                        SET reason = ?, points_earned = ?, timemodified = ? 
                         WHERE userid = ? AND questionid $insql";
                         
-                $params = array_merge([$reason, time(), $USER->id], $inparams);
+                $params = array_merge([$reason, $points, time(), $USER->id], $inparams);
                 $DB->execute($sql, $params);
 
                 // HISTORY LOGGING: Helper to get generic quiz/cm info if possible
@@ -130,12 +139,14 @@ class before_footer_html_generation {
                     $history->flagcolor = $current_flag->flagcolor;
                     $history->action = 'note_updated';
                     $history->reason = $reason;
+                    $history->points_earned = $points;
                     $history->timecreated = time();
                     
                     try {
                         $DB->insert_record('local_questionflags_history', $history);
                     } catch (\Throwable $e) {
                         // Don't fail the request if history logging fails
+                        // Logic: Schema mismatch might occur if history table doesn't have the column yet
                         error_log("QUESTIONFLAGS: Failed to insert note_updated history: " . $e->getMessage());
                     }
                 }
