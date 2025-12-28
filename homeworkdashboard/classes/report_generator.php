@@ -83,14 +83,14 @@ class report_generator {
 
         $quizzes = $DB->get_records_sql($sql, ['duedate' => $duedate, 'userid' => $userid]);
 
-        // Also fetch "Active Revision" snapshots for this date (if it's a Sunday close)
+        // Also fetch "Revision Note" snapshots for this date (if it's a Sunday close)
         $rev_sql = "SELECT s.id, s.quizid, s.points, q.name, c.fullname as coursename
                     FROM {local_homework_status} s
                     JOIN {quiz} q ON q.id = s.quizid
                     JOIN {course} c ON c.id = s.courseid
                     WHERE s.userid = :userid 
                       AND s.timeclose = :duedate 
-                      AND s.classification = 'Active Revision'";
+                      AND s.classification = 'Revision Note'";
         
         $revisions = $DB->get_records_sql($rev_sql, ['duedate' => $duedate, 'userid' => $userid]);
         

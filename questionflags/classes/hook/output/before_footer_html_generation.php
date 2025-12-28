@@ -85,10 +85,12 @@ class before_footer_html_generation {
         }
 
         // Handle save_reason AJAX (auto-save from textarea blur)
-        if ($_POST && isset($_POST['save_reason']) && confirm_sesskey()) {
+        if ($_POST && (isset($_POST['save_reason']) || optional_param('action', '', PARAM_ALPHA) === 'save_reason') && confirm_sesskey()) {
             $questionid = required_param('questionid', PARAM_INT);
             $reason = optional_param('reason', '', PARAM_RAW);
             
+            error_log("QUESTIONFLAGS_DEBUG: Processing save_reason for Question $questionid. content='$reason'");
+
             // Calculate points for the reflection note
             $clean_reason = trim($reason);
             $length = mb_strlen($clean_reason);
@@ -97,6 +99,9 @@ class before_footer_html_generation {
             
             // Validation Rule: >= 10 chars AND >= 2 unique words
             $points = ($length >= 10 && $word_count >= 2) ? 3 : 0;
+            
+            error_log("QUESTIONFLAGS_DEBUG: Calculated points: $points (Len: $length, Words: $word_count)");
+
 
             // Get Question Bank Entry ID to find siblings
             $qbeid = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => $questionid]);

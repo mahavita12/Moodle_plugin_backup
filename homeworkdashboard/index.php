@@ -1058,18 +1058,16 @@ document.addEventListener('DOMContentLoaded', function() {
         // Sort by Due Date (desc), then Classification (New before Revision), then Activity
         breakdown.sort(function(a, b) {
 
-            // 1. Due date descending (Newest first)
-            if (b.due_date !== a.due_date) {
-                return b.due_date - a.due_date;
-            }
-            
-            // 2. Classification: New comes before Revision
-            // "new" < "revision", so standard string compare works
+            // 2. Classification Priority: New (1) > Revision (2) > Revision Note (3) > Other (99)
+            var priorities = { 'new': 1, 'revision': 2, 'revision note': 3 };
             var classA = (a.classification || '').toLowerCase();
             var classB = (b.classification || '').toLowerCase();
             
-            if (classA !== classB) {
-                return classA.localeCompare(classB);
+            var pA = priorities[classA] || 99;
+            var pB = priorities[classB] || 99;
+            
+            if (pA !== pB) {
+                return pA - pB;
             }
 
             // 3. Activity name descending
@@ -1096,8 +1094,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 var classificationBadge = item.classification || '-';
                 if (classification === 'new') {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-new">New</span>';
-                } else if (classification === 'revision' || classification === 'active revision') {
+                } else if (classification === 'revision') {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision</span>';
+                } else if (classification === 'revision note') {
+                     // Reuse Revision style but with specific text (or just 'Revision' if preferred, but user requested 'Revision Note' classification)
+                    classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision Note</span>';
                 }
                 
                 // Status badge (using exact CSS classes from styles.css)
@@ -1109,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     statusBadge = '<span class="hw-badge hw-badge-lowgrade">Retry</span>';
                 } else if (status === 'noattempt') {
                     statusBadge = '<span class="hw-badge hw-badge-noattempt">To do</span>';
-                } else if (classification === 'active revision') {
+                } else if (classification === 'revision note' || classification === 'active revision') {
                      // For active revision, status contains note count
                      statusBadge = '<span class="hw-badge" style="background-color: #17a2b8; color: white;">' + item.status + '</span>';
                 }
