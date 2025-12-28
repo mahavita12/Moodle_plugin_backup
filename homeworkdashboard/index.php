@@ -1058,6 +1058,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Sort by Due Date (desc), then Classification (New before Revision), then Activity
         breakdown.sort(function(a, b) {
 
+            // 1. Due Date Descending
+            var dateA = parseInt(a.due_date) || 0;
+            var dateB = parseInt(b.due_date) || 0;
+            if (dateA !== dateB) {
+                return dateB - dateA;
+            }
+
             // 2. Classification Priority: New (1) > Revision (2) > Revision Note (3) > Other (99)
             var priorities = { 'new': 1, 'revision': 2, 'revision note': 3 };
             var classA = (a.classification || '').toLowerCase();

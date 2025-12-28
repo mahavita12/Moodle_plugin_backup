@@ -123,11 +123,12 @@ class before_footer_html_generation {
                 
                 // We only update EXISTING records. The note box only shows if a flag exists.
                 // If a flag exists, a record exists.
+                // Fix: Update attribution (quizid/cmid) as well to repair legacy/broken records
                 $sql = "UPDATE {local_questionflags} 
-                        SET reason = ?, points_earned = ?, timemodified = ? 
+                        SET reason = ?, points_earned = ?, timemodified = ?, quizid = ?, cmid = ?
                         WHERE userid = ? AND questionid $insql";
                         
-                $params = array_merge([$reason, $points, time(), $USER->id], $inparams);
+                $params = array_merge([$reason, $points, time(), $quizid, $cmid, $USER->id], $inparams);
                 $DB->execute($sql, $params);
 
                 // HISTORY LOGGING: Helper to get generic quiz/cm info if possible
