@@ -2673,10 +2673,17 @@ class homework_manager {
                 q.course AS courseid,
                 cm.id AS cmid,
                 q.grade AS quizgrade,
+                COALESCE(sc.category, cc.id) AS categoryid,
+                COALESCE(pq.sourcecategory, cc.name) AS categoryname,
+                pq.sourcecategory,
                 SUM(lqf.points_earned) AS total_points,
                 COUNT(lqf.id) AS note_count
             FROM {local_questionflags} lqf
             JOIN {quiz} q ON q.id = lqf.quizid
+            JOIN {course} c ON c.id = q.course
+            JOIN {course_categories} cc ON cc.id = c.category
+            LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
+            LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             JOIN {course_modules} cm ON cm.instance = q.id
             JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
             WHERE lqf.timemodified BETWEEN :start AND :end
@@ -2696,11 +2703,58 @@ class homework_manager {
             $cmid = (int)$rev->cmid;
             $points = (float)$rev->total_points;
             
-            // Check if snapshot exists
+            // Fix: Anchor Date Logic
+            // Instead of default 'end' (Sunday), try to match the Active Homework Due Date for this user's Anchor course
+            $anchor_due_date = $end; // Fallback
+            
+            // 1. Determine Category (Source or Direct)
+            $catname = $rev->sourcecategory ?? $rev->categoryname; // Requires SQL update below
+            $catid = $rev->categoryid;
+            
+            // 2. Find Anchor Course for this User + Category
+            // (Simplified logic: Find an active enrollment in this category that is NOT Personal Review)
+            // We use a short cache to avoid repetitive DB hits
+            static $anchor_cache = [];
+            $cache_key = $userid . '_' . $catid;
+            
+            if (!isset($anchor_cache[$cache_key])) {
+                $anchor_sql = "SELECT c.id 
+                               FROM {course} c
+                               JOIN {course_categories} cc ON cc.id = c.category
+                               JOIN {enrol} e ON e.courseid = c.id
+                               JOIN {user_enrolments} ue ON ue.enrolid = e.id
+                               WHERE ue.userid = :userid
+                                 AND (cc.id = :catid OR cc.name = :catname)
+                                 AND cc.name != 'Personal Review Courses'
+                                 AND c.visible = 1
+                               ORDER BY c.startdate DESC";
+                $anchor_course = $DB->get_record_sql($anchor_sql, ['userid' => $userid, 'catid' => $catid, 'catname' => $catname], IGNORE_MULTIPLE);
+                $anchor_cache[$cache_key] = $anchor_course ? $anchor_course->id : 0;
+            }
+            
+            $anchor_cid = $anchor_cache[$cache_key];
+            
+            if ($anchor_cid > 0) {
+                 // 3. Find *Upcoming or Current* Due Date in Anchor Course
+                 // Logic: Find the earliest due date that is AFTER the start of this snapshot window
+                 // This snaps the revision point to the *active* homework of the week.
+                 $due_sql = "SELECT timeclose FROM {quiz} 
+                             WHERE course = :cid 
+                               AND timeclose >= :start 
+                               AND timeclose > 0
+                             ORDER BY timeclose ASC"; // Get the first one in the window (or next available)
+                 $next_due = $DB->get_field_sql($due_sql, ['cid' => $anchor_cid, 'start' => $start], IGNORE_MULTIPLE);
+                 
+                 if ($next_due) {
+                     $anchor_due_date = $next_due;
+                 }
+            }
+
+            // Check if snapshot exists (keyed by the calculated anchor date now)
             $existing = $DB->get_record('local_homework_status', [
                 'userid' => $userid, 
                 'quizid' => $quizid, 
-                'timeclose' => $end, // Keyed by Week End Date
+                'timeclose' => $anchor_due_date, 
                 'classification' => 'Revision Note'
             ]);
             
@@ -2709,7 +2763,7 @@ class homework_manager {
             $record->courseid = $courseid;
             $record->cmid = $cmid;
             $record->quizid = $quizid;
-            $record->timeclose = $end;
+            $record->timeclose = $anchor_due_date;
             $record->windowdays = 7;
             $record->windowstart = $start;
             $record->classification = 'Revision Note';
