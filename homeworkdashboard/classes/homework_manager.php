@@ -2456,7 +2456,7 @@ class homework_manager {
             // Detail row
             $detail = [
                 'due_date' => $rev_end, // Align to current week end
-                'due_date_formatted' => userdate($rev_end, get_string('strftimedate')),
+                'due_date_formatted' => '', // Blank due date as requested
                 'course_name' => $r->coursename,
                 'quiz_name' => 'Revision: ' . $r->quizname,
                 'classification' => 'Revision Note',
@@ -2712,7 +2712,7 @@ class homework_manager {
             $record->timeclose = $end;
             $record->windowdays = 7;
             $record->windowstart = $start;
-            $record->classification = 'Active Revision';
+            $record->classification = 'Revision Note';
             $record->status = $rev->note_count . ' Notes Added';
             $record->quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
             $record->quizgrade = (float)$rev->quizgrade;

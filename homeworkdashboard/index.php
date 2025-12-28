@@ -1058,11 +1058,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Sort by Due Date (desc), then Classification (New before Revision), then Activity
         breakdown.sort(function(a, b) {
 
-            // 1. Due date descending (Newest first)
-            if (b.due_date !== a.due_date) {
-                return b.due_date - a.due_date;
-            }
-            
             // 2. Classification Priority: New (1) > Revision (2) > Revision Note (3) > Other (99)
             var priorities = { 'new': 1, 'revision': 2, 'revision note': 3 };
             var classA = (a.classification || '').toLowerCase();
@@ -1102,7 +1097,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (classification === 'revision') {
                     classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision</span>';
                 } else if (classification === 'revision note') {
-                    classificationBadge = '<span class="hw-classification-badge" style="background-color: #0d6efd; color: white;">Revision Note</span>';
+                     // Reuse Revision style but with specific text (or just 'Revision' if preferred, but user requested 'Revision Note' classification)
+                    classificationBadge = '<span class="hw-classification-badge hw-classification-revision">Revision Note</span>';
                 }
                 
                 // Status badge (using exact CSS classes from styles.css)
