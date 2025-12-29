@@ -371,8 +371,10 @@ class before_footer_html_generation {
         ob_start();
         self::output_question_flags_assets($user_flags_json, $user_reasons_json, $guides_json, $question_mapping_json, $page_type, $is_teacher, $sesskey);
         
-        // Load AMD module for flag box textarea functionality
-        $PAGE->requires->js_call_amd('local_questionflags/flagbox', 'init');
+        // Load AMD module for flag box textarea functionality (Review pages only)
+        if ($PAGE->pagetype === 'mod-quiz-review') {
+            $PAGE->requires->js_call_amd('local_questionflags/flagbox', 'init');
+        }
         
         // Add feedback toggle button HTML directly for review pages  
         if ($page_type === 'mod-quiz-review') {

@@ -2111,11 +2111,13 @@ class homework_manager {
         
         // For each user+course, get their distinct due dates from snapshots
         foreach ($user_course_keys as $key => $info) {
+            // Fix: Include 'Revision Note' dates even if in future (Anchor Date logic)
+            // Otherwise, they disappear until the date passes on Jan 7
             $user_dates_sql = "SELECT DISTINCT lbs.timeclose 
                                FROM {local_homework_status} lbs 
                                WHERE lbs.userid = :userid
                                  AND lbs.courseid = :courseid
-                                 AND lbs.timeclose < :now 
+                                 AND (lbs.timeclose < :now OR lbs.classification = 'Revision Note')
                                ORDER BY lbs.timeclose DESC";
             $user_due_dates[$key] = $DB->get_fieldset_sql($user_dates_sql, [
                 'userid' => $info['userid'],
@@ -2453,18 +2455,24 @@ class homework_manager {
             $row->points_10w += $pts;
             $row->points_all += $pts;
             
+            $anchor_due_date = $this->get_student_anchor_due_date($uid, $catid, $catname, $rev_start);
+            if ($anchor_due_date <= 0) {
+                $anchor_due_date = $rev_end; // Fallback to Week End
+            }
+
             // Detail row
             $detail = [
-                'due_date' => $rev_end, // Align to current week end
-                'due_date_formatted' => '', // Blank due date as requested
+                'due_date' => $anchor_due_date, // Align to Anchor Date
+                'due_date_formatted' => $anchor_due_date > 0 ? userdate($anchor_due_date, get_string('strftimedate')) : '-',
                 'course_name' => $r->coursename,
-                'quiz_name' => 'Revision: ' . $r->quizname,
+                'quiz_name' => $r->quizname, // Match snapshot naming
                 'classification' => 'Revision Note',
                 'status' => $r->note_count . ' Notes Added',
                 'duration' => '-',
                 'score_display' => $r->total_points . ' pts', // Show points directly
                 'score_percent' => '-',
                 'points' => $pts,
+                'windowstart' => $rev_start // Important for deduplication
             ];
             
             // Add to all breakdown arrays
@@ -2538,8 +2546,14 @@ class homework_manager {
             // Score display
             $score_raw = (float)($r->score ?? 0);
             $quizgrade = (float)($r->quizgrade ?? 0);
-            $score_display = $quizgrade > 0 ? round($score_raw, 1) . '/' . round($quizgrade, 1) : '-';
-            $score_percent = (float)($r->bestpercent ?? 0);
+            
+            if (($r->classification ?? '') === 'Revision Note') {
+                $score_display = $pts . ' pts';
+                $score_percent = '-';
+            } else {
+                $score_display = $quizgrade > 0 ? round($score_raw, 1) . '/' . round($quizgrade, 1) : '-';
+                $score_percent = round((float)($r->bestpercent ?? 0), 0) . '%';
+            }
             
             $detail = [
                 'due_date' => $due_date,
@@ -2550,8 +2564,9 @@ class homework_manager {
                 'status' => $r->status ?? 'unknown',
                 'duration' => $duration_formatted,
                 'score_display' => $score_display,
-                'score_percent' => round($score_percent, 0) . '%',
+                'score_percent' => $score_percent,
                 'points' => $pts,
+                'windowstart' => $r->windowstart ?? 0 // From DB snapshot
             ];
             
             // Get the user's due dates for this course to determine buckets
@@ -2569,6 +2584,20 @@ class homework_manager {
                 $max_grade = (float)$r->quiz_grade_live;
             }
             
+            // Add to Live bucket if future dated (e.g. Anchor Date Revision)
+            if ($due_date > $now) {
+                $row->points_live += $pts;
+                $row->max_live += $max_grade;
+                $row->breakdown_live[] = $detail;
+                // Track live due date
+                if ($row->live_due_date == 0 || $due_date < $row->live_due_date) {
+                    $row->live_due_date = $due_date;
+                }
+                if (!in_array($due_date, $row->duedates_live)) {
+                   $row->duedates_live[] = $due_date;
+                }
+            }
+
             // Add to appropriate buckets based on due date
             if (in_array($due_date, $due_dates_2w)) {
                 $row->points_2w += $pts;
@@ -2621,6 +2650,79 @@ class homework_manager {
         });
 
         // =====================================================
+        // STEP 7.5: Consolidate Revision Notes with same Name + Date
+        // =====================================================
+        // Because "Live" notes (current week) and "Snapshot" notes (past weeks) 
+        // might both map to the same future Anchor Date, they appear as duplicates.
+        // We merge them here for cleaner display.
+        $consolidate_revisions = function(array $items) {
+            $merged = [];
+            $by_key = [];
+
+            foreach ($items as $item) {
+                // Only merge Revision Notes
+                if (($item['classification'] ?? '') !== 'Revision Note') {
+                    $merged[] = $item;
+                    continue;
+                }
+
+                // Key by Name + Date
+                $key = ($item['quiz_name'] ?? '') . '|' . ($item['due_date'] ?? 0);
+                
+                if (!isset($by_key[$key])) {
+                    $by_key[$key] = $item;
+                    $merged[] = &$by_key[$key];
+                } else {
+                    // Merge into existing
+                    $existing = &$by_key[$key];
+                    
+                    $ws_existing = $existing['windowstart'] ?? 0;
+                    $ws_new = $item['windowstart'] ?? 0;
+                    
+                    // Logic:
+                    // If Windows match (Same Week) -> Use MAX (Deduplicate)
+                    // If Windows differ (Different Weeks) -> Use SUM (Accumulate)
+                    
+                    if ($ws_existing == $ws_new) {
+                        // SAME WEEK: Use High Score (Max)
+                         $pts_existing = $existing['points'];
+                         $pts_new = $item['points'];
+                         
+                         if ($pts_new > $pts_existing) {
+                             $existing['points'] = $pts_new;
+                             $existing['score_display'] = $pts_new . ' pts';
+                             $existing['status'] = ($item['status'] ?? '0 Notes Added');
+                         }
+                    } else {
+                        // DIFFERENT WEEKS: Accumulate
+                        $existing['points'] += $item['points'];
+                        
+                        // Sum Status (Counts)
+                        $count_existing = (int)($existing['status']);
+                        $count_new = (int)($item['status']);
+                        $existing['status'] = ($count_existing + $count_new) . ' Notes Added';
+                        
+                        $existing['score_display'] = $existing['points'] . ' pts';
+                    }
+                }
+            }
+            return $merged;
+        };
+
+        foreach ($final_rows as &$row) {
+            if (!empty($row->breakdown_2w)) {
+                $row->breakdown_2w = $consolidate_revisions($row->breakdown_2w);
+            }
+            if (!empty($row->breakdown_4w)) {
+                $row->breakdown_4w = $consolidate_revisions($row->breakdown_4w);
+            }
+            if (!empty($row->breakdown_live)) { // Also consolidate live if needed
+                 $row->breakdown_live = $consolidate_revisions($row->breakdown_live);
+            }
+        }
+        unset($row);
+
+        // =====================================================
         // STEP 8: Sort breakdown details (Date DESC, then New before Revision)
         // =====================================================
         foreach ($final_rows as &$row) {
@@ -2630,7 +2732,15 @@ class homework_manager {
                     return $b['due_date'] <=> $a['due_date'];
                 }
                 
-                // Secondary sort: classification (New < Revision, i.e., New comes first)
+                // Secondary sort: Quiz Name (ASC) - Group same quizzes together
+                $name_a = strtoupper(trim((string)($a['quiz_name'] ?? '')));
+                $name_b = strtoupper(trim((string)($b['quiz_name'] ?? '')));
+                $cmp_name = strcmp($name_a, $name_b);
+                if ($cmp_name !== 0) {
+                    return $cmp_name;
+                }
+
+                // Tertiary sort: classification (New < Revision)
                 $class_a = strtoupper(trim((string)($a['classification'] ?? '')));
                 $class_b = strtoupper(trim((string)($b['classification'] ?? '')));
                 
@@ -2655,13 +2765,22 @@ class homework_manager {
     public function snapshot_recent_revisions() {
         global $DB;
         
-        // 1. Identify the most recently closed week (Sunday)
-        // If today is Tuesday, 'last sunday' is 2 days ago.
-        // If today is Sunday, 'last sunday' was a week ago (standard PHP behavior differs slightly based on time, explicit is better)
-        $last_sunday = strtotime('last sunday 23:59:59');
-        [$start, $end] = $this->get_week_bounds(date('Y-m-d', $last_sunday));
+        // 1. Snapshot CURRENT Active Week (Immediate Persistence)
+        // We capture everything from the start of the week up to NOW.
         
-        mtrace("Snapshotting revisions for week ending: " . userdate($end));
+        [$start, $end] = $this->get_latest_sunday_week(); 
+        
+        // SNAPSHOT BACKFILL: Also check Previous Week to catch any "Orphaned" Sunday notes
+        // that might have been missed if cron didn't run.
+        // We do this by expanding the search start back 7 days.
+        // The Dedupler (in get_leaderboard_data) handles the SUM logic correctly if they are different weeks.
+        
+        $backfill_start = $start - (7 * 24 * 60 * 60); // Look back 1 extra week
+        
+        // Override End to NOW to capture live activity immediately
+        $search_end = time();
+        
+        mtrace("Snapshotting revisions for extended window: " . userdate($backfill_start) . " to " . userdate($search_end));
 
         // 2. Fetch all valid revision points for that week
         // Granularity: User + Quiz
@@ -2711,43 +2830,10 @@ class homework_manager {
             $catname = $rev->sourcecategory ?? $rev->categoryname; // Requires SQL update below
             $catid = $rev->categoryid;
             
-            // 2. Find Anchor Course for this User + Category
-            // (Simplified logic: Find an active enrollment in this category that is NOT Personal Review)
-            // We use a short cache to avoid repetitive DB hits
-            static $anchor_cache = [];
-            $cache_key = $userid . '_' . $catid;
-            
-            if (!isset($anchor_cache[$cache_key])) {
-                $anchor_sql = "SELECT c.id 
-                               FROM {course} c
-                               JOIN {course_categories} cc ON cc.id = c.category
-                               JOIN {enrol} e ON e.courseid = c.id
-                               JOIN {user_enrolments} ue ON ue.enrolid = e.id
-                               WHERE ue.userid = :userid
-                                 AND (cc.id = :catid OR cc.name = :catname)
-                                 AND cc.name != 'Personal Review Courses'
-                                 AND c.visible = 1
-                               ORDER BY c.startdate DESC";
-                $anchor_course = $DB->get_record_sql($anchor_sql, ['userid' => $userid, 'catid' => $catid, 'catname' => $catname], IGNORE_MULTIPLE);
-                $anchor_cache[$cache_key] = $anchor_course ? $anchor_course->id : 0;
-            }
-            
-            $anchor_cid = $anchor_cache[$cache_key];
-            
-            if ($anchor_cid > 0) {
-                 // 3. Find *Upcoming or Current* Due Date in Anchor Course
-                 // Logic: Find the earliest due date that is AFTER the start of this snapshot window
-                 // This snaps the revision point to the *active* homework of the week.
-                 $due_sql = "SELECT timeclose FROM {quiz} 
-                             WHERE course = :cid 
-                               AND timeclose >= :start 
-                               AND timeclose > 0
-                             ORDER BY timeclose ASC"; // Get the first one in the window (or next available)
-                 $next_due = $DB->get_field_sql($due_sql, ['cid' => $anchor_cid, 'start' => $start], IGNORE_MULTIPLE);
-                 
-                 if ($next_due) {
-                     $anchor_due_date = $next_due;
-                 }
+            // 2. Find Anchor Due Date using helper
+            $anchor_due_date = $this->get_student_anchor_due_date($userid, $catid, $catname, $start);
+            if ($anchor_due_date <= 0) {
+                $anchor_due_date = $end; // Fallback
             }
 
             // Check if snapshot exists (keyed by the calculated anchor date now)
@@ -2789,5 +2875,52 @@ class homework_manager {
         }
         
         mtrace("Revision Snapshots: Inserted $inserted, Updated $updated.");
+    }
+
+    /**
+     * Helper to find the "Anchor" Due Date for a student in a category.
+     * Used to align Revision Points with the main homework of the week.
+     */
+    private function get_student_anchor_due_date(int $userid, int $catid, string $catname, int $search_start_time): int {
+        global $DB;
+        
+        static $anchor_cache = [];
+        $cache_key = $userid . '_' . $catid;
+        
+        if (!isset($anchor_cache[$cache_key])) {
+            // Find an active enrollment in this category that is NOT Personal Review
+            // We prioritize the most recent start date (likely the main term course)
+            $anchor_sql = "SELECT c.id 
+                           FROM {course} c
+                           JOIN {course_categories} cc ON cc.id = c.category
+                           JOIN {enrol} e ON e.courseid = c.id
+                           JOIN {user_enrolments} ue ON ue.enrolid = e.id
+                           WHERE ue.userid = :userid
+                             AND (cc.id = :catid OR cc.name = :catname)
+                             AND cc.name != 'Personal Review Courses'
+                             AND c.visible = 1
+                           ORDER BY c.startdate DESC";
+            $anchor_course = $DB->get_record_sql($anchor_sql, ['userid' => $userid, 'catid' => $catid, 'catname' => $catname], IGNORE_MULTIPLE);
+            $anchor_cache[$cache_key] = $anchor_course ? $anchor_course->id : 0;
+        }
+        
+        $anchor_cid = $anchor_cache[$cache_key];
+        
+        if ($anchor_cid > 0) {
+             // Find *Upcoming or Current* Due Date in Anchor Course
+             // Logic: Find the earliest due date that is AFTER the start of the window
+             $due_sql = "SELECT timeclose FROM {quiz} 
+                         WHERE course = :cid 
+                           AND timeclose >= :start 
+                           AND timeclose > 0
+                         ORDER BY timeclose ASC";
+             $next_due = $DB->get_field_sql($due_sql, ['cid' => $anchor_cid, 'start' => $search_start_time], IGNORE_MULTIPLE);
+             
+             if ($next_due) {
+                 return (int)$next_due;
+             }
+        }
+        
+        return 0; // Not found
     }
 }
