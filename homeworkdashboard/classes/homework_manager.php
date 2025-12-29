@@ -2417,7 +2417,7 @@ class homework_manager {
             LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
             LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             WHERE $rev_where
-            GROUP BY lqf.userid, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber, 
+            GROUP BY lqf.userid, u.id, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber, 
                      q.id, q.name, c.id, c.fullname, cc.id, cc.name, pq.sourcecategory, sc.id, sc.category, sc.fullname
         ";
         
