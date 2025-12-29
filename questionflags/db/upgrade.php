@@ -73,5 +73,28 @@ function xmldb_local_questionflags_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025102600, 'local', 'questionflags');
     }
 
+    if ($oldversion < 2025122900) {
+        $table = new xmldb_table('local_questionflags');
+        
+        $field = new xmldb_field('points_earned', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0.00', 'cmid');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2025122900, 'local', 'questionflags');
+    }
+
+    if ($oldversion < 2025122901) {
+        $table = new xmldb_table('local_questionflags');
+        $field = new xmldb_field('reason', XMLDB_TYPE_TEXT, null, null, null, null, null, 'flagcolor');
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2025122901, 'local', 'questionflags');
+    }
+
     return true;
 }
