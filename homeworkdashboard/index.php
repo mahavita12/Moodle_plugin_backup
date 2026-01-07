@@ -169,6 +169,8 @@ if ($canmanage && optional_param('backfill', 0, PARAM_BOOL)) {
     $backfilldates = optional_param_array('backfilldates', [], PARAM_INT);
     if (!empty($backfilldates)) {
         $created = $manager->backfill_snapshots_from_dates($backfilldates);
+        // Force Revision Note update and cleanup (dedup) whenever a backfill is requested
+        $manager->snapshot_recent_revisions();
         $backfillmessage = get_string('backfill_done', 'local_homeworkdashboard', $created);
     } else {
         $backfillmessage = "No dates selected.";
