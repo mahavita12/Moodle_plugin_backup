@@ -2111,13 +2111,14 @@ class homework_manager {
         
         // For each user+course, get their distinct due dates from snapshots
         foreach ($user_course_keys as $key => $info) {
-            // Fix: Include 'Revision Note' dates even if in future (Anchor Date logic)
-            // Otherwise, they disappear until the date passes on Jan 7
+            // Fix: EXCLUDE 'Revision Note' dates if in future.
+            // We want historical buckets (2W, 4W) to only reflect PAST due dates.
+            // Future revision notes should typically appear in LIVE column if anywhere.
             $user_dates_sql = "SELECT DISTINCT lbs.timeclose 
                                FROM {local_homework_status} lbs 
                                WHERE lbs.userid = :userid
                                  AND lbs.courseid = :courseid
-                                 AND (lbs.timeclose < :now OR lbs.classification = 'Revision Note')
+                                 AND lbs.timeclose < :now
                                ORDER BY lbs.timeclose DESC";
             $user_due_dates[$key] = $DB->get_fieldset_sql($user_dates_sql, [
                 'userid' => $info['userid'],
@@ -2133,12 +2134,48 @@ class homework_manager {
         
         // Helper to get or create aggregated row
         $get_or_create_row = function($uid, $catid, $catname, $r, &$aggregated, $user_anchors) {
+            global $DB; // Required for DB access inside closure
             $key = $uid . '_' . $catid;
             
             if (!isset($aggregated[$key])) {
                 $anchor = $user_anchors[$uid][$catid] ?? null;
                 $anchor_coursename = $anchor ? $anchor['coursename'] : ($r->coursename ?? 'Unknown');
                 
+                // DATA REPAIR: Calculate TRUE Latest Past Due Date
+                // "Latest Due Date" intends to show the most recent HISTORICAL due date (e.g., Jan 6), not the future one (Jan 13).
+                // We search for the latest quiz close date that is < NOW.
+                $now = time();
+                $past_anchor_date = 0;
+                
+                // Reuse the anchor course logic
+                $anchor_info = $this->get_anchor_course_for_user($uid, $catid, $catname);
+                if ($anchor_info) {
+                    $anchor_cid = (int)$anchor_info->id;
+                    $moduleid = $DB->get_field('modules', 'id', ['name' => 'quiz']);
+                    
+                    // Find latest PAEST due date
+                    $sql_past = "SELECT MAX(q.timeclose) 
+                                 FROM {course_modules} cm
+                                 JOIN {quiz} q ON q.id = cm.instance
+                                 WHERE cm.course = :courseid 
+                                   AND cm.module = :mid 
+                                   AND q.timeclose < :now
+                                   AND q.timeclose > 0";
+                    $past_anchor_date = (int)$DB->get_field_sql($sql_past, ['courseid' => $anchor_cid, 'mid' => $moduleid, 'now' => $now]);
+                    
+                    // Fallback to course-specific rule if no past quizzes found (e.g. relying on manual recurring logic)
+                    if (!$past_anchor_date) {
+                         // Calculate based on "Last Week" relative to now
+                         // calculate_course_fallback_date returns logic for "Next X". 
+                         // To get "Last X", we might simply subtract 7 days from "Next X"? 
+                         // Or call it with a past base date.
+                         $next_fallback = $this->calculate_course_fallback_date($anchor_info, $now);
+                         if ($next_fallback) {
+                             $past_anchor_date = $next_fallback - (7 * 24 * 60 * 60);
+                         }
+                    }
+                }
+
                 $aggregated[$key] = (object)[
                     'userid' => $uid,
                     'fullname' => fullname((object)[
@@ -2154,7 +2191,7 @@ class homework_manager {
                     'categoryname' => $catname,
                     'anchor_courseid' => $anchor ? $anchor['courseid'] : (int)$r->courseid,
                     'anchor_coursename' => $anchor_coursename,
-                    'latest_due_date' => 0,
+                    'latest_due_date' => $past_anchor_date, // Initialize with Past Anchor
                     'live_due_date' => 0,
                     'points_live' => 0,
                     'points_2w' => 0,
@@ -2533,7 +2570,8 @@ class homework_manager {
             }
             
             // Update latest due date
-            if ($due_date > $row->latest_due_date) {
+            // Fix: Only track historical due dates here (<= NOW), ignore future upcoming.
+            if ($due_date <= time() && $due_date > $row->latest_due_date) {
                 $row->latest_due_date = $due_date;
             }
             
@@ -2845,13 +2883,19 @@ class homework_manager {
 
             // 3. Strict Window Check (Match Main Quiz Logic)
             // Use existing build_window logic: [Due - 7days + 2hrs, Due]
-            // If the latest revision note activity is OUTSIDE this window (too old), ignore it.
+            // If the latest revision note activity is OUTSIDE this window (too old), ignore it AND cleanup any stale entry.
             if ($anchor_due_date > 0) {
                 [$strict_start, $strict_end] = $this->build_window($anchor_due_date, self::DEFAULT_WINDOW_DAYS);
                 $last_modified = (int)($rev->last_modified ?? 0);
                 
                 if ($last_modified < $strict_start) {
-                    continue; // Skip this snapshot entirely as it's outside the valid window
+                    // INVALID: Activity is too old for this due date.
+                    // Explicitly delete ANY snapshot for this week (including stale ones like Jan 11)
+                    $DB->delete_records_select('local_homework_status', 
+                        "userid = ? AND quizid = ? AND classification = 'Revision Note' AND timeclose >= ?", 
+                        [$userid, $quizid, $start]
+                    );
+                    continue; 
                 }
             }
 
