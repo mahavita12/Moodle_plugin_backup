@@ -2833,7 +2833,19 @@ class homework_manager {
             // 2. Find Anchor Due Date using helper
             $anchor_due_date = $this->get_student_anchor_due_date($userid, $catid, $catname, $start);
             if ($anchor_due_date <= 0) {
-                $anchor_due_date = $end; // Fallback
+                // Try Custom Course Fallback
+                $res_course = $this->get_anchor_course_for_user($userid, $catid, $catname);
+                $custom_fallback = $this->calculate_course_fallback_date($res_course, $start);
+                
+                $anchor_due_date = ($custom_fallback > 0) ? $custom_fallback : $end; // Bespoke or Sunday Fallback
+            }
+
+            // Deduplication: Remove any Stale Revision snapshots for this user/quiz/week AND QuizID match
+            if ($anchor_due_date > 0) {
+                 $DB->delete_records_select('local_homework_status', 
+                    "userid = ? AND quizid = ? AND classification = 'Revision Note' AND timeclose >= ? AND timeclose != ?", 
+                    [$userid, $quizid, $start, $anchor_due_date]
+                 );
             }
 
             // Check if snapshot exists (keyed by the calculated anchor date now)
@@ -2883,14 +2895,32 @@ class homework_manager {
      */
     private function get_student_anchor_due_date(int $userid, int $catid, string $catname, int $search_start_time): int {
         global $DB;
+        $course = $this->get_anchor_course_for_user($userid, $catid, $catname);
         
-        static $anchor_cache = [];
-        $cache_key = $userid . '_' . $catid;
+        if ($course) {
+             $due_sql = "SELECT timeclose FROM {quiz} 
+                         WHERE course = :cid 
+                           AND timeclose >= :start 
+                           AND timeclose > 0
+                         ORDER BY timeclose ASC";
+             $next_due = $DB->get_field_sql($due_sql, ['cid' => $course->id, 'start' => $search_start_time], IGNORE_MULTIPLE);
+             if ($next_due) {
+                 return (int)$next_due;
+             }
+        }
+        return 0; 
+    }
+
+    /**
+     * Find Anchor Course Record for User/Category
+     */
+    private function get_anchor_course_for_user(int $userid, int $catid, string $catname) {
+        global $DB;
+        static $cache = [];
+        $key = $userid . '_' . $catid;
         
-        if (!isset($anchor_cache[$cache_key])) {
-            // Find an active enrollment in this category that is NOT Personal Review
-            // We prioritize the most recent start date (likely the main term course)
-            $anchor_sql = "SELECT c.id 
+        if (!array_key_exists($key, $cache)) {
+            $anchor_sql = "SELECT c.id, c.fullname, c.shortname 
                            FROM {course} c
                            JOIN {course_categories} cc ON cc.id = c.category
                            JOIN {enrol} e ON e.courseid = c.id
@@ -2900,27 +2930,33 @@ class homework_manager {
                              AND cc.name != 'Personal Review Courses'
                              AND c.visible = 1
                            ORDER BY c.startdate DESC";
-            $anchor_course = $DB->get_record_sql($anchor_sql, ['userid' => $userid, 'catid' => $catid, 'catname' => $catname], IGNORE_MULTIPLE);
-            $anchor_cache[$cache_key] = $anchor_course ? $anchor_course->id : 0;
+            $cache[$key] = $DB->get_record_sql($anchor_sql, ['userid' => $userid, 'catid' => $catid, 'catname' => $catname], IGNORE_MULTIPLE) ?: null;
+        }
+        return $cache[$key];
+    }
+
+    /**
+     * Calculate Fallback Due Date based on Course ID Rules
+     */
+    private function calculate_course_fallback_date($course, int $week_start): int {
+        if (!$course) return 0;
+        
+        $base = time(); 
+        
+        switch ((int)$course->id) {
+            case 7: // Year 3A Classroom
+                return strtotime('next tuesday 15:30', $base);
+            
+            case 3: // Year 5A Classroom
+                return strtotime('next wednesday 19:00', $base);
+                
+            case 2: // Selective Trial Test
+                return strtotime('next sunday 18:30', $base);
+
+            case 6: // OC Trial Test
+                return strtotime('next sunday 15:30', $base);
         }
         
-        $anchor_cid = $anchor_cache[$cache_key];
-        
-        if ($anchor_cid > 0) {
-             // Find *Upcoming or Current* Due Date in Anchor Course
-             // Logic: Find the earliest due date that is AFTER the start of the window
-             $due_sql = "SELECT timeclose FROM {quiz} 
-                         WHERE course = :cid 
-                           AND timeclose >= :start 
-                           AND timeclose > 0
-                         ORDER BY timeclose ASC";
-             $next_due = $DB->get_field_sql($due_sql, ['cid' => $anchor_cid, 'start' => $search_start_time], IGNORE_MULTIPLE);
-             
-             if ($next_due) {
-                 return (int)$next_due;
-             }
-        }
-        
-        return 0; // Not found
+        return 0; // Default to End of Week
     }
 }
