@@ -1372,6 +1372,11 @@ class homework_manager {
             }
 
             foreach ($snapshots as $snap) {
+                // Skip Revision Notes - they are calculated by snapshot_recent_revisions not by quiz attempts
+                if ($snap->classification === 'Revision Note') {
+                    continue;
+                }
+
                 $quizid = (int)$snap->quizid;
                 $userid = (int)$snap->userid;
                 $timeclose = (int)$snap->timeclose;
@@ -2924,7 +2929,7 @@ class homework_manager {
             $record->windowdays = 7;
             $record->windowstart = $start;
             $record->classification = 'Revision Note';
-            $record->status = $rev->note_count . ' Notes Added';
+            $record->status = 'completed'; // Force completed status for Revision Notes being brought forward
             $record->quiztype = $this->quiz_has_essay($quizid) ? 'Essay' : 'Non-Essay';
             $record->quizgrade = (float)$rev->quizgrade;
             $record->points = $points;
