@@ -2352,6 +2352,7 @@ class homework_manager {
                 COALESCE(sc.category, cc.id) AS categoryid,
                 COALESCE(pq.sourcecategory, cc.name) AS categoryname,
                 SUM(lqf.points_earned) AS total_points,
+                MAX(lqf.timemodified) AS last_modified,
                 COUNT(lqf.id) AS note_count
             FROM {local_questionflags} lqf
             JOIN {quiz} q ON q.id = lqf.quizid
@@ -2408,6 +2409,7 @@ class homework_manager {
                 COALESCE(sc.category, cc.id) AS categoryid,
                 COALESCE(pq.sourcecategory, cc.name) AS categoryname,
                 SUM(lqf.points_earned) AS total_points,
+                MAX(lqf.timemodified) AS last_modified,
                 COUNT(lqf.id) AS note_count
             FROM {local_questionflags} lqf
             JOIN {user} u ON u.id = lqf.userid
@@ -2796,6 +2798,7 @@ class homework_manager {
                 COALESCE(pq.sourcecategory, cc.name) AS categoryname,
                 pq.sourcecategory,
                 SUM(lqf.points_earned) AS total_points,
+                MAX(lqf.timemodified) AS last_modified,
                 COUNT(lqf.id) AS note_count
             FROM {local_questionflags} lqf
             JOIN {quiz} q ON q.id = lqf.quizid
@@ -2840,7 +2843,19 @@ class homework_manager {
                 $anchor_due_date = ($custom_fallback > 0) ? $custom_fallback : $end; // Bespoke or Sunday Fallback
             }
 
-            // Deduplication: Remove any Stale Revision snapshots for this user/quiz/week AND QuizID match
+            // 3. Strict Window Check (Match Main Quiz Logic)
+            // Use existing build_window logic: [Due - 7days + 2hrs, Due]
+            // If the latest revision note activity is OUTSIDE this window (too old), ignore it.
+            if ($anchor_due_date > 0) {
+                [$strict_start, $strict_end] = $this->build_window($anchor_due_date, self::DEFAULT_WINDOW_DAYS);
+                $last_modified = (int)($rev->last_modified ?? 0);
+                
+                if ($last_modified < $strict_start) {
+                    continue; // Skip this snapshot entirely as it's outside the valid window
+                }
+            }
+
+            // 4. Deduplication: Remove any Stale Revision snapshots for this user/quiz/week AND QuizID match
             if ($anchor_due_date > 0) {
                  $DB->delete_records_select('local_homework_status', 
                     "userid = ? AND quizid = ? AND classification = 'Revision Note' AND timeclose >= ? AND timeclose != ?", 
