@@ -39,7 +39,7 @@ class copy_service {
                 $bc->destroy();
 
                 // Restore into target course/section.
-                $rc = new \restore_controller($backupid, $targetcourseid, \backup::INTERACTIVE_NO, \backup::MODE_GENERAL, $USER->id, \restore::TARGET_EXISTING_ADDING);
+                $rc = new \restore_controller($backupid, $targetcourseid, \backup::INTERACTIVE_NO, \backup::MODE_GENERAL, $USER->id, \backup::TARGET_EXISTING_ADDING);
                 $plan = $rc->get_plan();
                 if ($plan->setting_exists('section')) {
                     $plan->get_setting('section')->set_value($sectionnumber);
