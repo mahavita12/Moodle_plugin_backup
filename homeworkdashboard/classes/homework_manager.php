@@ -12,7 +12,34 @@ class homework_manager {
     private const DEFAULT_WINDOW_DAYS = 7;
 
     /** Minimum percentage to treat an attempt as completed (for green tick). */
-    private const COMPLETION_PERCENT_THRESHOLD = 30.0;
+    private const COMPLETION_PERCENT_THRESHOLD = 50.0;
+
+    /** Minimum percentage for 'Retry' (Low Grade) status. Below this is 'Not Done'. */
+    private const RETRY_PERCENT_THRESHOLD = 30.0;
+
+    /**
+     * Get minimum duration in seconds required for a valid attempt based on current question count.
+     * Formula: 30% of (Question Count * 60 seconds)
+     */
+    public function get_min_duration_for_quiz(int $quizid): int {
+        global $DB;
+        static $cache = [];
+        if (isset($cache[$quizid])) {
+            return $cache[$quizid];
+        }
+        
+        $count = $DB->count_records('quiz_slots', ['quizid' => $quizid]);
+        if (!$count) {
+             // Fallback for Moodle 4.x if using random questions solely via qbank references?
+             // For now assume standard slots. If 0, default to 3 mins.
+             $count = 10; 
+        }
+        
+        // 30% of question count minutes
+        $min_seconds = (int)(($count * 60) * 0.3);
+        $cache[$quizid] = $min_seconds;
+        return $min_seconds;
+    }
 
     /**
      * Get effective homework window (days) for a course.
@@ -207,6 +234,9 @@ class homework_manager {
 
         $attempts = $DB->get_records_sql($sql, $params);
 
+        // Dynamic Duration Check
+        $min_duration = $this->get_min_duration_for_quiz($quizid);
+
         // Per-user aggregate.
         $peruser = [];
         $grade = ($quizgrade > 0.0) ? $quizgrade : 0.0;
@@ -218,8 +248,9 @@ class homework_manager {
                 continue;
             }
             $duration = $timefinish - $timestart;
-            if ($duration < 180) {
-                // Treat attempts shorter than 3 minutes as non-attempts for status.
+            
+            // Dynamic check
+            if ($duration < $min_duration) {
                 continue;
             }
 
@@ -246,8 +277,11 @@ class homework_manager {
             $best = $peruser[$uid]['bestpercent'];
             if ($best >= self::COMPLETION_PERCENT_THRESHOLD) {
                 $counts['completed']++;
-            } else {
+            } elseif ($best >= self::RETRY_PERCENT_THRESHOLD) {
                 $counts['lowgrade']++;
+            } else {
+                // Below Retry Threshold => Not Done
+                $counts['noattempt']++;
             }
         }
 
@@ -588,29 +622,32 @@ class homework_manager {
                 if ($timestart <= 0 || $afinish <= $timestart) {
                     continue;
                 }
-                $duration = $afinish - $timestart;
-                // Removed duration check here so ALL attempts are displayed
-                // if ($duration < 180) { continue; }
+                // We show all attempts in the detail list, but highlight status based on validity?
+                // Reverting to strict filtering for 'Best Attempt' finding.
                 $attempts[] = $a;
             }
 
-            // Find best attempt (only consider attempts >= 180s AND score > 10%)
+            // Find best attempt based on NEW rules
             $bestattempt = null;
             $highestgrade = -1.0;
-            // Use $maxscore which was set earlier from $s->grade or $s->quizgrade
             $qgrade = ($maxscore > 0.0) ? (float)$maxscore : 0.0;
+            
+            // Dynamic Duration
+            $min_duration = $this->get_min_duration_for_quiz($quizid);
 
             foreach ($attempts as $at) {
                 $dur = (int)$at->timefinish - (int)$at->timestart;
-                if ($dur < 180) {
-                    continue;
+                
+                // 1. Check Duration
+                if ($dur < $min_duration) {
+                    continue; 
                 }
                 
                 $g = (float)$at->sumgrades;
                 $pct = ($qgrade > 0.0) ? ($g / $qgrade) * 100.0 : 0.0;
                 
-                // Filter: Ignore if score <= 10%
-                if ($pct <= 10.0) {
+                // 2. Check Score (Not Done if < 30%)
+                if ($pct < self::RETRY_PERCENT_THRESHOLD) {
                     continue;
                 }
 
@@ -2293,7 +2330,10 @@ class homework_manager {
                 $bestpercent = 0.0;
                 $bestattempt = null;
                 
-                // Find best valid attempt (duration >= 180s AND score > 10%)
+                // Dynamic Duration
+                $min_duration = $this->get_min_duration_for_quiz($quizid);
+
+                // Find best valid attempt (dynamic duration AND score > retry_threshold)
                 foreach ($attempts as $a) {
                     $timestart = (int)$a->timestart;
                     $timefinish = (int)$a->timefinish;
@@ -2301,9 +2341,10 @@ class homework_manager {
                         continue;
                     }
                     $dur = $timefinish - $timestart;
-                    if ($dur >= 180 && $quizgrade > 0 && $a->sumgrades !== null) {
+                    
+                    if ($dur >= $min_duration && $quizgrade > 0 && $a->sumgrades !== null) {
                         $pct = ((float)$a->sumgrades / $quizgrade) * 100.0;
-                        if ($pct > 10.0 && $pct > $bestpercent) {
+                        if ($pct >= self::RETRY_PERCENT_THRESHOLD && $pct > $bestpercent) {
                             $bestpercent = $pct;
                             $bestattempt = $a;
                         }
@@ -2318,12 +2359,15 @@ class homework_manager {
                     $score_display = round($score_raw, 1) . '/' . round($quizgrade, 1);
                     $score_percent = round($bestpercent, 0) . '%';
                     
-                    if ($bestpercent > self::COMPLETION_PERCENT_THRESHOLD) {
+                    if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
                         $status = 'completed';
                         $pts = $quizgrade;
-                    } else {
+                    } elseif ($bestpercent >= self::RETRY_PERCENT_THRESHOLD) {
                         $status = 'lowgrade';
                         $pts = $quizgrade * 0.5;
+                    } else {
+                        // Not reached given above filter
+                        $status = 'noattempt';
                     }
                 }
                 

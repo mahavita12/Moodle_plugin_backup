@@ -179,7 +179,8 @@ class gemini_helper {
             $prompt .= "     - If duration < (Question Count * 1 min), explicitly mention it was 'Rushed' or 'Skipped'.\n";
             $prompt .= "     - **Revision Integrity Check**: For Revision activities, if Score is High (> 80%) BUT Duration is significantly low (e.g. < 5 mins for 10 questions), issue a **STERN WARNING**. This suggests copying answers without genuine effort.\n";
             $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
-            $prompt .= "     - If a student's score is low (e.g., < 30%), do not just be supportive. Explicitly mention the low score and express serious concern. Tell them they need to put in more effort to understand the material.\n";
+            $prompt .= "     - If a student's score is low (e.g., < 50%), identify it as 'Needs Improvement' or 'Retry'. Encourage them to retake it to improve their understanding.\n";
+            $prompt .= "     - If the score is very low (e.g., < 30%), express SERIOUS CONCERN (treat as 'Not Done'). Tell them they need to put in significantly more effort.\n";
             $prompt .= "     - For 'New' activities, if the Course Name includes 'Selective Trial Test', the expected duration is 45 minutes. If completed in less than 40 minutes, warn them that they rushed.\n";
             $prompt .= "     - If Course Name includes 'OC Trial Test': For 'Math', expected is 40 mins. For 'Reading'/'Thinking', expected is 30 mins. Warn if completed > 5 mins too fast.\n";
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
