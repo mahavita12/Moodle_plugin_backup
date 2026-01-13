@@ -222,32 +222,7 @@ if ($tab === 'copy') {
 
     echo html_writer::end_tag('form');
 
-    $PAGE->requires->js_amd_inline(<<<'JS'
-document.addEventListener('DOMContentLoaded', function() {
-  var tcourse = document.getElementById('id_targetcourse');
-  var tsection = document.getElementById('id_targetsection');
-  function loadSections(courseid) {
-    if (!courseid) {
-      tsection.innerHTML = '<option value="">Please select target course first...</option>';
-      return;
-    }
-    tsection.innerHTML = '<option>Loading...</option>';
-    fetch(M.cfg.wwwroot + '/local/quiz_uploader/ajax_get_sections.php?courseid=' + courseid + '&sesskey=' + M.cfg.sesskey)
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        var opts = '<option value="">-- Select a section --</option>';
-        data.forEach(function(s){ opts += '<option value="' + s.id + '">' + s.name + '</option>'; });
-        tsection.innerHTML = opts;
-      })
-      .catch(function(){ tsection.innerHTML = '<option>Error loading sections</option>'; });
-  }
-  if (tcourse) {
-    tcourse.addEventListener('change', function(){ loadSections(this.value); });
-    if (tcourse.value) { loadSections(tcourse.value); }
-  }
-});
-JS
-    );
+    $PAGE->requires->js_call_amd('local_quiz_uploader/upload', 'init');
     $PAGE->requires->js_amd_inline(<<<'JS'
 document.addEventListener('click', function(ev){
   var t = ev.target;

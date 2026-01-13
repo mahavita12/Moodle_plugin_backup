@@ -3,86 +3,129 @@ namespace local_quiz_uploader;
 
 defined('MOODLE_INTERNAL') || die();
 
+require_once($CFG->dirroot . '/mod/quiz/lib.php');
+require_once(__DIR__ . '/quiz_creator.php');
+
 class copy_service {
-    public static function copy_quizzes(array $sourcecmids, int $targetcourseid, int $targetsectionid, string $preset = 'default', ?int $timeclose = null, string $activityclass = 'New'): array {
-        global $DB, $CFG, $USER;
-        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
-        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-        require_once($CFG->dirroot . '/course/lib.php');
+
+    /**
+     * Copy specific quizzes to a target course/section WITHOUT duplicating questions.
+     * Uses local_quiz_uploader\quiz_creator to link existing questions.
+     */
+    public static function copy_quizzes(array $cmids, int $targetcourseid, int $targetsectionid, string $preset = 'default', ?string $timeclose = null, string $activityclass = 'New'): array {
+        global $DB;
 
         $results = [];
 
-        // Resolve section number from id.
-        $sectionnumber = (int)$DB->get_field('course_sections', 'section', ['id' => $targetsectionid], \IGNORE_MISSING);
-        if ($sectionnumber === null) {
-            return [['success' => false, 'message' => 'Invalid target section']];
-        }
+        foreach ($cmids as $cmid) {
+            $res = new \stdClass();
+            $res->cmid = $cmid;
+            $res->success = false;
+            $res->error = '';
 
-        foreach ($sourcecmids as $sourcecmid) {
-            $res = (object)['success' => false, 'sourcecmid' => $sourcecmid, 'message' => ''];
             try {
-                // Get source quiz name.
-                $src = \get_coursemodule_from_id('quiz', $sourcecmid, 0, false, \MUST_EXIST);
-                $srcquiz = $DB->get_record('quiz', ['id' => $src->instance], 'id,course,name', \MUST_EXIST);
+                $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
+                $srcquiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
 
-                // Collision check in target section by name.
-                $collision = self::find_target_quiz_by_name($targetcourseid, $targetsectionid, $srcquiz->name);
-                if ($collision) {
-                    // Overwrite: delete existing module.
-                    \course_delete_module($collision->cmid);
+                // 1. Get Settings
+                $settings = \local_quiz_uploader\quiz_creator::build_quiz_settings($preset, 0); // Count updated later if needed
+                if ($timeclose) {
+                    $settings->timeclose = strtotime($timeclose);
                 }
 
-                // Backup the source cm.
-                $bc = new \backup_controller(\backup::TYPE_1ACTIVITY, $sourcecmid, \backup::FORMAT_MOODLE, \backup::INTERACTIVE_NO, \backup::MODE_GENERAL, $USER->id);
-                $bc->execute_plan();
-                $backupid = $bc->get_backupid();
-                $bc->destroy();
-
-                // Restore into target course/section.
-                $rc = new \restore_controller($backupid, $targetcourseid, \backup::INTERACTIVE_NO, \backup::MODE_GENERAL, $USER->id, \restore::TARGET_EXISTING_ADDING);
-                $plan = $rc->get_plan();
-                if ($plan->setting_exists('section')) {
-                    $plan->get_setting('section')->set_value($sectionnumber);
+                // 2. Get Questions from source
+                // Check if 'questionid' column exists (Moodle < 4.0)
+                $columns = $DB->get_columns('quiz_slots');
+                
+                if (array_key_exists('questionid', $columns)) {
+                    // Legacy: Direct questionid
+                    $questions = $DB->get_records_sql("
+                        SELECT questionid
+                        FROM {quiz_slots}
+                        WHERE quizid = ? AND questionid IS NOT NULL
+                        ORDER BY slot ASC",
+                        [$srcquiz->id]
+                    );
+                    $qids = array_keys($questions);
+                } else {
+                    // Modern: Via question_references
+                    // We need the question ID from the latest version referenced
+                    $sql = "SELECT qv.questionid
+                              FROM {quiz_slots} qs
+                              JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                              JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+                              JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
+                             WHERE qs.quizid = ?
+                               AND (qr.version IS NULL OR qr.version = qv.version)
+                               AND (qr.version IS NOT NULL OR qv.version = (
+                                   SELECT MAX(v.version)
+                                   FROM {question_versions} v
+                                   WHERE v.questionbankentryid = qbe.id
+                               ))
+                          ORDER BY qs.slot ASC";
+                    $questions = $DB->get_records_sql($sql, [$srcquiz->id]);
+                    $qids = array_map(function($q){ return $q->questionid; }, array_values($questions));
                 }
-                $rc->execute_precheck();
-                $rc->execute_plan();
 
-                // Find the restored quiz by name in target section.
-                $new = self::find_target_quiz_by_name($targetcourseid, $targetsectionid, $srcquiz->name);
-                if ($new) {
-                    // Apply preset defaults (except timeclose left null unless provided).
-                    preset_helper::apply_to_quiz($new->quizid, $preset, $timeclose, null);
-                    // Reveal explicitly.
-                    \set_coursemodule_visible($new->cmid, 1);
-                    \rebuild_course_cache($targetcourseid, true);
+                $qcount = count($qids);
+                $settings->grade = $qcount > 0 ? $qcount : 10; // Update grade based on actual count
+
+                // 3. Create Quiz in target
+                $creator_res = \local_quiz_uploader\quiz_creator::create_quiz(
+                    $targetcourseid,
+                    $targetsectionid,
+                    $srcquiz->name,
+                    $srcquiz->intro,
+                    $settings
+                );
+
+                if (!$creator_res->success) {
+                    throw new \Exception($creator_res->error);
+                }
+
+                $newquizid = $creator_res->quizid;
+
+                // 4. Add Questions to new quiz
+                if ($qcount > 0) {
+                    $add_res = \local_quiz_uploader\quiz_creator::add_questions_to_quiz($newquizid, $qids);
+                    if (!$add_res->success && !empty($add_res->errors)) {
+                        $res->warnings = $add_res->errors;
+                    }
                 }
 
                 $res->success = true;
-                $res->message = 'Copied';
-                $res->quizname = $srcquiz->name;
-                $res->targetcmid = $new->cmid ?? null;
-                $res->targetquizid = $new->quizid ?? null;
-            } catch (\Throwable $e) {
-                $res->success = false;
-                $res->message = $e->getMessage();
+                $res->newcmid = $creator_res->cmid;
+                $res->name = $srcquiz->name;
+
+            } catch (\Exception $e) {
+                $res->error = $e->getMessage();
             }
+
             $results[] = $res;
         }
 
         return $results;
     }
 
-    public static function find_target_quiz_by_name(int $courseid, int $sectionid, string $name): ?object {
+    public static function find_target_quiz_by_name($courseid, $sectionid, $name) {
         global $DB;
-        $moduleid = (int)$DB->get_field('modules', 'id', ['name' => 'quiz'], \IGNORE_MISSING);
-        if (!$moduleid) { return null; }
-        $sql = "SELECT cm.id as cmid, q.id as quizid
+
+        $module = $DB->get_field('modules', 'id', ['name' => 'quiz'], IGNORE_MISSING);
+        if (!$module) return null;
+
+        $sql = "SELECT cm.id
                   FROM {course_modules} cm
                   JOIN {quiz} q ON q.id = cm.instance
-                 WHERE cm.course = :course AND cm.section = :section AND cm.module = :module AND q.name = :name
-                 ORDER BY cm.id DESC";
-        $params = ['course' => $courseid, 'section' => $sectionid, 'module' => $moduleid, 'name' => $name];
-        $rec = $DB->get_record_sql($sql, $params);
-        return $rec ?: null;
+                 WHERE cm.course = :course
+                   AND cm.section = :section
+                   AND cm.module = :module
+                   AND q.name = :name";
+
+        return $DB->get_record_sql($sql, [
+            'course' => $courseid,
+            'section' => $sectionid,
+            'module' => $module,
+            'name' => $name
+        ]);
     }
 }
