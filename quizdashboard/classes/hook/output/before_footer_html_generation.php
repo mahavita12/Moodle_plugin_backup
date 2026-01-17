@@ -27,8 +27,8 @@ class before_footer_html_generation {
         }
         */
 
-        // SECOND: Inject feedback summaries (only on quiz attempt pages)
-        if ($PAGE->pagetype !== 'mod-quiz-attempt') {
+        // SECOND: Inject feedback summaries (only on quiz attempt pages OR review pages)
+        if ($PAGE->pagetype !== 'mod-quiz-attempt' && $PAGE->pagetype !== 'mod-quiz-review') {
             return;
         }
 
@@ -48,6 +48,56 @@ class before_footer_html_generation {
 
         // HOMEWORK CARD: allow for teachers/admins too (no owner check required)
         $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
+        
+        // REVIEW PAGE LOGIC: Show feedback for the current attempt directly
+        if ($PAGE->pagetype === 'mod-quiz-review') {
+            $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt->id]);
+            if ($grading && !empty($grading->feedback_html)) {
+                $html = (string)$grading->feedback_html;
+                
+                // Reuse existing extraction logic
+                $meta = [
+                    'score' => self::extract_final_score($grading, $html),
+                    'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart)
+                ];
+
+                $items = [
+                    'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
+                    'Structure and Organization (25%)' => self::extract_improvement_items($html, 'Structure\s+and\s+Organi[sz]ation', 3),
+                    'Language Use (20%)' => self::extract_improvement_items($html, 'Language\s+Use', 3),
+                    'Creativity and Originality (20%)' => self::extract_improvement_items($html, 'Creativity\s+and\s+Originality', 3),
+                    'Mechanics (10%)' => self::extract_mechanics_items($html, 3)
+                ];
+
+                // Prefer JSON for Mechanics bullets when available
+                if (!empty($grading->feedback_json)) {
+                    $obj = json_decode((string)$grading->feedback_json, true);
+                    if (is_array($obj) && isset($obj['sections']['mechanics']['improvements']) && is_array($obj['sections']['mechanics']['improvements'])) {
+                        $over = [];
+                        foreach ($obj['sections']['mechanics']['improvements'] as $b) {
+                            $t = trim((string)$b);
+                            if ($t !== '') { $over[] = $t; }
+                            if (count($over) >= 3) break;
+                        }
+                        if (!empty($over)) { $items['Mechanics (10%)'] = $over; }
+                    }
+                }
+
+                $relevance = self::extract_relevance_from_content($html);
+                $overall = self::extract_overall_html($html);
+                
+                // For review page, we can show examples if we want, but let's stick to standard card format
+                $langPairs = [];
+                $mechPairs = [];
+
+                // Use "Essay Feedback" as title instead of "Previous Feedback Summary"
+                // Pass attempt ID (current) so the "View full feedback" link works for this attempt
+                $card = self::render_card($attempt->id, '', $meta, $items, $relevance, $overall, $langPairs, $mechPairs, 'Essay Feedback');
+                $hook->add_html($card);
+                return;
+            }
+        }
+        
         if ($quiz) {
             $qname = (string)$quiz->name;
             // Restrict homework card strictly to Homework quizzes injected into the
@@ -465,7 +515,7 @@ class before_footer_html_generation {
         return $map[$n] ?? ($n . 'th');
     }
 
-    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall, array $langPairs = [], array $mechPairs = []) : string {
+    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall, array $langPairs = [], array $mechPairs = [], $titleOverride = null) : string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
         $sec = '';
         $mkBullets = function($title, $arr, $color, $relevanceText = '') use ($esc) {
@@ -540,7 +590,7 @@ class before_footer_html_generation {
             . '@media print{.qd-prev-summary{page-break-inside:avoid}.qd-prev-summary__body{display:block!important}.qd-prev-summary__toggle{display:none}}'
             . '</style>'
             . '<div class="qd-prev-summary__header" role="button" aria-expanded="false" aria-controls="qd-prev-summary-body">'
-            . '<h3 class="qd-prev-summary__title">Previous Feedback Summary - ' . $esc($ordinal) . ' Submission</h3>'
+            . '<h3 class="qd-prev-summary__title">' . ($titleOverride ? $titleOverride : 'Previous Feedback Summary - ' . $esc($ordinal) . ' Submission') . '</h3>'
             . '<button class="qd-prev-summary__toggle" type="button" aria-label="Toggle summary">▾</button>'
             . '</div>'
             . '<div id="qd-prev-summary-body" class="qd-prev-summary__body" aria-hidden="true">'
@@ -551,7 +601,7 @@ class before_footer_html_generation {
             .   $sec
             .   $overallhtml
             .   '<div class="qd-prev-summary__footer">'
-            .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">View full feedback from ' . $esc($ordinal) . ' Submission</a>'
+            .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">' . ($titleOverride ? 'View full feedback' : 'View full feedback from ' . $esc($ordinal) . ' Submission') . '</a>'
             .   '</div>'
             . '</div>'
             . '<script>(function(){var h=document.querySelector("#qd-prev-summary .qd-prev-summary__header");if(!h)return;var b=document.getElementById("qd-prev-summary-body"),t=h.querySelector(".qd-prev-summary__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
