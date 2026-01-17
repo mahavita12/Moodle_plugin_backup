@@ -27,8 +27,8 @@ class before_footer_html_generation {
         }
         */
 
-        // SECOND: Inject feedback summaries (only on quiz attempt pages)
-        if ($PAGE->pagetype !== 'mod-quiz-attempt') {
+        // SECOND: Inject feedback summaries (only on quiz attempt pages OR review pages)
+        if ($PAGE->pagetype !== 'mod-quiz-attempt' && $PAGE->pagetype !== 'mod-quiz-review') {
             return;
         }
 
@@ -41,6 +41,62 @@ class before_footer_html_generation {
         } else if (isset($_GET['attempt'])) {
             $attemptid = (int)$_GET['attempt'];
         }
+
+        // ISOLATED REVIEW PAGE LOGIC
+        // If this is the review page, render the feedback card for THIS attempt and exit immediately.
+        if ($PAGE->pagetype === 'mod-quiz-review' && $attemptid > 0) {
+            $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
+            if ($attempt) {
+                // Check for grading record
+                $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt->id]);
+                if ($grading && !empty($grading->feedback_html)) {
+                    $html = (string)$grading->feedback_html;
+                    
+                    // Extract data for the card
+                    $meta = [ 'score' => self::extract_final_score($grading, $html), 'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart) ];
+                    $items = [
+                        'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
+                        'Structure and Organization (25%)' => self::extract_improvement_items($html, 'Structure\s+and\s+Organi[sz]ation', 3),
+                        'Language Use (20%)' => self::extract_improvement_items($html, 'Language\s+Use', 3),
+                        'Creativity and Originality (20%)' => self::extract_improvement_items($html, 'Creativity\s+and\s+Originality', 3),
+                        'Mechanics (10%)' => self::extract_mechanics_items($html, 3)
+                    ];
+
+                    // Check for JSON mechanics
+                    if (!empty($grading->feedback_json)) {
+                         $obj = json_decode((string)$grading->feedback_json, true);
+                         if (is_array($obj) && isset($obj['sections']['mechanics']['improvements']) && is_array($obj['sections']['mechanics']['improvements'])) {
+                             $over = [];
+                             foreach ($obj['sections']['mechanics']['improvements'] as $b) {
+                                 $t = trim((string)$b);
+                                 if ($t !== '') { $over[] = $t; }
+                                 if (count($over) >= 3) break;
+                             }
+                             if (!empty($over)) { $items['Mechanics (10%)'] = $over; }
+                         }
+                    }
+
+                    $relevance = self::extract_relevance_from_content($html);
+                    $overall = self::extract_overall_html($html);
+                    
+                    // Dynamic Title: e.g. "Feedback Summary - 1st Submission"
+                    $num = $attempt->attempt;
+                    $ends = ['th','st','nd','rd','th','th','th','th','th','th'];
+                    if ((($num % 100) >= 11) && (($num % 100) <= 13)) { $suffix = 'th'; }
+                    else { $suffix = $ends[$num % 10] ?? 'th'; }
+                    $ordinal = $num . $suffix;
+                    $title = 'Feedback Summary - ' . $ordinal . ' Submission';
+
+                    $card = self::render_card($attempt->id, '', $meta, $items, $relevance, $overall, [], [], $title);
+                    $hook->add_html($card);
+                }
+            }
+            return; // SAFETY EXIT: Ensure no other logic runs for the review page
+        }
+
+        if (isset($_GET['attempt'])) {
+            $attemptid = (int)$_GET['attempt'];
+        }
         if (!$attemptid) { return; }
 
         $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
@@ -48,6 +104,56 @@ class before_footer_html_generation {
 
         // HOMEWORK CARD: allow for teachers/admins too (no owner check required)
         $quiz = $DB->get_record('quiz', ['id' => $attempt->quiz], 'id,name,course', \IGNORE_MISSING);
+        
+        // REVIEW PAGE LOGIC: Show feedback for the current attempt directly
+        if ($PAGE->pagetype === 'mod-quiz-review') {
+            $grading = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt->id]);
+            if ($grading && !empty($grading->feedback_html)) {
+                $html = (string)$grading->feedback_html;
+                
+                // Reuse existing extraction logic
+                $meta = [
+                    'score' => self::extract_final_score($grading, $html),
+                    'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart)
+                ];
+
+                $items = [
+                    'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
+                    'Structure and Organization (25%)' => self::extract_improvement_items($html, 'Structure\s+and\s+Organi[sz]ation', 3),
+                    'Language Use (20%)' => self::extract_improvement_items($html, 'Language\s+Use', 3),
+                    'Creativity and Originality (20%)' => self::extract_improvement_items($html, 'Creativity\s+and\s+Originality', 3),
+                    'Mechanics (10%)' => self::extract_mechanics_items($html, 3)
+                ];
+
+                // Prefer JSON for Mechanics bullets when available
+                if (!empty($grading->feedback_json)) {
+                    $obj = json_decode((string)$grading->feedback_json, true);
+                    if (is_array($obj) && isset($obj['sections']['mechanics']['improvements']) && is_array($obj['sections']['mechanics']['improvements'])) {
+                        $over = [];
+                        foreach ($obj['sections']['mechanics']['improvements'] as $b) {
+                            $t = trim((string)$b);
+                            if ($t !== '') { $over[] = $t; }
+                            if (count($over) >= 3) break;
+                        }
+                        if (!empty($over)) { $items['Mechanics (10%)'] = $over; }
+                    }
+                }
+
+                $relevance = self::extract_relevance_from_content($html);
+                $overall = self::extract_overall_html($html);
+                
+                // For review page, we can show examples if we want, but let's stick to standard card format
+                $langPairs = [];
+                $mechPairs = [];
+
+                // Use "Essay Feedback" as title instead of "Previous Feedback Summary"
+                // Pass attempt ID (current) so the "View full feedback" link works for this attempt
+                $card = self::render_card($attempt->id, '', $meta, $items, $relevance, $overall, $langPairs, $mechPairs, 'Essay Feedback');
+                $hook->add_html($card);
+                return;
+            }
+        }
+        
         if ($quiz) {
             $qname = (string)$quiz->name;
             // Restrict homework card strictly to Homework quizzes injected into the
@@ -465,7 +571,7 @@ class before_footer_html_generation {
         return $map[$n] ?? ($n . 'th');
     }
 
-    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall, array $langPairs = [], array $mechPairs = []) : string {
+    private static function render_card($previd, $ordinal, $meta, $items, $relevance, $overall, array $langPairs = [], array $mechPairs = [], $titleOverride = null) : string {
         $esc = function($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
         $sec = '';
         $mkBullets = function($title, $arr, $color, $relevanceText = '') use ($esc) {
@@ -476,7 +582,7 @@ class before_footer_html_generation {
                 $html .= '<div class="qd-criteria__body"><strong>Relevance to Question:</strong> ' . '<span style="color:#0b69c7;font-weight:700">' . $esc($relevanceText) . '</span>' . '</div>';
             }
             if (!empty($arr)) {
-                $html .= '<div class="qd-criteria__body"><ul>';
+                $html .= '<div class="qd-criteria__body"><ul class="qd-criteria__bullets-fix">';
                 foreach ($arr as $b) { $html .= '<li>' . $esc($b) . '</li>'; }
                 $html .= '</ul></div>';
             }
@@ -520,6 +626,8 @@ class before_footer_html_generation {
 
         $html = '<div id="qd-prev-summary" class="qd-prev-summary" data-prev-attempt="' . (int)$previd . '">'
             . '<style>'
+            . '.qd-criteria__bullets-fix { margin: 6px 0 0 0 !important; padding: 0 0 0 20px !important; list-style-position: inside !important; }'
+            . '.qd-criteria__bullets-fix li { margin: 4px 0 !important; }'
             . '.qd-prev-summary{margin:16px 0 20px;border:1px solid #d0d7de;border-left:4px solid #6f42c1;border-radius:6px;background:#fbfbfe;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}'
             . '.qd-prev-summary__header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;cursor:pointer}'
             . '.qd-prev-summary__title{display:flex;align-items:center;gap:8px;font-weight:600;color:#0b69c7;margin:0;font-size:16px}'
@@ -540,7 +648,7 @@ class before_footer_html_generation {
             . '@media print{.qd-prev-summary{page-break-inside:avoid}.qd-prev-summary__body{display:block!important}.qd-prev-summary__toggle{display:none}}'
             . '</style>'
             . '<div class="qd-prev-summary__header" role="button" aria-expanded="false" aria-controls="qd-prev-summary-body">'
-            . '<h3 class="qd-prev-summary__title">Previous Feedback Summary - ' . $esc($ordinal) . ' Submission</h3>'
+            . '<h3 class="qd-prev-summary__title">' . ($titleOverride ? $titleOverride : 'Previous Feedback Summary - ' . $esc($ordinal) . ' Submission') . '</h3>'
             . '<button class="qd-prev-summary__toggle" type="button" aria-label="Toggle summary">▾</button>'
             . '</div>'
             . '<div id="qd-prev-summary-body" class="qd-prev-summary__body" aria-hidden="true">'
@@ -551,7 +659,7 @@ class before_footer_html_generation {
             .   $sec
             .   $overallhtml
             .   '<div class="qd-prev-summary__footer">'
-            .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">View full feedback from ' . $esc($ordinal) . ' Submission</a>'
+            .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">' . ($titleOverride ? 'View full feedback' : 'View full feedback from ' . $esc($ordinal) . ' Submission') . '</a>'
             .   '</div>'
             . '</div>'
             . '<script>(function(){var h=document.querySelector("#qd-prev-summary .qd-prev-summary__header");if(!h)return;var b=document.getElementById("qd-prev-summary-body"),t=h.querySelector(".qd-prev-summary__toggle");function s(o){b.style.display=o?"block":"none";h.setAttribute("aria-expanded",String(o));b.setAttribute("aria-hidden",String(!o));if(t)t.textContent=o?"▴":"▾";}s(false);h.addEventListener("click",function(e){if(e.target&&(e.target===h||e.target===t||h.contains(e.target))){var x=h.getAttribute("aria-expanded")==="true";s(!x);}});})();</script>'
@@ -745,7 +853,7 @@ class before_footer_html_generation {
         // Build criteria sections (bullets) like resubmission card
         $mkBullets = function($title, $arr, $color) use ($esc) {
             if (empty($arr)) { return ''; }
-            $content = '<ul class="qd-criteria__bullets">';
+            $content = '<ul class="qd-criteria__bullets-fix">';
             foreach ($arr as $b) { $content .= '<li>' . $esc($b) . '</li>'; }
             $content .= '</ul>';
             return '<div class="qd-criteria__item" style="border-left-color:' . $color . ';"><h4 class="qd-criteria__title">' . $esc($title) . '</h4>' . $content . '</div>';
@@ -800,8 +908,8 @@ class before_footer_html_generation {
               . '.qd-criteria{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:8px}'
               . '.qd-criteria__item{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #0b69c7;border-radius:6px;padding:10px 12px}'
               . '.qd-criteria__title{margin:0 0 6px 0;font-weight:700;color:#0b69c7;font-size:14px}'
-              . '.qd-criteria__bullets{margin:6px 0 0 18px;padding:0}'
-              . '.qd-criteria__bullets li{margin:6px 0;line-height:1.35;color:#2f2f2f;font-size:14px}'
+              . '.qd-criteria__bullets-fix{margin:6px 0 0 0 !important;padding:0 !important; list-style-position: inside !important;}'
+              . '.qd-criteria__bullets-fix li{margin:6px 0;line-height:1.35;color:#2f2f2f;font-size:14px}'
               . '.qd-hwex__footer{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px}'
               . '.qd-hwex__link{font-size:13px;font-weight:700;text-decoration:none;display:inline-block;background:#6f42c1;color:#ffffff;padding:8px 16px;border-radius:6px;border:1px solid #5a2da8}'
               . '.qd-hwex__link:hover{filter:brightness(0.95)}'
