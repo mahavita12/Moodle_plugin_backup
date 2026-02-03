@@ -150,6 +150,12 @@ class gemini_helper {
             $prompt .= "        - 'New' 과제 중 코스 이름에 'Selective Trial Test'가 포함된 경우, 40분 풀이 시간을 준수해야 합니다. 35분 미만이라면 너무 빨리 풀었다고 지적하세요.\n";
             $prompt .= "        - 'New' 과제 중 코스 이름에 'OC Trial Test'가 포함된 경우: 과제 이름에 'Math'가 있으면 40분, 'Reading'이나 'Thinking'이 있으면 30분을 준수해야 합니다. 이보다 5분 이상 빨리 끝냈다면 지적하세요.\n";
             
+            $prompt .= "        - **에세이/글쓰기 과제 (Writing/Essay)**:\n";
+            $prompt .= "          - 과목명에 'Writing' 또는 'Essay'가 포함되거나, 시도 횟수가 2회 이상인 경우:\n";
+            $prompt .= "          - **첫 번째 시도와 마지막 시도의 점수를 반드시 비교**하세요.\n";
+            $prompt .= "          - 점수가 크게 향상되었다면(20% 이상), \"에세이가 크게 개선되었습니다! (Great job improving your essay!)\"라고 칭찬하세요.\n";
+            $prompt .= "          - 점수가 같거나 낮다면, \"피드백을 제대로 반영했나요? (Did you apply the feedback?)\"라고 묻고, 더 노력하라고 격려하세요.\n";
+            
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
             
@@ -219,6 +225,12 @@ class gemini_helper {
             $prompt .= "     - If the score is very low (e.g., < 30%), express SERIOUS CONCERN (treat as 'Not Done'). Tell them they need to put in significantly more effort.\n";
             $prompt .= "     - For 'New' activities, if the Course Name includes 'Selective Trial Test', the expected duration is 40 minutes. If completed in less than 35 minutes, warn them that they rushed.\n";
             $prompt .= "     - If Course Name includes 'OC Trial Test': For 'Math', expected is 40 mins. For 'Reading'/'Thinking', expected is 30 mins. Warn if completed > 5 mins too fast.\n";
+            $prompt .= "     - **Writing or Essay Activities**:\n";
+            $prompt .= "       - If 'Writing' or 'Essay' is in the title, or if there are 2+ attempts:\n";
+            $prompt .= "       - **COMPARE the score of the latest attempt against the first attempt**.\n";
+            $prompt .= "       - If Score Improved significantly (>20%): Praise the improvement (e.g., 'Great job improving your essay!').\n";
+            $prompt .= "       - If Score is same/lower: Ask if they applied the feedback and encourage effort.\n";
+
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
             $prompt .= "- Length: Concise (~200 words).\n\n";
         }
