@@ -455,7 +455,26 @@ if ($tab === 'leaderboard') {
     
     // Get leaderboard data WITHOUT course filter to preserve grouping/aggregation
     // Course filter will be applied post-fetch to just filter which rows to display
-    $rows = $manager->get_leaderboard_data($categoryid, [], $excludestaff, $leaderboard_userids);
+    // FIX: Pass req_course_id as 5th arg to enable Term Point calculation context
+    $req_course_id = !empty($courseids) ? (int)reset($courseids) : 0;
+
+    // Fetch Restart Date for display
+    $restart_date_display = 'From Restart Date';
+    if ($req_course_id > 0) {
+        $handler = \core_customfield\handler::get_handler('core_course', 'course');
+        $course_custom_data = $handler->get_instance_data($req_course_id);
+        foreach ($course_custom_data as $d) {
+            if ($d->get_field()->get('shortname') === 'homework_leaderboard_restart_date') {
+                $ts = (int)$d->get_value();
+                if ($ts > 0) {
+                    $restart_date_display = 'Since ' . userdate($ts, '%d %b %Y');
+                }
+                break;
+            }
+        }
+    }
+
+    $rows = $manager->get_leaderboard_data($categoryid, [], $excludestaff, $leaderboard_userids, $req_course_id);
     
     // Filter by course if specified (post-fetch to preserve aggregation)
     $courseids_filtered = array_filter($courseids, function($id) { return $id > 0; });
@@ -582,7 +601,9 @@ if ($tab === 'leaderboard') {
                     <!-- Course Filter (Single Select for Leaderboard) -->
                     <div class="filter-group">
                         <label for="lb_courseid"><?php echo get_string('col_course', 'local_homeworkdashboard'); ?></label>
-                        <?php $selected_courseid = !empty($courseids) ? reset($courseids) : 0; ?>
+                        <?php $selected_courseid = !empty($courseids) ? reset($courseids) : 0; 
+                              // Pass this to get_leaderboard_data below to enable Term Context
+                        ?>
                         <select name="courseid" id="lb_courseid">
                             <option value="0"><?php echo get_string('allcourses', 'local_homeworkdashboard'); ?></option>
                             <?php foreach ($courses as $c): ?>
@@ -626,6 +647,23 @@ if ($tab === 'leaderboard') {
     }
 ?>
             <!-- Course/Category Level Charts (2x2) -->
+            <!-- Course Level Charts (3 items) -->
+            <!-- ROW 1: Term Leaderboard (Main Chart) -->
+             <div class="row">
+                <!-- Course Level: Term Leaderboard (Main) -->
+                <div class="col-md-12 mb-3">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <strong><?php echo $chart_title_prefix; ?>: Term Leaderboard (<?php echo $restart_date_display; ?>)</strong>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="courseTermChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ROW 2: All Time & Student Points (Side by Side) -->
             <div class="row">
                 <!-- Course Level: All Time & Class Level (FIRST) -->
                 <div class="col-md-6 mb-3">
@@ -1211,7 +1249,9 @@ var leaderboardChartData = {
                 'all_time' => round(($row->points_all ?? 0) / 10, 1),
                 'class_level' => max(1, ceil(($row->points_all / 10) / 100)),
                 'max_live' => round(($row->max_live ?? 0) / 10, 1),
-                'max_all' => round(($row->max_all ?? 0) / 10, 1)
+                'max_all' => round(($row->max_all ?? 0) / 10, 1),
+                'term' => round(($row->points_term ?? 0) / 10, 1),
+                'max_term' => round(($row->max_term ?? 0) / 10, 1)  // Max Term Points for Goal Dots
             ];
         }
         // Sort by live points desc and take top 10
@@ -1485,6 +1525,138 @@ function renderCharts() {
         return levelColors[level] || levelColors[0];
     }
     
+    // 0. NEW Term Leaderboard (From Restart Date)
+    var courseTermCtx = document.getElementById('courseTermChart');
+    // FIX: Use courseStudentPoints instead of data
+    if (courseTermCtx && leaderboardChartData.courseStudentPoints && leaderboardChartData.courseStudentPoints.length > 0) {
+        // Sort by term points descending so the Term leader gets the gold bar
+        var termData = leaderboardChartData.courseStudentPoints.slice().sort(function(a, b) {
+            return (b.term || 0) - (a.term || 0);
+        });
+        new Chart(courseTermCtx, {
+            type: 'bar',
+            data: {
+                labels: termData.map(function(s) { return s.name; }),
+                datasets: [{
+                    label: 'Term Points',
+                    data: termData.map(function(s) { return s.term; }),
+                    backgroundColor: function(context) {
+                        if (context.dataIndex === 0) {
+                            var chart = context.chart;
+                            var ctx = chart.ctx;
+                            var gradient = ctx.createLinearGradient(0, 0, chart.width, 0);
+                            gradient.addColorStop(0, '#FFD700');
+                            gradient.addColorStop(0.5, '#FFA500');
+                            gradient.addColorStop(1, '#FF6B00');
+                            return gradient;
+                        }
+                        return '#007bff'; // Blue for others
+                    },
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { right: 60 }
+                },
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false }
+                },
+                scales: {
+                    x: { 
+                        beginAtZero: true,
+                        suggestedMax: Math.max.apply(null, termData.map(function(s) { return s.max_term || s.term; })) * 1.1
+                    }
+                }
+            },
+            plugins: [{
+                id: 'termLevelBadges',
+                afterDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var yAxis = chart.scales.y;
+                    var xAxis = chart.scales.x;
+                    var barMeta = chart.getDatasetMeta(0);
+
+                    // Robust loop: iterate over the bar elements
+                    barMeta.data.forEach(function(bar, index) {
+                        var item = termData[index];
+                        if (!item) return;
+
+                        var barEnd = bar.x;
+                        var y = bar.y;
+
+                        // Draw Level Badge (Rectangle + Text)
+                        // Uses item.class_level (from PHP) - fallback to item.level if needed
+                        var level = item.class_level || item.level || 0;
+                        if (level > 0) {
+                            ctx.save();
+                            ctx.font = '10px Arial';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'middle';
+                            
+                            var badgeText = 'Lvl ' + level;
+                            var textWidth = ctx.measureText(badgeText).width;
+                            var badgeX = barEnd + 5;
+                            var badgeY = y;
+                            var padding = 6;
+
+                            // Use getLevelColor helper if available, otherwise default
+                            ctx.fillStyle = typeof getLevelColor === 'function' ? getLevelColor(level) : '#6c757d';
+                            
+                            ctx.beginPath();
+                            if (typeof ctx.roundRect === 'function') {
+                                ctx.roundRect(badgeX, badgeY - 10, textWidth + padding * 2, 20, 4);
+                            } else {
+                                ctx.rect(badgeX, badgeY - 10, textWidth + padding * 2, 20);
+                            }
+                            ctx.fill();
+
+                            ctx.fillStyle = '#fff';
+                            ctx.fillText(badgeText, badgeX + padding, badgeY);
+                            ctx.restore();
+
+                            // Medal badges: Gold for 1st, Silver for 2nd
+                            if (index === 0) {
+                                ctx.save();
+                                ctx.font = '14px Arial';
+                                ctx.textAlign = 'left';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText('🥇', badgeX + textWidth + padding * 2 + 5, y);
+                                ctx.restore();
+                            } else if (index === 1) {
+                                ctx.save();
+                                ctx.font = '14px Arial';
+                                ctx.textAlign = 'left';
+                                ctx.textBaseline = 'middle';
+                                ctx.fillText('🥈', badgeX + textWidth + padding * 2 + 5, y);
+                                ctx.restore();
+                            }
+                        }
+
+                        // Draw Red Goal Dot (Max Term Points)
+                        if (item.max_term > 0) {
+                            ctx.save();
+                            var goalX = xAxis.getPixelForValue(item.max_term);
+                            
+                            ctx.beginPath();
+                            ctx.arc(goalX, y, 6, 0, 2 * Math.PI);
+                            ctx.fillStyle = '#dc3545';
+                            ctx.fill();
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 2;
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    });
+                }
+            }]
+        });
+    }
+
     // 1. Course Level: Student Points (Live, 2wk, 4wk) - Horizontal Bar with Goal Dots
     var courseStudentCtx = document.getElementById('courseStudentPointsChart');
     if (courseStudentCtx && leaderboardChartData.goalChartData && leaderboardChartData.goalChartData.length > 0) {
@@ -1518,6 +1690,9 @@ function renderCharts() {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: { right: 60 }
+                },
                 plugins: {
                     legend: { position: 'top' }
                 },
@@ -1605,6 +1780,9 @@ function renderCharts() {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: { right: 60 }
+                },
                 plugins: {
                     legend: { display: false }
                 },
@@ -1726,6 +1904,9 @@ function renderCharts() {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: { right: 60 }
+                },
                 plugins: {
                     legend: { position: 'top' }
                 },
@@ -1809,6 +1990,9 @@ function renderCharts() {
                 indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: { right: 60 }
+                },
                 plugins: {
                     legend: { display: false }
                 },

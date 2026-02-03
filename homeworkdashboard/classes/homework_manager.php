@@ -1970,10 +1970,24 @@ class homework_manager {
      * @param int $categoryid Filter by course category (0 for all).
      * @param array $courseids Filter by specific course IDs ([0] for all).
      * @param bool $excludestaff Whether to exclude users with 'staff' in their email.
+     * @param int $term_courseid Optional. If set, 'points_term' will effectively filter for this specific course ID.
      * @return array List of objects with user details, badges, and point columns.
      */
-    public function get_leaderboard_data(int $categoryid, array $courseids, bool $excludestaff, array $userids = []): array {
+    public function get_leaderboard_data(int $categoryid, array $courseids, bool $excludestaff, array $userids = [], int $term_courseid = 0): array {
         global $DB;
+
+        // Fetch Restart Date for Term Leaderboard
+        $restart_date = 0;
+        if ($term_courseid > 0) {
+            $handler = \core_customfield\handler::get_handler('core_course', 'course');
+            $data = $handler->get_instance_data($term_courseid);
+            foreach ($data as $d) {
+                if ($d->get_field()->get('shortname') === 'homework_leaderboard_restart_date') {
+                    $restart_date = (int)$d->get_value();
+                    break;
+                }
+            }
+        }
 
         $now = time();
         $personal_review_category_name = 'Personal Review Courses';
@@ -2235,6 +2249,7 @@ class homework_manager {
                     'anchor_coursename' => $anchor_coursename,
                     'latest_due_date' => $past_anchor_date, // Initialize with Past Anchor
                     'live_due_date' => 0,
+                    'points_term' => 0, 'max_term' => 0,
                     'points_live' => 0,
                     'points_2w' => 0,
                     'points_4w' => 0,
@@ -2376,6 +2391,12 @@ class homework_manager {
                     $row->live_due_date = $live_timeclose;
                 }
                 
+                // Term Leaderboard: Strict Course ID Match + Date
+                if ($term_courseid > 0 && $cid == $term_courseid && $live_timeclose >= $restart_date) {
+                    $row->points_term += $pts;
+                    $row->max_term += $quizgrade;
+                }
+
                 $row->points_live += $pts;
                 $row->points_2w += $pts;
                 $row->points_4w += $pts;
@@ -2714,6 +2735,11 @@ class homework_manager {
             $row->points_all += $pts;
             $row->max_all += $max_grade;
             
+            // TERM Calculation: Strict Filter
+            if ($term_courseid > 0 && $cid == $term_courseid && $due_date >= $restart_date) {
+                $row->points_term += $pts;
+                $row->max_term += $max_grade;
+            }
             if (!isset($row->courses[$cid])) {
                 $row->courses[$cid] = ['name' => $r->coursename, 'categoryname' => $r->categoryname ?? ''];
             }
