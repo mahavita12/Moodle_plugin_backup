@@ -243,6 +243,9 @@ if (!empty($ai_commentary)) {
     $ai_commentary = str_replace(['복습활동', '복습 활동'], '복습과제', $ai_commentary);
     $ai_commentary = str_ireplace('Stern Warning', 'Warning', $ai_commentary);
     $ai_commentary = str_ireplace('Warning', '<span style="color: red; font-weight: bold;">Warning</span>', $ai_commentary);
+    // Fix bullet indentation - add inline styles to ul/li elements
+    $ai_commentary = str_replace('<ul>', '<ul style="margin-left: 20px; padding-left: 15px;">', $ai_commentary);
+    $ai_commentary = str_replace('<li>', '<li style="margin-bottom: 8px;">', $ai_commentary);
 }
 error_log('GEMINI_DEBUG: Generation complete. Result length: ' . strlen($ai_commentary ?? ''));
 // --- GEMINI AI INTEGRATION END ---
@@ -285,7 +288,8 @@ $html .= '</div>';
 $html .= '
 <div class="homework-report-container" style="' . $style_container . '">
     <div class="report-header" style="' . $style_header . '">
-        <h2 style="' . $style_h2 . '">Progress Report - ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h2>
+        <h2 style="' . $style_h2 . '">Progress Report - ' . s($classroom) . '</h2>
+        <div class="report-subtitle" style="' . $style_subtitle . '">' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</div>
         <div class="report-subtitle" style="' . $style_subtitle . '">GrowMinds Academy</div>
     </div>
 
@@ -296,9 +300,9 @@ $html .= '
     </div>
 
     <!-- AI Commentary Section -->
-    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
-        <h4 style="margin-top: 0; color: #0056b3;">GrowMinds Academy Summary</h4>
-        <div style="font-family: \'Segoe UI\', Roboto, Arial, sans-serif; color: #333; line-height: 1.6;">
+    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #0056b3; margin-bottom: 15px;">GrowMinds Academy Summary</h4>
+        <div style="font-family: \'Segoe UI\', Roboto, Arial, sans-serif; color: #333; line-height: 1.6; padding-left: 10px;">
             ' . $ai_commentary . '
         </div>
     </div>
