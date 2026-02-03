@@ -169,6 +169,40 @@ foreach ($rows as $r) {
         // Get question count for AI analysis
         $question_count = $DB->count_records('quiz_slots', ['quizid' => $r->quizid]);
 
+        // --- NEW: Fetch Revision Stats for THIS WEEK ONLY (7-Day Window) ---
+        // Window: [Due - 597600s, Due] (7 days - 2 hours)
+        $window_start = $timeclose - 597600;
+        
+        // 1. Count Flags & Notes
+        $stats_sql = "SELECT COUNT(id) AS flag_count,
+                             COUNT(CASE WHEN points_earned > 0 THEN 1 END) AS note_count
+                      FROM {local_questionflags}
+                      WHERE userid = :uid AND quizid = :qid 
+                        AND timemodified BETWEEN :start AND :end";
+        
+        $stats = $DB->get_record_sql($stats_sql, [
+            'uid' => $userid, 
+            'qid' => $r->quizid, 
+            'start' => $window_start, 
+            'end' => $timeclose
+        ]);
+        
+        // 2. Fetch Sample Notes (for AI Quality Analysis)
+        $notes_sql = "SELECT commenttext
+                      FROM {local_questionflags}
+                      WHERE userid = :uid AND quizid = :qid 
+                        AND timemodified BETWEEN :start AND :end
+                        AND commenttext IS NOT NULL AND " . $DB->sql_length('commenttext') . " > 5
+                      ORDER BY timemodified DESC";
+        $samples_raw = $DB->get_records_sql($notes_sql, [
+            'uid' => $userid, 
+            'qid' => $r->quizid, 
+            'start' => $window_start, 
+            'end' => $timeclose
+        ], 0, 8); // Limit to 8 samples
+        
+        $sample_notes = array_map(function($s) { return $s->commenttext; }, $samples_raw);
+
         // Pass status directly (it is already 'Completed', 'Low grade', or 'No attempt')
         $status_label = $r->status ?? 'No attempt';
 
@@ -178,7 +212,11 @@ foreach ($rows as $r) {
             'maxscore' => $r->maxscore,
             'question_count' => $question_count,
             'attempts' => $attempts_clean,
-            'status' => $status_label
+            'status' => $status_label,
+            // New Hydrated Stats
+            'stats_flags' => (int)($stats->flag_count ?? 0),
+            'stats_notes' => (int)($stats->note_count ?? 0),
+            'sample_notes' => $sample_notes
         ];
 
         if (strtolower($r->classification ?? '') === 'new') {

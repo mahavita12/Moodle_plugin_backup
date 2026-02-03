@@ -2488,8 +2488,10 @@ class homework_manager {
             JOIN {course_categories} cc ON cc.id = c.category
             LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
             LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
-            WHERE lqf.timemodified BETWEEN :start AND :end
-              AND lqf.points_earned > 0
+            WHERE 
+                lqf.points_earned > 0
+                AND q.timeclose BETWEEN :start AND :end
+                AND lqf.timemodified BETWEEN (q.timeclose - 597600) AND q.timeclose
               $course_filter_sql
             GROUP BY lqf.userid, q.id, q.name, c.id, c.fullname, cc.id, cc.name, pq.sourcecategory, sc.id, sc.category, sc.fullname
         ";
@@ -2906,17 +2908,7 @@ class homework_manager {
         
         [$start, $end] = $this->get_latest_sunday_week(); 
         
-        // SNAPSHOT BACKFILL: Also check Previous Week to catch any "Orphaned" Sunday notes
-        // that might have been missed if cron didn't run.
-        // We do this by expanding the search start back 7 days.
-        // The Dedupler (in get_leaderboard_data) handles the SUM logic correctly if they are different weeks.
-        
-        $backfill_start = $start - (7 * 24 * 60 * 60); // Look back 1 extra week
-        
-        // Override End to NOW to capture live activity immediately
-        $search_end = time();
-        
-        mtrace("Snapshotting revisions for extended window: " . userdate($backfill_start) . " to " . userdate($search_end));
+        mtrace("Snapshotting revisions for Active Week: " . userdate($start) . " to " . userdate($end));
 
         // 2. Fetch all valid revision points for that week
         // Granularity: User + Quiz
@@ -2942,8 +2934,10 @@ class homework_manager {
             LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             JOIN {course_modules} cm ON cm.instance = q.id
             JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
-            WHERE lqf.timemodified BETWEEN :start AND :end
-              AND lqf.points_earned > 0
+            WHERE 
+                lqf.points_earned > 0
+                AND q.timeclose BETWEEN :start AND :end
+                AND lqf.timemodified BETWEEN (q.timeclose - 597600) AND q.timeclose
             GROUP BY lqf.userid, q.id, q.course, cm.id, q.grade
         ";
 

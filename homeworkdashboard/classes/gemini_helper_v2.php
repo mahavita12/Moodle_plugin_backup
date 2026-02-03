@@ -87,27 +87,36 @@ class gemini_helper {
 
         $total_revision = count($revision_activities);
         $completed_revision = 0;
+        $rev_stats = ['total_qs' => 0, 'flags' => 0, 'notes' => 0];
+
         foreach ($revision_activities as $act) {
-            // Use status from table logic if available
-            if (isset($act['status'])) {
-                if ($act['status'] === 'Completed' || $act['status'] === 'Low grade') {
-                    $completed_revision++;
-                }
-            } else {
-                // Fallback to attempt check (legacy)
-                if (!empty($act['attempts'])) {
-                    $completed_revision++;
-                }
+            // Logic for completion
+            if ((isset($act['status']) && ($act['status'] === 'Completed' || $act['status'] === 'Low grade')) || 
+                (empty($act['status']) && !empty($act['attempts']))) {
+                $completed_revision++;
             }
+             
+            // Agreggate Stats
+            $rev_stats['total_qs'] += ($act['question_count'] ?? 0);
+            $rev_stats['flags'] += ($act['stats_flags'] ?? 0);
+            $rev_stats['notes'] += ($act['stats_notes'] ?? 0);
         }
 
-        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang);
+        // Calculate New Stats
+        $new_stats = ['total_qs' => 0, 'flags' => 0, 'notes' => 0];
+        foreach ($new_activities as $act) {
+            $new_stats['total_qs'] += ($act['question_count'] ?? 0);
+            $new_stats['flags'] += ($act['stats_flags'] ?? 0);
+            $new_stats['notes'] += ($act['stats_notes'] ?? 0);
+        }
+
+        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats);
         error_log('GEMINI_DEBUG: Prompt constructed. Length: ' . strlen($prompt));
 
         return $this->call_api($prompt);
     }
 
-    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang): string {
+    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang, array $new_stats = [], array $rev_stats = []): string {
 
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
@@ -138,7 +147,7 @@ class gemini_helper {
             $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
             $prompt .= "        - 특히 복습 과제에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
             $prompt .= "        - 만약 학생의 점수가 낮다면 (예: 30% 미만), 단순히 격려만 하지 말고 따끔하게 지적해주세요. 내용 이해가 부족해 보이니 다시 복습하라고 강력하게 권고해야 합니다.\n";
-            $prompt .= "        - 'New' 과제 중 코스 이름에 'Selective Trial Test'가 포함된 경우, 45분 풀이 시간을 준수해야 합니다. 40분 미만이라면 너무 빨리 풀었다고 지적하세요.\n";
+            $prompt .= "        - 'New' 과제 중 코스 이름에 'Selective Trial Test'가 포함된 경우, 40분 풀이 시간을 준수해야 합니다. 35분 미만이라면 너무 빨리 풀었다고 지적하세요.\n";
             $prompt .= "        - 'New' 과제 중 코스 이름에 'OC Trial Test'가 포함된 경우: 과제 이름에 'Math'가 있으면 40분, 'Reading'이나 'Thinking'이 있으면 30분을 준수해야 합니다. 이보다 5분 이상 빨리 끝냈다면 지적하세요.\n";
             
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
@@ -177,11 +186,38 @@ class gemini_helper {
             $prompt .= "   - **Duration & Integrity Analysis**:\n";
             $prompt .= "     - Minimum expected time is approx 1 minute per question.\n";
             $prompt .= "     - If duration < (Question Count * 1 min), explicitly mention it was 'Rushed' or 'Skipped'.\n";
-            $prompt .= "     - **Revision Integrity Check**: For Revision activities, if Score is High (> 80%) BUT Duration is significantly low (e.g. < 5 mins for 10 questions), issue a **STERN WARNING**. This suggests copying answers without genuine effort.\n";
+            $prompt .= "     - **Revision Integrity Check**: 복습 과제의 점수가 높은데(80% 이상), 시간이 너무 짧다면(예: 10문제에 5분 미만) **엄중히 경고**하세요. 답을 베낀 것으로 의심됩니다.\n";
+            $prompt .= "     - **Revision Quality Analysis (복습 퀄리티 분석)**:\n";
+            $prompt .= "       - Flag(표시한 문제) 수와 Note(노트) 수를 비교하세요. Flag가 Note보다 훨씬 많다면 경고하세요. ('문제는 많이 체크했는데 노트가 부족합니다.')\n";
+            $prompt .= "       - 제공된 'Sample Revision Notes' 내용을 분석하세요.\n";
+            $prompt .= "       - **비판 기준 (CRITICISM)**: 노트가 영어로 작성되며, 'I don't know', 'Hard', '???' 처럼 성의가 없으면 **따끔하게 지적**하세요. 왜 몰랐는지 설명하라고 하세요.\n";
+            $prompt .= "       - **수용 기준 (ACCEPT)**: 'mistake', 'typo', 'silly error' 등 단순 실수는 비판하지 말고 넘어가세요.\n";
+            $prompt .= "       - **칭찬 기준 (PRAISE)**: 노트가 구체적이고 배운 점이 적혀있으면 칭찬하세요.\n";
+            $prompt .= "     - **필수 포함 문장 (Mandatory Summaries)**: 각 섹션 시작 부분에 아래 문장을 통계에 맞춰 정확히 포함하세요:\n";
+            if (!empty($new_stats) && $new_stats['total_qs'] > 0) {
+                 $prompt .= "       - \"이번 주 새로운 과제에서 {$student_name} 학생은 총 {$new_stats['total_qs']} 문제를 풀었으며, {$new_stats['flags']} 개의 플래그를 표시하고 {$new_stats['notes']} 개의 오답 노트를 작성했습니다.\"\n";
+            }
+            if (!empty($rev_stats) && $rev_stats['total_qs'] > 0) {
+                 $prompt .= "       - \"복습(Revision) 과제에서는 총 {$rev_stats['total_qs']} 문제를 복습했고, {$rev_stats['flags']} 개의 문제를 체크했으며, {$rev_stats['notes']} 개의 노트를 남겼습니다.\"\n";
+            }
+            $prompt .= "     - **Revision Quality Analysis**:\n";
+            $prompt .= "       - Compare Flags vs Notes. If Flags > Notes, warn them: 'You flagged X questions but only wrote Y notes.'\n";
+            $prompt .= "       - Analyze the 'Sample Revision Notes' provided in the data.\n";
+            $prompt .= "       - **CRITICISM CRITERIA**: \n";
+            $prompt .= "         - If notes are dismissive (e.g., 'I don't know', 'Hard', '???') -> CRITICIZE firmly. Ask them to explain *why* they didn't know.\n";
+            $prompt .= "         - If notes are simple errors (e.g., 'typo', 'silly mistake') -> ACCEPT them (do not criticize).\n";
+            $prompt .= "         - If notes are detailed/reflective -> PRAISE them.\n";
+            $prompt .= "     - **MANDATORY SUMMARIES**: Include these EXACT sentences at the start of your relevant sections:\n";
+            if (!empty($new_stats) && $new_stats['total_qs'] > 0) {
+                 $prompt .= "       - \"From this week's NEW homework activities, {$student_name} attempted {$new_stats['total_qs']} questions. There were {$new_stats['flags']} flags raised and {$new_stats['notes']} revision notes added.\"\n";
+            }
+            if (!empty($rev_stats) && $rev_stats['total_qs'] > 0) {
+                 $prompt .= "       - \"In their REVISION work, {$student_name} reviewed {$rev_stats['total_qs']} questions, flagged {$rev_stats['flags']} issues, and wrote {$rev_stats['notes']} notes.\"\n";
+            }
             $prompt .= "     - Do NOT praise long durations (e.g. > 30 mins) as it may indicate inactivity.\n";
             $prompt .= "     - If a student's score is low (e.g., < 50%), identify it as 'Needs Improvement' or 'Retry'. Encourage them to retake it to improve their understanding.\n";
             $prompt .= "     - If the score is very low (e.g., < 30%), express SERIOUS CONCERN (treat as 'Not Done'). Tell them they need to put in significantly more effort.\n";
-            $prompt .= "     - For 'New' activities, if the Course Name includes 'Selective Trial Test', the expected duration is 45 minutes. If completed in less than 40 minutes, warn them that they rushed.\n";
+            $prompt .= "     - For 'New' activities, if the Course Name includes 'Selective Trial Test', the expected duration is 40 minutes. If completed in less than 35 minutes, warn them that they rushed.\n";
             $prompt .= "     - If Course Name includes 'OC Trial Test': For 'Math', expected is 40 mins. For 'Reading'/'Thinking', expected is 30 mins. Warn if completed > 5 mins too fast.\n";
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
             $prompt .= "- Length: Concise (~200 words).\n\n";
@@ -197,7 +233,16 @@ class gemini_helper {
                 $q_count = $act['question_count'] ?? 'Unknown';
                 $status_str = $act['status'] ?? 'Unknown';
                 $course_str = $act['coursename'] ?? 'Unknown';
+                $flags = $act['stats_flags'] ?? 0;
+                $notes = $act['stats_notes'] ?? 0;
                 $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
+                $prompt .= "  Stats: Flags={$flags}, Notes={$notes}\n";
+                if (!empty($act['sample_notes'])) {
+                    $prompt .= "  Sample Revision Notes:\n";
+                    foreach ($act['sample_notes'] as $sn) {
+                        $prompt .= "    - \"$sn\"\n";
+                    }
+                }
                 if (empty($act['attempts'])) {
                     $prompt .= "  - No attempts made.\n";
                 } else {
@@ -219,29 +264,26 @@ class gemini_helper {
         } else {
             foreach ($revision_activities as $act) {
                 $q_count = $act['question_count'] ?? 'Unknown';
-                $status_str = $act['status'] ?? 'Unknown';
                 $course_str = $act['coursename'] ?? 'Unknown';
-                $classification = $act['classification'] ?? 'Unknown';
+                $flags = $act['stats_flags'] ?? 0;
+                $notes = $act['stats_notes'] ?? 0;
 
-                if ($classification === 'Revision Note' || $classification === 'Active Revision') { // Handle both legacy and new
-                     // Handle Active Revision (Notes)
-                     $prompt .= "- Activity: Revision Note [{$act['name']}] (Course: {$course_str})\n";
-                     $prompt .= "  - Status: {$status_str} (Active Notes added this week)\n";
-                     $prompt .= "  - Points Earned: {$act['score_display']} (Total notes validated)\n";
-                } else {
-                    // Standard Quiz Revision with attempts
-                    $prompt .= "- Activity: {$act['name']} (Course: {$course_str}, Status: {$status_str}, Max Score: {$act['maxscore']}, Questions: {$q_count})\n";
-                    if (empty($act['attempts'])) {
-                        $prompt .= "  - No attempts made.\n";
-                    } else {
-                        foreach ($act['attempts'] as $att) {
-                            $duration_min = round($att['duration'] / 60, 1);
-                            $prompt .= "  - Attempt {$att['attempt']}: Score {$att['score']}, Duration {$duration_min} mins ({$att['duration']} sec).";
-                            if ($att['duration'] < 180) {
-                                $prompt .= " [RUSHED/SKIPPED]";
-                            }
-                            $prompt .= "\n";
-                        }
+                // Unified Format for AI
+                $prompt .= "- Revision: {$act['name']} (Course: {$course_str}, Questions: {$q_count})\n";
+                $prompt .= "  Stats: Flags={$flags}, Notes={$notes}\n";
+
+                if (!empty($act['sample_notes'])) {
+                    $prompt .= "  Sample Revision Notes:\n";
+                    foreach ($act['sample_notes'] as $sn) {
+                        $prompt .= "    - \"$sn\"\n";
+                    }
+                }
+                
+                // Also show attempts if any (for context)
+                if (!empty($act['attempts'])) {
+                     foreach ($act['attempts'] as $att) {
+                        $duration_min = round($att['duration'] / 60, 1);
+                        $prompt .= "  - Attempt {$att['attempt']}: Score {$att['score']}, Duration {$duration_min} mins.\n";
                     }
                 }
             }
