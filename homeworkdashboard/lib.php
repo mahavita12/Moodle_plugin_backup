@@ -130,10 +130,10 @@ function local_homeworkdashboard_before_standard_html_head() {
                 // Build chart HTML - stacked layout with All Time on top
                 var html = '<div id=\"homework-charts-container\" style=\"margin-bottom: 20px;\">';
                 
-                // Chart 1: Intellect Points & Class Level (TOP)
+                // Chart 1: Term Leaderboard (TOP)
                 html += '<div class=\"mb-3\">';
-                html += '<div class=\"card\"><div class=\"card-header bg-primary text-white\"><strong>' + coursename + '</strong></div>';
-                html += '<div class=\"card-body\" style=\"height: 300px; padding: 10px;\"><canvas id=\"chart-alltime-' + uid + '\"></canvas></div></div></div>';
+                html += '<div class=\"card\"><div class=\"card-header bg-primary text-white\"><strong>' + coursename + ': Term Leaderboard (' + (data.restart_date_display || 'From Restart') + ')</strong></div>';
+                html += '<div class=\"card-body\" style=\"height: 300px; padding: 10px;\"><canvas id=\"chart-term-' + uid + '\"></canvas></div></div></div>';
                 
                 // Chart 2: Intellect Points (Live / 2wk / 4wk) (BOTTOM)
                 html += '<div class=\"mb-3\">';
@@ -157,6 +157,13 @@ function local_homeworkdashboard_before_standard_html_head() {
                 var goalAllData = chartData.map(function(d) { return d.goal_all; });
                 var levelData = chartData.map(function(d) { return d.level; });
                 
+                // Term chart data - sorted by term points descending
+                var termChartData = chartData.slice().sort(function(a, b) { return (b.term || 0) - (a.term || 0); });
+                var termLabels = termChartData.map(function(d) { return d.name; });
+                var termData = termChartData.map(function(d) { return d.term || 0; });
+                var goalTermData = termChartData.map(function(d) { return d.goal_term || 0; });
+                // Level is accessed from termChartData directly (levels are based on all-time, not term)
+                
                 // Chart 1
                 var ctx1 = document.getElementById('chart-points-' + uid);
                 if (ctx1) {
@@ -174,7 +181,7 @@ function local_homeworkdashboard_before_standard_html_head() {
                             indexAxis: 'y',
                             responsive: true,
                             maintainAspectRatio: false,
-                            layout: { padding: { right: 60 } },
+                            layout: { padding: { right: 80 } },
                             scales: { x: { beginAtZero: true, title: { display: false } }, y: { ticks: { font: { size: 11 } } } },
                             plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } }
                         },
@@ -182,16 +189,16 @@ function local_homeworkdashboard_before_standard_html_head() {
                     });
                 }
                 
-                // Chart 2
-                var ctx2 = document.getElementById('chart-alltime-' + uid);
+                // Chart 2 - Term Leaderboard (uses term data sorted by term)
+                var ctx2 = document.getElementById('chart-term-' + uid);
                 if (ctx2) {
                     new Chart(ctx2, {
                         type: 'bar',
                         data: {
-                            labels: labels,
+                            labels: termLabels,
                             datasets: [{ 
-                                label: 'All Time Points', 
-                                data: alltimeData, 
+                                label: 'Term Points', 
+                                data: termData, 
                                 backgroundColor: function(context) {
                                     if (context.dataIndex === 0) {
                                         var chart = context.chart;
@@ -211,7 +218,7 @@ function local_homeworkdashboard_before_standard_html_head() {
                             indexAxis: 'y',
                             responsive: true,
                             maintainAspectRatio: false,
-                            layout: { padding: { right: 60 } },
+                            layout: { padding: { right: 80 } },
                             scales: { x: { beginAtZero: true, title: { display: false } }, y: { ticks: { font: { size: 11 } } } },
                             plugins: { legend: { display: false } }
                         },
@@ -223,7 +230,9 @@ function local_homeworkdashboard_before_standard_html_head() {
                                 var yAxis = chart.scales.y;
                                 var meta = chart.getDatasetMeta(0);
                                 meta.data.forEach(function(bar, index) {
-                                    var level = levelData[index];
+                                    // Level from sorted term data (still based on all-time)
+                                    var level = termChartData[index] ? termChartData[index].level : 1;
+                                    var goalVal = goalTermData[index];
                                     var x = bar.x + 10;
                                     var y = bar.y;
                                     
@@ -335,7 +344,7 @@ function local_homeworkdashboard_render_mycourses_charts(): string {
                 var chartCard = document.createElement('li');
                 chartCard.className = 'mycourses-chart-card list-group-item border-0 p-0';
                 chartCard.innerHTML = '<div class=\"card mb-3\" style=\"border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);\">' +
-                                      '<div class=\"card-header text-white\" style=\"background:linear-gradient(135deg,#0d6efd 0%,#0a58ca 100%);padding:10px 15px;font-weight:bold;font-size:13px;\">' + courseName + '</div>' +
+                                      '<div class=\"card-header text-white\" style=\"background:linear-gradient(135deg,#0d6efd 0%,#0a58ca 100%);padding:10px 15px;font-weight:bold;font-size:13px;\">' + courseName + ': Term Leaderboard</div>' +
                                       '<div class=\"card-body\" style=\"height:180px;padding:15px;background:#fff;\"><div style=\"text-align:center;padding-top:60px;\"><small>Loading...</small></div></div></div>';
                 
                 item.parentNode.insertBefore(chartCard, item.nextSibling);
@@ -349,10 +358,17 @@ function local_homeworkdashboard_render_mycourses_charts(): string {
                         }
                         
                         var uid = 'mc-' + courseId;
-                        var chartData = data.data.slice(0, 5);
-                        var labels = chartData.map(function(d) { return d.name; });
-                        var values = chartData.map(function(d) { return d.alltime; });
-                        var levels = chartData.map(function(d) { return d.level; });
+                        // Sort by term points descending for Term leaderboard
+                        var sortedData = data.data.slice().sort(function(a, b) { return (b.term || 0) - (a.term || 0); }).slice(0, 5);
+                        var labels = sortedData.map(function(d) { return d.name; });
+                        var values = sortedData.map(function(d) { return d.term || 0; });
+                        var levels = sortedData.map(function(d) { return d.level; });
+                        
+                        // Update header with restart date if available
+                        var restartDisplay = data.restart_date_display || '';
+                        if (restartDisplay) {
+                            chartCard.querySelector('.card-header').textContent = courseName + ': Term Leaderboard (' + restartDisplay + ')';
+                        }
                         
                         chartCard.querySelector('.card-body').innerHTML = '<canvas id=\"' + uid + '\"></canvas>';
                         
@@ -384,7 +400,7 @@ function local_homeworkdashboard_render_mycourses_charts(): string {
                                 indexAxis: 'y',
                                 responsive: true,
                                 maintainAspectRatio: false,
-                                layout: { padding: { right: 60 } },
+                                layout: { padding: { right: 80 } },
                                 scales: {
                                     x: { beginAtZero: true, grid: { display: true, color: '#eee' } },
                                     y: { ticks: { font: { size: 11 } }, grid: { display: false } }

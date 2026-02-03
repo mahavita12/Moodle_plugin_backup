@@ -32,7 +32,8 @@ if (empty($student_ids)) {
 
 // Get homework data using the manager for ALL enrolled students
 $manager = new \local_homeworkdashboard\homework_manager();
-$rows = $manager->get_leaderboard_data($categoryid, [], true, $student_ids);
+// Pass $courseid as 5th arg for Term Point calculation context
+$rows = $manager->get_leaderboard_data($categoryid, [], true, $student_ids, $courseid);
 
 // Filter to students who have data for this course
 $chartData = [];
@@ -48,6 +49,8 @@ foreach ($rows as $row) {
             'goal_4w' => round(($row->max_4w ?? 0) / 10, 1),
             'alltime' => round(($row->points_all ?? 0) / 10, 1),
             'goal_all' => round(($row->max_all ?? 0) / 10, 1),
+            'term'     => round(($row->points_term ?? 0) / 10, 1),
+            'goal_term'=> round(($row->max_term ?? 0) / 10, 1),
             'level' => max(1, ceil(round(($row->points_all ?? 0) / 10, 1) / 100)),
         ];
     }
@@ -58,8 +61,23 @@ usort($chartData, function($a, $b) {
     return $b['alltime'] <=> $a['alltime'];
 });
 
+// Fetch restart date for display
+$restart_date_display = 'From Restart';
+$handler = \core_customfield\handler::get_handler('core_course', 'course');
+$course_custom_data = $handler->get_instance_data($courseid);
+foreach ($course_custom_data as $d) {
+    if ($d->get_field()->get('shortname') === 'homework_leaderboard_restart_date') {
+        $ts = (int)$d->get_value();
+        if ($ts > 0) {
+            $restart_date_display = 'Since ' . userdate($ts, '%d %b %Y');
+        }
+        break;
+    }
+}
+
 echo json_encode([
     'success' => true,
     'coursename' => $course->fullname,
+    'restart_date_display' => $restart_date_display,
     'data' => $chartData
 ]);

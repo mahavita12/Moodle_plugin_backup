@@ -19,8 +19,8 @@ $PAGE->set_heading($title);
 // New default view: show attempts like Quiz Dashboard and allow admin actions.
 $mode = optional_param('mode', 'attempts', PARAM_ALPHA);
 
+// Add CSS from Quiz Dashboard to ensure matching style
 if ($mode === 'attempts') {
-    // Add CSS from Quiz Dashboard to ensure matching style
     $PAGE->requires->css('/local/quizdashboard/styles.css');
 }
 
