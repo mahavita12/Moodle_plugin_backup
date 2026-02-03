@@ -7,7 +7,11 @@ require_once($CFG->dirroot . '/local/homeworkdashboard/classes/homework_manager.
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/google_drive_helper.php');
 require_once($CFG->dirroot . '/local/homeworkdashboard/classes/gemini_helper_v2.php');
 
-$userid = required_param('userid', PARAM_INT);
+// Buffer output to catch warnings/errors hurting JSON
+ob_start();
+
+try {
+    $userid = required_param('userid', PARAM_INT);
 $timeclose = required_param('timeclose', PARAM_INT); // Due Date 1 timestamp
 $lang = optional_param('lang', 'en', PARAM_ALPHA);
 
@@ -188,11 +192,12 @@ foreach ($rows as $r) {
         ]);
         
         // 2. Fetch Sample Notes (for AI Quality Analysis)
-        $notes_sql = "SELECT commenttext
+        // Note: Field is 'reason', not 'commenttext' (added in upgrade 2025122901)
+        $notes_sql = "SELECT reason
                       FROM {local_questionflags}
                       WHERE userid = :uid AND quizid = :qid 
                         AND timemodified BETWEEN :start AND :end
-                        AND commenttext IS NOT NULL AND " . $DB->sql_length('commenttext') . " > 5
+                        AND reason IS NOT NULL AND " . $DB->sql_length('reason') . " > 5
                       ORDER BY timemodified DESC";
         $samples_raw = $DB->get_records_sql($notes_sql, [
             'uid' => $userid, 
@@ -201,7 +206,7 @@ foreach ($rows as $r) {
             'end' => $timeclose
         ], 0, 8); // Limit to 8 samples
         
-        $sample_notes = array_map(function($s) { return $s->commenttext; }, $samples_raw);
+        $sample_notes = array_map(function($s) { return $s->reason; }, $samples_raw);
 
         // Pass status directly (it is already 'Completed', 'Low grade', or 'No attempt')
         $status_label = $r->status ?? 'No attempt';
@@ -448,10 +453,19 @@ if ($existing) {
 // NOTE: Email sending is handled by ajax_email_report.php. 
 // This script ONLY generates the report.
 
-echo json_encode([
-    'status' => 'success',
-    'reportid' => $reportid,
-    'timeemailsent' => $existing ? $existing->timeemailsent : 0,
-    'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
-    'ai_error' => $gemini->get_last_error()
-]);
+    ob_end_clean(); // Discard any warnings/logs
+    echo json_encode([
+        'status' => 'success',
+        'reportid' => $reportid,
+        'timeemailsent' => $existing ? $existing->timeemailsent : 0,
+        'ai_status' => !empty($ai_commentary) ? 'success' : 'failed',
+        'ai_error' => $gemini->get_last_error()
+    ]);
+
+} catch (Throwable $e) {
+    ob_end_clean();
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'PHP Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine()
+    ]);
+}
