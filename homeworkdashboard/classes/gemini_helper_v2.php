@@ -156,6 +156,10 @@ class gemini_helper {
             $prompt .= "          - 점수가 크게 향상되었다면(20% 이상), \"에세이가 크게 개선되었습니다! (Great job improving your essay!)\"라고 칭찬하세요.\n";
             $prompt .= "          - 점수가 같거나 낮다면, \"피드백을 제대로 반영했나요? (Did you apply the feedback?)\"라고 묻고, 더 노력하라고 격려하세요.\n";
             
+            $prompt .= "          - **부정행위 의심 (Cheating Check)**:\n";
+            $prompt .= "            - 만약 첫 번째 시도와 두 번째 시도가 **모두 매우 짧은 시간**(예: 문제당 1분 미만)에 완료되었고, 점수가 높다면(예: 80% 이상), 이는 **답을 베낀 것(Copying Answers)**으로 의심됩니다.\n";
+            $prompt .= "            - 경고하세요: \"두 번의 시도 모두 너무 빨리 끝났습니다. 답을 외워서 푼 건 아닌가요? (Both attempts were too fast. Did you verify the answers honestly?)\"\n";
+
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
             $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
             
@@ -230,6 +234,10 @@ class gemini_helper {
             $prompt .= "       - **COMPARE the score of the latest attempt against the first attempt**.\n";
             $prompt .= "       - If Score Improved significantly (>20%): Praise the improvement (e.g., 'Great job improving your essay!').\n";
             $prompt .= "       - If Score is same/lower: Ask if they applied the feedback and encourage effort.\n";
+
+            $prompt .= "       - **Cheating Check (Suspicious Speed)**:\n";
+            $prompt .= "         - If BOTH the first and second attempts are very short (e.g., < 1 min/question) AND the score is high (e.g., >80%):\n";
+            $prompt .= "         - Suspect copying. Warn: 'Both attempts were too fast. Did you memorise the answers?'\n";
 
             $prompt .= "- Format: Use HTML (<p>, <strong>, <ul>, <li>). No <html>/<body> tags.\n";
             $prompt .= "- Length: Concise (~200 words).\n\n";
