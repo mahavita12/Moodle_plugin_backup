@@ -122,48 +122,49 @@ class gemini_helper {
             // --- KOREAN PROMPT (Native Generation) ---
             $prompt = "\n[Summary Statistics]\n";
             $prompt .= "- New Topics: {$completed_new} out of {$total_new} completed.\n";
-            $prompt .= "- Revision Work: {$completed_revision} out of {$total_revision} completed.\n\n";
-            $prompt .= "당신은 '{$student_name}' 학생을 아끼고 격려하며 영어 라이팅, 영어 리딩, 수학, 띵킹 스킬을 가르치는 한국인 선생님입니다.\n";
-            $prompt .= "이번 주 학생의 과제 수행 결과를 분석하여 학부모님께 보낼 요약 보고서를 작성해주세요.\n\n";
-            
-            $prompt .= "[작성 규칙]\n";
-            $prompt .= "- **언어**: 자연스러운 한국어로 작성하세요. (번역투 지양)\n";
-            $prompt .= "- **어조**: 예의 바르면서도 따뜻하고 격려하는 어조를 사용하세요. (예: '했습니다', '보입니다', '응원합니다')\n";
-            $prompt .= "- **호칭**: 학생의 이름은 '{$student_name}'(으)로 지칭하세요.\n";
-            $prompt .= "- **인사말 생략**: '안녕하세요' 등의 인사말 없이 바로 본론으로 시작하세요.\n";
-            
-            $prompt .= "- **구성**:\n";
-            $prompt .= "   1. **종합 요약** (첫 문단):\n";
-            $prompt .= "      - '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.' 형태로 시작.\n";
-            $prompt .= "      - 수행률에 따라 칭찬(90% 이상), 격려(70% 미만), 또는 주의(50% 미만)를 해주세요.\n";
-            
-            $prompt .= "   2. **상세 분석**:\n";
-            $prompt .= "      - **섹션 구분**: 반드시 아래 HTML 헤더를 사용하여 두 섹션을 명확히 구분하세요.\n";
-            $prompt .= "        - 새로운 과제: <h4 style=\"color: #3498db; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">New Topics</h4>\n";
-            $prompt .= "        - 복습 과제: <h4 style=\"color: #f39c12; font-size: 16px; margin-top: 15px; margin-bottom: 5px;\">Revision Work</h4>\n";
-            $prompt .= "      - **내용 구성**: 각 섹션 내에서 과목명(예: Math, English)을 불릿 포인트로 구분하여 작성하세요.\n";
-            $prompt .= "      - 높은 점수나 노력한 부분은 칭찬하세요.\n";
-            $prompt .= "      - **성실도 점검**:\n";
-            $prompt .= "        - 문제 풀이 시간이 너무 짧은 경우(문제당 1분 미만), '건성으로 풀었음' 또는 '찍었음'을 우회적으로 지적하세요.\n";
-            $prompt .= "        - 특히 복습 과제에서 점수는 높으나(80점 이상) 시간이 매우 짧으면(5분 미만), '답을 베낀 것으로 의심됨'을 정중하지만 단호하게 경고하세요 (Warning).\n";
-            $prompt .= "        - 만약 학생의 점수가 낮다면 (예: 30% 미만), 단순히 격려만 하지 말고 따끔하게 지적해주세요. 내용 이해가 부족해 보이니 다시 복습하라고 강력하게 권고해야 합니다.\n";
-            $prompt .= "        - 'New' 과제 중 코스 이름에 'Selective Trial Test'가 포함된 경우, 40분 풀이 시간을 준수해야 합니다. 35분 미만이라면 너무 빨리 풀었다고 지적하세요.\n";
-            $prompt .= "        - 'New' 과제 중 코스 이름에 'OC Trial Test'가 포함된 경우: 과제 이름에 'Math'가 있으면 40분, 'Reading'이나 'Thinking'이 있으면 30분을 준수해야 합니다. 이보다 5분 이상 빨리 끝냈다면 지적하세요.\n";
-            
-            $prompt .= "        - **에세이/글쓰기 과제 (Writing/Essay)**:\n";
-            $prompt .= "          - 과목명에 'Writing' 또는 'Essay'가 포함되거나, 시도 횟수가 2회 이상인 경우:\n";
-            $prompt .= "          - **첫 번째 시도와 마지막 시도의 점수를 반드시 비교**하세요.\n";
-            $prompt .= "          - 점수가 크게 향상되었다면(20% 이상), \"에세이가 크게 개선되었습니다! (Great job improving your essay!)\"라고 칭찬하세요.\n";
-            $prompt .= "          - 점수가 같거나 낮다면, \"피드백을 제대로 반영했나요? (Did you apply the feedback?)\"라고 묻고, 더 노력하라고 격려하세요.\n";
-            
-            $prompt .= "          - **부정행위 의심 (Cheating Check)**:\n";
-            $prompt .= "            - 만약 첫 번째 시도와 두 번째 시도가 **모두 매우 짧은 시간**(예: 문제당 1분 미만)에 완료되었고, 점수가 높다면(예: 80% 이상), 이는 **답을 베낀 것(Copying Answers)**으로 의심됩니다.\n";
-            $prompt .= "            - 경고하세요: \"두 번의 시도 모두 너무 빨리 끝났습니다. 학생이 답을 외워서 푼 것은 아닌지 우려되오니 확인 부탁드립니다. (Both attempts were too fast, raising concerns about copying. Please verify.)\"\n";
-            $prompt .= "          - 점수가 같거나 낮다면, \"피드백이 아직 충분히 반영되지 않은 것으로 보입니다. 학생이 피드백을 꼼꼼히 확인하도록 지도 바랍니다.\"라고 권유하세요.\n";
+            $prompt .= "- Revision Work: {$completed_revision} out of {$total_revision} completed.\n";
+            if (!empty($new_stats) && $new_stats['total_qs'] > 0) {
+                 $prompt .= "- New Topic Stats: Attempted {$new_stats['total_qs']} Qs, Flagged {$new_stats['flags']}, Notes {$new_stats['notes']}.\n";
+            }
+            if (!empty($rev_stats) && $rev_stats['total_qs'] > 0) {
+                 $prompt .= "- Revision Stats: Reviewed {$rev_stats['total_qs']} Qs, Flagged {$rev_stats['flags']}, Notes {$rev_stats['notes']}.\n";
+            }
+            $prompt .= "\n";
 
-            $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하여 가독성 있게 작성하세요.\n";
-            $prompt .= "- **길이**: 200단어 내외로 간결하게 작성하세요.\n\n";
+            $prompt .= "당신은 '{$student_name}'의 학업 성취도를 분석하여 학부모님께 보고하는 교육 전문가입니다.\n";
+            $prompt .= "이번 주 과제 수행 결과를 바탕으로 **상세하고 구체적인 학습 분석 보고서**를 작성해주세요.\n\n";
             
+            $prompt .= "[작성 원칙]\n";
+            $prompt .= "- **대상**: 학부모님.\n";
+            $prompt .= "- **관점**: 철저히 3인칭 관점. 학생에게 말을 걸지 말고, 학부모님께 {$student_name}의 상태를 객관적으로 설명하세요.\n";
+            $prompt .= "- **어조**: 전문적, 분석적, 정중함 (예: '분석됩니다', '권장합니다', '확인이 필요합니다').\n";
+            $prompt .= "- **길이**: **상세하게 작성하세요 (400단어 이상)**. 단순 요약이 아닌, 데이터에 기반한 심층 분석이 필요합니다.\n";
+            
+            $prompt .= "[필수 포함 내용]\n";
+            $prompt .= "   1. **종합 요약** (헤더: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
+            $prompt .= "      - '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'로 시작.\n";
+            $prompt .= "      - 전체적인 성실도와 학습 태도를 총평해주세요.\n";
+            
+            $prompt .= "   2. **New Topics (새로운 과제) 상세 분석** (헤더: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
+            $prompt .= "      - **통계 요약 필수**: '이번 주 새로운 과제에서 총 {$new_stats['total_qs']}문항을 풀었으며, 플래그(Flag) {$new_stats['flags']}개, 노트(Note) {$new_stats['notes']}개를 기록했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
+            $prompt .= "      - 각 과목(Math, English 등)별로 **점수(%), 소요 시간, 문항 수**를 구체적으로 언급하며 분석하세요.\n";
+            $prompt .= "      - **데이터**를 반드시 인용하세요 (예: '20문항/8분/60%').\n";
+            $prompt .= "      - **시간 분석**: 문제당 평균 1분 미만이면 '내용을 제대로 읽지 않고 풀었을 가능성'을 우려하세요.\n";
+            $prompt .= "      - **점수 분석**: 점수가 낮다면(60% 미만) '개념 이해가 부족하니 해당 주제 복습이 시급함'을 구체적으로 알리세요.\n";
+
+            $prompt .= "   3. **Revision Work (복습 과제) 상세 분석** (헤더: <h4 style='color: #D35400; border-bottom: 1px solid #D35400; padding-bottom: 5px;'>Revision Work</h4>):\n";
+            $prompt .= "      - **통계 요약 필수**: '이번 주 복습 과제에서 총 {$rev_stats['total_qs']}문항을 검토했으며, 플래그(Flag) {$rev_stats['flags']}개, 노트(Note) {$rev_stats['notes']}개를 작성했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
+            $prompt .= "      - **점수 변화**를 중점적으로 분석하세요 (1차 시도 vs 마지막 시도).\n";
+            $prompt .= "      - 점수 향상 시: '1차 시도 대비 OO% 향상되어 학습 효과가 뚜렷합니다'라고 칭찬.\n";
+            $prompt .= "      - 변화 없음/하락 시: '오답 노트 피드백이 충분히 학습되지 않은 것으로 보입니다. 가정에서 오답 정리를 다시 지도해주시기 바랍니다'라고 조언.\n";
+            
+            $prompt .= "   4. **학습 태도 및 제언** (헤더: <h4 style='color: #2C3E50; border-bottom: 1px solid #2C3E50; padding-bottom: 5px;'>Learning Attitude</h4>):\n";
+            $prompt .= "      - 만약 1차, 2차 시도 모두 **시간이 매우 짧고(문제당 1분 미만)** 점수가 **매우 높다면(80% 이상)**:\n";
+            $prompt .= "        - **부정행위 가능성 경고**: '두 번의 시도 모두 풀이 시간이 비정상적으로 짧아(예: 5분), 답안을 암기하여 수행했을 가능성이 우려됩니다. 가정에서 실제 이해도를 확인해주실 것을 권장합니다'라고 정중히 경고하세요.\n";
+            $prompt .= "      - 복습 과제 완료 속도가 너무 빠르면 '학습의 질'에 대한 우려를 표명하세요.\n";
+
+            $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하세요. **모든 <ul> 태그는 반드시 닫아야 합니다**.\n\n";
+
         } else {
             // --- ENGLISH PROMPT (Existing) ---
             $prompt = "\n[Summary Statistics]\n";
@@ -206,7 +207,7 @@ class gemini_helper {
             $prompt .= "       - **칭찬 기준 (PRAISE)**: 노트가 구체적이고 배운 점이 적혀있으면 칭찬하세요.\n";
             $prompt .= "     - **필수 포함 문장 (Mandatory Summaries)**: 각 섹션 시작 부분에 아래 문장을 통계에 맞춰 정확히 포함하세요:\n";
             if (!empty($new_stats) && $new_stats['total_qs'] > 0) {
-                 $prompt .= "       - \"이번 주 새로운 과제에서 {$student_name} 학생은 총 {$new_stats['total_qs']} 문제를 풀었으며, {$new_stats['flags']} 개의 플래그를 표시하고 {$new_stats['notes']} 개의 오답 노트를 작성했습니다.\"\n";
+                 $prompt .= "       - \"이번 주 새로운 과제에서 {$student_name}은(는) 총 {$new_stats['total_qs']} 문제를 풀었으며, {$new_stats['flags']} 개의 플래그를 표시하고 {$new_stats['notes']} 개의 오답 노트를 작성했습니다.\"\n";
             }
             if (!empty($rev_stats) && $rev_stats['total_qs'] > 0) {
                  $prompt .= "       - \"복습(Revision) 과제에서는 총 {$rev_stats['total_qs']} 문제를 복습했고, {$rev_stats['flags']} 개의 문제를 체크했으며, {$rev_stats['notes']} 개의 노트를 남겼습니다.\"\n";
