@@ -18,6 +18,23 @@ class homework_manager {
     private const RETRY_PERCENT_THRESHOLD = 30.0;
 
     /**
+     * Centralized status logic based on percentage only.
+     * Guaranteed inclusive thresholds:
+     * - >= 50%: Completed
+     * - >= 30%: Low grade
+     * - < 30%:  No attempt (Not Done)
+     */
+    private function get_status_from_percent(float $percent): string {
+        if ($percent >= self::COMPLETION_PERCENT_THRESHOLD) {
+            return 'completed';
+        }
+        if ($percent >= self::RETRY_PERCENT_THRESHOLD) {
+            return 'lowgrade';
+        }
+        return 'noattempt';
+    }
+
+    /**
      * Get minimum duration in seconds required for a valid attempt based on current question count.
      * Formula: 30% of (Question Count * 60 seconds)
      */
@@ -275,9 +292,10 @@ class homework_manager {
                 continue;
             }
             $best = $peruser[$uid]['bestpercent'];
-            if ($best >= self::COMPLETION_PERCENT_THRESHOLD) {
+            $status = $this->get_status_from_percent($best);
+            if ($status === 'completed') {
                 $counts['completed']++;
-            } elseif ($best >= self::RETRY_PERCENT_THRESHOLD) {
+            } elseif ($status === 'lowgrade') {
                 $counts['lowgrade']++;
             } else {
                 // Below Retry Threshold => Not Done
@@ -966,9 +984,10 @@ class homework_manager {
                 // 1. No valid attempts (attempts <= 10% or < 180s) -> 'To do'
                 // 2. Best score > 30% -> 'Completed'
                 // 3. Otherwise (10% < score <= 30%) -> 'Low grade' (Retry)
-                if ($summary['valid_attempts'] === 0) {
+                $status_code = $this->get_status_from_percent($best);
+                if ($summary['valid_attempts'] === 0 || $status_code === 'noattempt') {
                     $hwstatus = 'To do';
-                } else if ($best > self::COMPLETION_PERCENT_THRESHOLD) {
+                } else if ($status_code === 'completed') {
                     $hwstatus = 'Completed';
                 } else {
                     $hwstatus = 'Low grade';
@@ -1263,10 +1282,15 @@ class homework_manager {
 
         if ($attempts_count === 0) {
             return 'No attempt';
-        } else if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
+        }
+        
+        $status = $this->get_status_from_percent($bestpercent);
+        if ($status === 'completed') {
             return 'Completed';
-        } else {
+        } elseif ($status === 'lowgrade') {
             return 'Low grade';
+        } else {
+            return 'No attempt';
         }
     }
 
@@ -1482,12 +1506,11 @@ class homework_manager {
                     }
                 }
 
-                if ($valid_attempts === 0) {
+                $status_code = $this->get_status_from_percent($bestpercent);
+                if ($valid_attempts === 0 || $status_code === 'noattempt') {
                     $status = 'noattempt';
-                } else if ($bestpercent > self::COMPLETION_PERCENT_THRESHOLD) {
-                    $status = 'completed';
                 } else {
-                    $status = 'lowgrade';
+                    $status = $status_code;
                 }
 
                 // Calculate Points and Score for Snapshot
@@ -1825,12 +1848,11 @@ class homework_manager {
                 // 1. No valid attempts (attempts <= 10% or < 180s) -> 'noattempt' (To do)
                 // 2. Best score > 30% -> 'completed' (Done)
                 // 3. Otherwise (10% < score <= 30%) -> 'lowgrade' (Retry)
-                if ($summary['valid_attempts'] === 0) {
+                $status_code = $this->get_status_from_percent($summary['bestpercent']);
+                if ($summary['valid_attempts'] === 0 || $status_code === 'noattempt') {
                     $status = 'noattempt';
-                } else if ($summary['bestpercent'] > self::COMPLETION_PERCENT_THRESHOLD) {
-                    $status = 'completed';
                 } else {
-                    $status = 'lowgrade';
+                    $status = $status_code;
                 }
 
                 // Calculate Points and Score for Snapshot
@@ -2374,11 +2396,10 @@ class homework_manager {
                     $score_display = round($score_raw, 1) . '/' . round($quizgrade, 1);
                     $score_percent = round($bestpercent, 0) . '%';
                     
-                    if ($bestpercent >= self::COMPLETION_PERCENT_THRESHOLD) {
-                        $status = 'completed';
+                    $status = $this->get_status_from_percent($bestpercent);
+                    if ($status === 'completed') {
                         $pts = $quizgrade;
-                    } elseif ($bestpercent >= self::RETRY_PERCENT_THRESHOLD) {
-                        $status = 'lowgrade';
+                    } elseif ($status === 'lowgrade') {
                         $pts = $quizgrade * 0.5;
                     } else {
                         // Not reached given above filter
