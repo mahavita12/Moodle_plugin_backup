@@ -139,6 +139,7 @@ class gemini_helper {
             $prompt .= "- **관점**: 철저히 3인칭 관점. 학생에게 말을 걸지 말고, 학부모님께 {$student_name}의 상태를 객관적으로 설명하세요.\n";
             $prompt .= "- **어조**: 전문적, 분석적, 정중함 (예: '분석됩니다', '권장합니다', '확인이 필요합니다').\n";
             $prompt .= "- **길이**: **상세하게 작성하세요 (400단어 이상)**. 단순 요약이 아닌, 데이터에 기반한 심층 분석이 필요합니다.\n";
+            $prompt .= "- **금지 사항**: 학부모가 통제할 수 없는 것(교육과정 난이도, 진도 조정 등)에 대한 조언은 하지 마세요. 가정에서 실천 가능한 것(복습 시간 확보, 오답노트 확인, 집중력 향상 등)에 집중하세요.\n";
             
             $prompt .= "[필수 포함 내용]\n";
             $prompt .= "   1. **종합 요약** (헤더: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
@@ -186,6 +187,7 @@ class gemini_helper {
             $prompt .= "- **Perspective**: Strictly 3rd person. Do not address the student directly; objectively explain {$student_name}'s status to parents.\n";
             $prompt .= "- **Tone**: Professional, analytical, polite (e.g., 'We observed...', 'We recommend...', 'Verification is needed.').\n";
             $prompt .= "- **Length**: **Write in detail (400+ words)**. This is not a simple summary but an in-depth, data-driven analysis.\n";
+            $prompt .= "- **Avoid**: Do NOT give advice about things parents cannot control (e.g., curriculum difficulty, pacing changes). Focus on actionable items at home (review time, checking notes, improving focus, etc.).\n";
             
             $prompt .= "[Required Content]\n";
             $prompt .= "   1. **Summary** (Header: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
