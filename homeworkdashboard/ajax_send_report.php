@@ -301,14 +301,13 @@ $html .= '
 
     <!-- AI Commentary Section -->
     <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
-        <h4 style="margin-top: 0; color: #0056b3; margin-bottom: 15px;">GrowMinds Academy Summary</h4>
-        <div style="font-family: \'Segoe UI\', Roboto, Arial, sans-serif; color: #333; line-height: 1.6; padding-left: 10px;">
-            ' . $ai_commentary . '
-        </div>
-    </div>
-    <!-- End AI Commentary -->
-
-    <h4 class="section-heading" style="' . $style_section . '">Activities Due ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . '</h4>
+ 
+';
+    $html .= '
+    <!-- AI Commentary Section -->
+    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
+        <h4 style="margin-top: 0; color: #0056b3; margin-bottom: 15px;">GrowMinds Academy Summary</h4>';
+    $html .= '
     <table class="report-table" style="' . $style_table . '">
         <thead>
             <tr>
@@ -375,6 +374,12 @@ foreach ($rows as $idx => $r) {
 }
 
 $html .= '</tbody></table>';
+        $html .= '
+        <div style="font-family: \'Segoe UI\', Roboto, Arial, sans-serif; color: #333; line-height: 1.6; padding-left: 10px; margin-top: 20px;">
+            ' . $ai_commentary . '
+        </div>
+    </div>
+    <!-- End AI Commentary -->';
 
 if (!empty($activities2)) {
     $html .= '<h4 class="section-heading" style="' . $style_section . '">Upcoming Activities Due ' . userdate($next_due_date, get_string('strftimedate', 'langconfig')) . '</h4>';
