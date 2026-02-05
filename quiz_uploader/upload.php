@@ -199,6 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var catLayer2Hidden = document.querySelector('input[name="cat_layer2_hidden"]');
     var catLayer3 = document.getElementById('id_cat_layer3');
     var catLayer3Hidden = document.querySelector('input[name="cat_layer3_hidden"]');
+    var catLayer3New = document.getElementById('id_cat_layer3_new');
     var catLayer4 = document.getElementById('id_cat_layer4');
     var catLayer4Hidden = document.querySelector('input[name="cat_layer4_hidden"]');
     var catLayer4New = document.getElementById('id_cat_layer4_new');
@@ -259,9 +260,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('Layer 3 hidden field updated to:', parentId);
             }
 
+            // Clear "create new" field
+            if (catLayer3New) catLayer3New.value = '';
+
             // Load Layer 4 if selection made
             if (parentId) {
                 loadCategories(parentId, catLayer4, 4, catLayer4Hidden);
+            }
+        });
+    }
+
+    // Layer 3 New input -> Clear dropdown and hidden field
+    if (catLayer3New) {
+        catLayer3New.addEventListener('input', function() {
+            if (this.value.trim() !== '') {
+                // Clear dropdown selection
+                catLayer3.value = '';
+                if (catLayer3Hidden) catLayer3Hidden.value = '';
+                
+                // Clear Layer 4 dropdown since parent is new (doesn't exist yet)
+                catLayer4.innerHTML = '<option value="">-- Select or create new --</option>';
+                if (catLayer4Hidden) catLayer4Hidden.value = '';
             }
         });
     }
@@ -487,12 +506,14 @@ function process_upload($data) {
             }
         }
 
-        // Layer 3: Type (select from dropdown only)
+        // Layer 3: Type (select from dropdown or new)
         if (!empty($data->cat_layer3_hidden)) {
             $layer3cat = $DB->get_record('question_categories', ['id' => $data->cat_layer3_hidden]);
             if ($layer3cat) {
                 $categorypath[] = $layer3cat->name;
             }
+        } else if (!empty($data->cat_layer3_new)) {
+            $categorypath[] = trim($data->cat_layer3_new);
         }
 
         // Layer 4: Class Code (use hidden field or new)
