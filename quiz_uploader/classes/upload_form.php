@@ -155,10 +155,12 @@ class upload_form extends \moodleform {
         $mform->addElement('hidden', 'cat_layer2_hidden', '');
         $mform->setType('cat_layer2_hidden', PARAM_INT);
 
-        // Layer 3: Type (select from dropdown only - e.g., Selective, Standard)
+        // Layer 3: Type (select from dropdown or create new)
         $mform->addElement('select', 'cat_layer3', 'Layer 3: Type', ['' => '-- Select Type --']);
         $mform->addElement('hidden', 'cat_layer3_hidden', '');
         $mform->setType('cat_layer3_hidden', PARAM_INT);
+        $mform->addElement('text', 'cat_layer3_new', 'Or create new:', ['size' => '30', 'placeholder' => 'e.g., Selective']);
+        $mform->setType('cat_layer3_new', PARAM_TEXT);
 
         // Layer 4: Class Code (e.g., GMSR)
         $mform->addElement('select', 'cat_layer4', 'Layer 4: Class Code', ['' => '-- Select or create new --']);
