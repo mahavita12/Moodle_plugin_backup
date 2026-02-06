@@ -29,15 +29,15 @@ if ($mform->is_cancelled()) {
     redirect(new moodle_url('/'));
 } else if ($data = $mform->get_data()) {
     // Debug: Log form data
-    error_log('Quiz Uploader - Form data received: ' . print_r($data, true));
-    error_log('Quiz Uploader - $_FILES: ' . print_r($_FILES, true));
-    error_log('Quiz Uploader - Section value: ' . ($data->section ?? 'NOT SET'));
+    // error_log('Quiz Uploader - Form data received: ' . print_r($data, true));
+    // error_log('Quiz Uploader - $_FILES: ' . print_r($_FILES, true));
+    // error_log('Quiz Uploader - Section value: ' . ($data->section ?? 'NOT SET'));
 
     // Process the upload
     $result = process_upload($data);
 
     // Log the result
-    error_log('Quiz Uploader - Result: ' . print_r($result, true));
+    // error_log('Quiz Uploader - Result: ' . print_r($result, true));
 
     echo $OUTPUT->header();
     // Render tabs so navigation is visible when landing directly on upload.php.
@@ -463,8 +463,8 @@ function process_upload($data) {
         }
 
         $draftitemid = $data->draftitemid;
-        error_log('Quiz Uploader - Using draft itemid: ' . $draftitemid);
-        error_log('Quiz Uploader - Form data received: ' . print_r($data, true));
+        // error_log('Quiz Uploader - Using draft itemid: ' . $draftitemid);
+        // error_log('Quiz Uploader - Form data received: ' . print_r($data, true));
 
         // No quiz settings - removed from form
         $settings = new \stdClass();
@@ -477,18 +477,18 @@ function process_upload($data) {
         $systemcontext = context_system::instance();
 
         // Debug: Log all category layer values (both dropdowns and hidden fields)
-        error_log('Quiz Uploader - cat_layer1: ' . ($data->cat_layer1 ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer1_hidden: ' . ($data->cat_layer1_hidden ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer2: ' . ($data->cat_layer2 ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer2_hidden: ' . ($data->cat_layer2_hidden ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer2_new: ' . ($data->cat_layer2_new ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer3: ' . ($data->cat_layer3 ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer3_hidden: ' . ($data->cat_layer3_hidden ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer3_new: ' . ($data->cat_layer3_new ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer4: ' . ($data->cat_layer4 ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer4_hidden: ' . ($data->cat_layer4_hidden ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer4_new: ' . ($data->cat_layer4_new ?? 'NOT SET'));
-        error_log('Quiz Uploader - cat_layer5: ' . ($data->cat_layer5 ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer1: ' . ($data->cat_layer1 ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer1_hidden: ' . ($data->cat_layer1_hidden ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer2: ' . ($data->cat_layer2 ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer2_hidden: ' . ($data->cat_layer2_hidden ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer2_new: ' . ($data->cat_layer2_new ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer3: ' . ($data->cat_layer3 ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer3_hidden: ' . ($data->cat_layer3_hidden ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer3_new: ' . ($data->cat_layer3_new ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer4: ' . ($data->cat_layer4 ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer4_hidden: ' . ($data->cat_layer4_hidden ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer4_new: ' . ($data->cat_layer4_new ?? 'NOT SET'));
+        // error_log('Quiz Uploader - cat_layer5: ' . ($data->cat_layer5 ?? 'NOT SET'));
 
         // Build category path array
         $categorypath = [];
