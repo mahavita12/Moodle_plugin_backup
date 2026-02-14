@@ -71,12 +71,9 @@ if ($action) {
     }
 }
 
-// Default category to "Category 1" if not explicitly provided
+// Default category to 0 (All Categories)
 if (empty($categoryid)) {
-    try {
-        $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
-        if ($catrow) { $categoryid = (int)$catrow->id; }
-    } catch (\Throwable $e) { /* ignore */ }
+    $categoryid = 0;
 }
 
 // Get dashboard data
@@ -125,8 +122,7 @@ switch ($currenttab) {
         $filter_form .= html_writer::tag('label', 'Category:', ['for' => 'categoryid']);
         $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
         if (empty($categoryid)) {
-            $catrow = $DB->get_record('course_categories', ['name' => 'Category 1'], 'id');
-            if ($catrow) { $categoryid = (int)$catrow->id; }
+            $categoryid = 0;
         }
         $cat_options = [0 => 'All Categories'];
         foreach ($categories as $cat) { $cat_options[$cat->id] = $cat->name; }
@@ -265,6 +261,57 @@ switch ($currenttab) {
         echo html_writer::tag('h3', get_string('quiz_configuration', 'local_essaysmaster'));
         echo html_writer::tag('p', get_string('default_enabled_notice', 'local_essaysmaster'), 
             ['class' => 'alert alert-info']);
+
+        // Filter Form for Quizzes
+        echo html_writer::start_div('dashboard-filters');
+        $filter_form = html_writer::start_tag('form', ['method' => 'GET', 'class' => 'filter-form']);
+        $filter_form .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'quizzes']);
+        $filter_form .= html_writer::start_div('filter-row');
+
+        // Course category filter
+        $filter_form .= html_writer::start_div('filter-group');
+        $filter_form .= html_writer::tag('label', 'Category:', ['for' => 'quiz_categoryid']);
+        $categories = $DB->get_records('course_categories', null, 'name', 'id,name');
+        $cat_options = [0 => 'All Categories'];
+        foreach ($categories as $cat) { $cat_options[$cat->id] = $cat->name; }
+        $filter_form .= html_writer::select($cat_options, 'categoryid', $categoryid, false, ['id' => 'quiz_categoryid']);
+        $filter_form .= html_writer::end_div();
+
+        // Course filter
+        $filter_form .= html_writer::start_div('filter-group');
+        $filter_form .= html_writer::tag('label', 'Course:', ['for' => 'quiz_course']);
+        $course_options = [0 => 'All Courses'];
+        
+        // Populate courses based on selection or available courses
+        if ($categoryid > 0) {
+            try {
+                $struct_courses = $DB->get_records('course', ['category' => (int)$categoryid, 'visible' => 1], 'fullname', 'id, fullname');
+                foreach ($struct_courses as $c) { $course_options[$c->id] = $c->fullname; }
+            } catch (\Throwable $e) { /* ignore */ }
+        }
+        
+        // Fallback or fill if empty (using accessible courses logic)
+        if (count($course_options) === 1) {
+            foreach ($courses as $course) {
+                if ($categoryid > 0 && isset($course->category) && (int)$course->category !== (int)$categoryid) { continue; }
+                $course_options[$course->id] = $course->fullname;
+            }
+        }
+        
+        $filter_form .= html_writer::select($course_options, 'course', $courseid, false, ['id' => 'quiz_course']);
+        $filter_form .= html_writer::end_div();
+
+        // Filter actions
+        $filter_form .= html_writer::start_div('filter-actions');
+        $filter_form .= html_writer::tag('button', 'Filter', ['type' => 'submit', 'class' => 'btn btn-primary']);
+        $filter_form .= html_writer::link(new moodle_url('/local/essaysmaster/dashboard.php', ['tab' => 'quizzes']), 'Reset', ['class' => 'btn btn-secondary']);
+        $filter_form .= html_writer::end_div();
+
+        $filter_form .= html_writer::end_div(); // filter-row
+        $filter_form .= html_writer::end_tag('form');
+        
+        echo $filter_form;
+        echo html_writer::end_div(); // dashboard-filters
         
         // Bulk actions form
         echo html_writer::start_tag('form', [
