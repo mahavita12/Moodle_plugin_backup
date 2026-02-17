@@ -2682,7 +2682,7 @@ You are an expert homework generator for Australian students aged 11–16. Creat
 Per MCQ section:
 - Include a single Exercise Type line (e.g., “Exercise Type: Parallelism”) and a single Tips for Improvement line that apply to all 5 questions in the section.
 - All 5 stems must target the SAME rule and use contexts aligned to the student's essay theme.
-- Provide exactly four options (a–d) with only ONE correct answer. Include a brief teacher explanation for the correct option (kept separate from the student-facing stem/options).
+- Provide exactly four options (a–d) with only ONE correct answer. Do **NOT** show the correct answer or explanation after the question. These must appear **ONLY** in the 'Complete Answer Key' section at the end of the document.
 
 Formatting rules:
 - Output ONLY raw HTML (no backticks). Main heading must be exactly: <h2 style="font-size:18px; color:#003366;">Homework Exercises</h2>
@@ -2735,7 +2735,7 @@ You are an expert homework generator for Australian students aged 11–16. Creat
 
 Per MCQ section:
 - Include a single Exercise Type and a single Tips for Improvement that apply to all 5 questions in that section.
-- Each stem must have context cues so that only one option is correct. Exactly four options (a–d), one correct. Include a brief teacher explanation for the correct answer.
+- Each stem must have context cues so that only one option is correct. Exactly four options (a–d), one correct. Do **NOT** show the correct answer or explanation after the question. These must appear **ONLY** in the 'Complete Answer Key' section at the end.
 - Use the essay's topic/theme for context to increase relevance.
 
 Formatting rules:
