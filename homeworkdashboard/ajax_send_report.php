@@ -161,7 +161,13 @@ foreach ($rows as $r) {
     if (!empty($r->quizid)) {
         $attempts_raw = $manager->get_user_quiz_attempts($userid, $r->quizid);
         $attempts_clean = [];
+        // Only include attempts within the 7-day homework window (due date - 7 days to due date)
+        $hw_window_start = $timeclose - 604800; // 7 days in seconds
         foreach ($attempts_raw as $att) {
+            // Skip attempts outside the homework window
+            if ($att->timestart < $hw_window_start || $att->timestart > $timeclose) {
+                continue;
+            }
             $duration = $att->timefinish - $att->timestart;
             $attempts_clean[] = [
                 'attempt' => $att->attempt,
