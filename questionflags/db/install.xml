@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XMLDB PATH="local/questionflags/db" VERSION="2025102701" COMMENT="XMLDB file for local_questionflags">
+  <TABLES>
+    <TABLE NAME="local_questionflags" COMMENT="Question flags per user">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="questionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="flagcolor" TYPE="char" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid_questionid_unique" UNIQUE="true" FIELDS="userid, questionid"/>
+        <INDEX NAME="quizid" FIELDS="quizid"/>
+        <INDEX NAME="cmid" FIELDS="cmid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_questionflags_guides" COMMENT="Structure guides per question">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="questionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="guide_content" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="questionid_unique" UNIQUE="true" FIELDS="questionid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

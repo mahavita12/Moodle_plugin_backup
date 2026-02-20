@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XMLDB PATH="local/personalcourse/db" VERSION="2025102605" COMMENT="XMLDB file for local_personalcourse"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_personalcourse_courses" COMMENT="Personal courses per student">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="active"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid_unique" UNIQUE="true" FIELDS="userid"/>
+        <INDEX NAME="courseid" UNIQUE="false" FIELDS="courseid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_personalcourse_quizzes" COMMENT="Quiz mapping between personal and source">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="personalcourseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="quizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="sourcequizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="sectionname" TYPE="char" LENGTH="255" NOTNULL="false"/>
+        <FIELD NAME="quiztype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="non_essay"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="personalcourseid" UNIQUE="false" FIELDS="personalcourseid"/>
+        <INDEX NAME="sourcequiz_unique" UNIQUE="true" FIELDS="personalcourseid, sourcequizid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_personalcourse_questions" COMMENT="Questions in personal quizzes">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="personalcourseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="personalquizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="questionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="slotid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="flagcolor" TYPE="char" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="source" TYPE="char" LENGTH="20" NOTNULL="true"/>
+        <FIELD NAME="originalposition" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="currentposition" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="personalquizid" UNIQUE="false" FIELDS="personalquizid"/>
+        <INDEX NAME="questionid" UNIQUE="false" FIELDS="questionid"/>
+        <INDEX NAME="pcq_unique" UNIQUE="true" FIELDS="personalcourseid, questionid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_personalcourse_generations" COMMENT="Generation/regeneration log">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="personalcourseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="sourcequizid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="action" TYPE="char" LENGTH="20" NOTNULL="true"/>
+        <FIELD NAME="attemptnumber" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="gradepercent" TYPE="number" LENGTH="10" DECIMALS="2" NOTNULL="true"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="pc_time" UNIQUE="false" FIELDS="personalcourseid, timecreated"/>
+        <INDEX NAME="user_quiz" UNIQUE="false" FIELDS="userid, sourcequizid"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_personalcourse_archives" COMMENT="Archived personal quizzes registry">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="ownerid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="personalcourseid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="sourcequizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="archivedquizid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="archivedcmid" TYPE="int" LENGTH="10" NOTNULL="false"/>
+        <FIELD NAME="archivedname" TYPE="char" LENGTH="255" NOTNULL="true"/>
+        <FIELD NAME="reason" TYPE="char" LENGTH="32" NOTNULL="true" DEFAULT="flags_empty"/>
+        <FIELD NAME="archivedat" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="notes" TYPE="text" NOTNULL="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="owner_source" UNIQUE="false" FIELDS="ownerid, sourcequizid"/>
+        <INDEX NAME="pc_source" UNIQUE="false" FIELDS="personalcourseid, sourcequizid"/>
+        <INDEX NAME="archivedquiz_unique" UNIQUE="true" FIELDS="archivedquizid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

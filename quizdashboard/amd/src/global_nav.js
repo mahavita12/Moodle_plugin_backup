@@ -1,0 +1,123 @@
+define(['core/config'], function(Config) {
+    "use strict";
+
+    /**
+     * Create and inject the floating dashboards navigation menu.
+     */
+    function createNav() {
+        if (document.querySelector('.quiz-dashboard-global-nav')) {
+            return;
+        }
+
+        var nav = document.createElement('div');
+        nav.className = 'quiz-dashboard-global-nav';
+        nav.style.position = 'fixed';
+        nav.style.top = '60px';
+        nav.style.right = '60px';
+        nav.style.zIndex = '10001';
+        nav.style.fontFamily = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+
+        var dropdown = document.createElement('div');
+        dropdown.className = 'nav-dropdown';
+        dropdown.style.position = 'relative';
+        dropdown.style.display = 'inline-block';
+
+        var button = document.createElement('button');
+        button.className = 'nav-button';
+        button.textContent = 'Dashboards';
+        button.style.background = '#007cba';
+        button.style.color = '#fff';
+        button.style.padding = '8px 12px';
+        button.style.border = '1px solid #005a87';
+        button.style.cursor = 'pointer';
+        button.style.borderRadius = '4px';
+        button.style.fontSize = '13px';
+        button.style.minWidth = '100px';
+        button.style.textAlign = 'center';
+        button.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+
+        var menu = document.createElement('div');
+        menu.className = 'nav-menu';
+        menu.style.display = 'none';
+        menu.style.position = 'absolute';
+        menu.style.right = '0';
+        menu.style.top = 'calc(100% + 2px)';
+        menu.style.background = '#fff';
+        menu.style.minWidth = '160px';
+        menu.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        menu.style.border = '1px solid #dee2e6';
+        menu.style.borderRadius = '4px';
+
+        var wwwroot = (Config && Config.wwwroot) ? Config.wwwroot : '';
+        var links = [
+            {
+                href: wwwroot + '/local/homeworkdashboard/index.php',
+                label: 'Homework Dashboard'
+            },
+            {
+                href: wwwroot + '/local/quizdashboard/index.php',
+                label: 'Quiz Dashboard'
+            },
+            {
+                href: wwwroot + '/local/quizdashboard/essays.php',
+                label: 'Essay Dashboard'
+            },
+            {
+                href: wwwroot + '/local/quizdashboard/questions.php',
+                label: 'Questions Dashboard'
+            },
+            {
+                href: wwwroot + '/local/essaysmaster/dashboard.php',
+                label: 'EssaysMaster Dashboard'
+            },
+            {
+                href: wwwroot + '/local/personalcourse/index.php',
+                label: 'Personal Course Dashboard'
+            },
+            {
+                href: wwwroot + '/local/quiz_uploader/upload.php',
+                label: 'Quiz Uploader',
+                noborder: true
+            }
+        ];
+
+        links.forEach(function(link, index) {
+            var item = document.createElement('a');
+            item.href = link.href;
+            item.textContent = link.label;
+            item.style.display = 'block';
+            item.style.padding = '8px 12px';
+            item.style.color = '#007cba';
+            item.style.textDecoration = 'none';
+            item.style.fontSize = '13px';
+            if (!link.noborder && index < links.length - 1) {
+                item.style.borderBottom = '1px solid #dee2e6';
+            }
+            menu.appendChild(item);
+        });
+
+        dropdown.appendChild(button);
+        dropdown.appendChild(menu);
+        nav.appendChild(dropdown);
+        document.body.appendChild(nav);
+
+        dropdown.addEventListener('mouseenter', function() {
+            menu.style.display = 'block';
+            button.style.background = '#005a87';
+        });
+        dropdown.addEventListener('mouseleave', function() {
+            menu.style.display = 'none';
+            button.style.background = '#007cba';
+        });
+    }
+
+    return {
+        init: function() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', createNav);
+            } else {
+                createNav();
+            }
+        }
+    };
+});

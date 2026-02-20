@@ -1,0 +1,202 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_essaysmaster/feedback_panel
+
+    AI feedback panel for Essays Master interface.
+
+    Context variables required for this template:
+    * level - Current feedback level number
+    * feedback_html - HTML content of the AI feedback
+    * has_feedback - Boolean indicating if feedback is available
+    * completion_score - Completion score for current level
+    * threshold - Threshold percentage required for completion
+    * can_proceed - Boolean indicating if user can proceed to next level
+    * is_loading - Boolean indicating if feedback is being generated
+    * error_message - Error message if feedback generation failed
+
+    Example context (json):
+    {
+        "level": 2,
+        "feedback_html": "<p>Your essay shows good structure...</p>",
+        "has_feedback": true,
+        "completion_score": 75.5,
+        "threshold": 80,
+        "can_proceed": false,
+        "is_loading": false,
+        "error_message": ""
+    }
+}}
+
+<div class="feedback-panel card">
+    <div class="card-header">
+        <h3 class="mb-0">
+            <i class="fa fa-lightbulb-o text-warning"></i>
+            {{#str}}feedback_level{{level}}_title, local_essaysmaster{{/str}}
+        </h3>
+        {{#completion_score}}
+        <div class="feedback-progress mt-2">
+            <div class="progress">
+                <div class="progress-bar {{#can_proceed}}bg-success{{/can_proceed}}{{^can_proceed}}bg-warning{{/can_proceed}}"
+                     role="progressbar"
+                     style="width: {{completion_score}}%"
+                     aria-valuenow="{{completion_score}}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                    {{completion_score}}%
+                </div>
+            </div>
+            <small class="text-muted">
+                {{#str}}completion_required, local_essaysmaster, {{threshold}}{{/str}}
+            </small>
+        </div>
+        {{/completion_score}}
+    </div>
+
+    <div class="card-body">
+        {{#is_loading}}
+        <div class="feedback-loading text-center py-4">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="sr-only">{{#str}}feedback_loading, local_essaysmaster{{/str}}</span>
+            </div>
+            <p class="text-muted">{{#str}}feedback_loading, local_essaysmaster{{/str}}</p>
+        </div>
+        {{/is_loading}}
+
+        {{#error_message}}
+        <div class="alert alert-danger" role="alert">
+            <i class="fa fa-exclamation-triangle"></i>
+            <strong>{{#str}}feedback_error, local_essaysmaster{{/str}}</strong>
+            <p class="mb-0">{{error_message}}</p>
+            <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="retry-feedback-btn">
+                <i class="fa fa-refresh"></i> Try Again
+            </button>
+        </div>
+        {{/error_message}}
+
+        {{#has_feedback}}
+        {{^is_loading}}
+        {{^error_message}}
+        <div id="feedback-content" class="feedback-content">
+            {{{feedback_html}}}
+        </div>
+
+        {{#completion_score}}
+        <div class="feedback-summary mt-3 p-3 bg-light rounded">
+            <h5 class="mb-2">
+                <i class="fa fa-chart-bar"></i>
+                {{#str}}requirements_completed, local_essaysmaster{{/str}}
+            </h5>
+            <div class="completion-details">
+                {{#can_proceed}}
+                <div class="alert alert-success mb-2">
+                    <i class="fa fa-check-circle"></i>
+                    {{#str}}level_completed, local_essaysmaster, {{level}}{{/str}}
+                </div>
+                {{/can_proceed}}
+                {{^can_proceed}}
+                <div class="alert alert-info mb-2">
+                    <i class="fa fa-info-circle"></i>
+                    Current progress: {{completion_score}}% (Need {{threshold}}% to continue)
+                </div>
+                {{/can_proceed}}
+            </div>
+        </div>
+        {{/completion_score}}
+
+        <div class="feedback-actions mt-3">
+            <button type="button" class="btn btn-outline-primary" id="refresh-feedback-btn">
+                <i class="fa fa-refresh"></i>
+                Get Updated Feedback
+            </button>
+
+            {{#can_proceed}}
+            <button type="button" class="btn btn-success ml-2" id="proceed-level-btn">
+                <i class="fa fa-arrow-right"></i>
+                {{#str}}proceed_to_next_level, local_essaysmaster, {{next_level}}{{/str}}
+            </button>
+            {{/can_proceed}}
+        </div>
+        {{/error_message}}
+        {{/is_loading}}
+        {{/has_feedback}}
+
+        {{^has_feedback}}
+        {{^is_loading}}
+        {{^error_message}}
+        <div class="no-feedback text-center py-4">
+            <i class="fa fa-comment-o fa-3x text-muted mb-3"></i>
+            <p class="text-muted">{{#str}}help_ai_feedback, local_essaysmaster{{/str}}</p>
+            <button type="button" class="btn btn-primary" id="get-feedback-btn">
+                <i class="fa fa-magic"></i>
+                {{#str}}get_ai_feedback, local_essaysmaster{{/str}}
+            </button>
+        </div>
+        {{/error_message}}
+        {{/is_loading}}
+        {{/has_feedback}}
+    </div>
+
+    {{#level}}
+    <div class="card-footer">
+        <small class="text-muted">
+            <i class="fa fa-info-circle"></i>
+            {{#str}}help_level{{level}}, local_essaysmaster{{/str}}
+        </small>
+    </div>
+    {{/level}}
+</div>
+
+{{#js}}
+require(['jquery'], function($) {
+    // Handle feedback actions
+    $('#get-feedback-btn, #refresh-feedback-btn, #retry-feedback-btn').on('click', function() {
+        $(document).trigger('essaysmaster:request-feedback', {
+            level: {{level}},
+            refresh: $(this).attr('id').includes('refresh') || $(this).attr('id').includes('retry')
+        });
+    });
+
+    $('#proceed-level-btn').on('click', function() {
+        $(document).trigger('essaysmaster:proceed-level', {
+            currentLevel: {{level}},
+            nextLevel: {{level}} + 1
+        });
+    });
+
+    // Highlight click handling
+    $(document).on('essaysmaster:highlight-clicked', function(event, data) {
+        // Show detailed feedback for clicked highlight
+        var detailModal = $('<div class="modal fade"><div class="modal-dialog"><div class="modal-content">' +
+            '<div class="modal-header">' +
+            '<h5 class="modal-title">Feedback Detail</h5>' +
+            '<button type="button" class="close" data-dismiss="modal">&times;</button>' +
+            '</div>' +
+            '<div class="modal-body">' + data.feedback + '</div>' +
+            '<div class="modal-footer">' +
+            '<button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>' +
+            '</div>' +
+            '</div></div></div>');
+
+        $('body').append(detailModal);
+        detailModal.modal('show');
+        detailModal.on('hidden.bs.modal', function() {
+            detailModal.remove();
+        });
+    });
+});
+{{/js}}

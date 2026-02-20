@@ -1,0 +1,82 @@
+<div class="local-quizdashboard">
+  <div class="card mb-3">
+    <div class="card-header"><h5 class="m-0">Essay Dashboard</h5></div>
+    <div class="card-body">
+      <form method="get" class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          <select class="form-select" name="status">
+            <option value="">All</option>
+            <option value="finished">Completed</option>
+            <option value="inprogress">In Progress</option>
+            <option value="abandoned">Abandoned</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">From</label>
+          <input type="date" class="form-control" name="datefrom" value="{{filters.datefrom}}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">To</label>
+          <input type="date" class="form-control" name="dateto" value="{{filters.dateto}}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Quiz Type</label>
+          <select class="form-select" name="quiztype">
+            <option value="">All</option>
+            <option value="Essay" {{#filters.quiztypeEssay}}selected{{/filters.quiztypeEssay}}>Essay</option>
+            <option value="Non-Essay" {{#filters.quiztypeNonEssay}}selected{{/filters.quiztypeNonEssay}}>Non-Essay</option>
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary me-2">Filter</button>
+          <a class="btn btn-secondary" href="{{{wwwroot}}}/local/quizdashboard/essays.php">Reset</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-striped table-hover">
+      <thead class="table-dark">
+        <tr>
+          <th>Quiz</th>
+          <th>Submitted By</th>
+          <th>Status</th>
+          <th>Course</th>
+          <th>Attempt #</th>
+          <th>Finished</th>
+          <th>Score</th>
+          <th>%</th>
+          <th>Similarity</th>
+          <th>Next step</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#rows}}
+        <tr>
+          <td><a href="{{reviewurl}}">{{quizname}}</a></td>
+          <td>{{studentname}}</td>
+          <td><span class="badge bg-{{statusclass}}">{{status}}</span></td>
+          <td>{{coursename}}</td>
+          <td>{{attemptno}}</td>
+          <td>{{timefinish}}</td>
+          <td>{{score}} / {{maxscore}}</td>
+          <td>{{percentage}}%</td>
+          <td>
+            {{#similarity}}
+              {{#similarityflag}}<span class="badge bg-danger" title="Penalty applied">{{similarity}}%</span>{{/similarityflag}}
+              {{^similarityflag}}<span class="badge bg-success">{{similarity}}%</span>{{/similarityflag}}
+            {{/similarity}}
+            {{^similarity}}—{{/similarity}}
+          </td>
+          <td><a class="btn btn-sm btn-outline-primary" href="{{nexturl}}">{{nextstep}}</a></td>
+        </tr>
+        {{/rows}}
+        {{^rows}}
+        <tr><td colspan="9" class="text-center text-muted">No results.</td></tr>
+        {{/rows}}
+      </tbody>
+    </table>
+  </div>
+</div>

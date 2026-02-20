@@ -1,0 +1,1107 @@
+<?php
+namespace local_quizdashboard;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Quiz manager for dashboard listings.
+ */
+class quiz_manager {
+
+    public function get_all_quiz_attempts($limit = 0, $offset = 0) {
+        return $this->get_filtered_quiz_attempts('', '', '', '', '', '', '', 'coursename', 'ASC', $limit, $offset);
+    }
+
+    public function get_filtered_quiz_attempts($userid = '', $studentname = '', $coursename = '', $quizname = '',
+                                              $datefrom = '', $dateto = '', $quiztype = '', $sort = 'coursename', $dir = 'ASC',
+                                              $limit = 0, $offset = 0, $status = '', $sectionid = '', $categoryid = 0, $excludestaff = false) {
+        global $DB;
+
+        // MODIFICATION: Updated subquery to get question name and ID for linking
+        // ADDED: Section information for filtering and display
+        $sql = "SELECT 
+            qa.id AS attemptid,
+            cm.id AS cmid,
+            q.id AS quizid,
+            qa.userid,
+            CONCAT(u.firstname, ' ', u.lastname) AS studentname,
+            c.id AS courseid,
+            c.fullname AS coursename,
+            q.name AS quizname,
+            cat.name AS categoryname,
+            cat.id AS categoryid,
+            cs.id AS sectionid,
+            cs.name AS sectionname,
+            cs.section AS sectionnumber,
+            (SELECT qn.name
+                FROM {question_attempts} qa_inner
+                JOIN {question} qn ON qn.id = qa_inner.questionid
+                WHERE qa_inner.questionusageid = qa.uniqueid AND qn.qtype = 'essay'
+                ORDER BY qa_inner.slot ASC
+                LIMIT 1) AS questionname,
+            (SELECT qn.id
+                FROM {question_attempts} qa_inner
+                JOIN {question} qn ON qn.id = qa_inner.questionid
+                WHERE qa_inner.questionusageid = qa.uniqueid AND qn.qtype = 'essay'
+                ORDER BY qa_inner.slot ASC
+                LIMIT 1) AS questionid,
+            qa.attempt AS attemptnumber,
+            CASE qa.state
+                WHEN 'finished' THEN 'Completed'
+                WHEN 'inprogress' THEN 'In Progress'
+                WHEN 'abandoned' THEN 'Trashed'
+                ELSE qa.state
+            END AS status,
+            qa.timestart,
+            qa.timefinish,
+            COALESCE(ROUND(qa.sumgrades, 2), 0) AS score,
+            COALESCE(q.grade, 0) AS maxscore,
+            COALESCE(ROUND((qa.sumgrades / NULLIF(q.grade,0) * 100), 2), 0) AS percentage,
+            COALESCE(qa.sumgrades, 0) AS grade,
+            COALESCE(qa.sumgrades, 0) AS sumgrades,
+            -- FIXED: Check if there are any manual grades (question steps with userid set)
+            CASE 
+                WHEN gr.id IS NOT NULL THEN 1
+                WHEN EXISTS (
+                    SELECT 1 FROM {question_attempts} qa_check
+                    JOIN {question_attempt_steps} qas_check ON qas_check.questionattemptid = qa_check.id
+                    WHERE qa_check.questionusageid = qa.uniqueid 
+                    AND qas_check.userid IS NOT NULL
+                    AND qas_check.state LIKE 'mangr%'
+                ) THEN 1
+                ELSE 0 
+            END AS isgraded,
+            gr.ai_likelihood,
+            gr.score_content_ideas,
+            gr.score_structure_organization,
+            gr.score_language_use,
+            gr.score_creativity_originality,
+            gr.score_mechanics,
+            gr.similarity_percent,
+            gr.similarity_flag
+        FROM {quiz_attempts} qa
+        LEFT JOIN {local_quizdashboard_gradings} gr ON gr.attempt_id = qa.id
+        JOIN {quiz} q ON qa.quiz = q.id
+        JOIN {course} c ON q.course = c.id
+        JOIN {course_categories} cat ON cat.id = c.category
+        JOIN {user} u ON qa.userid = u.id
+        JOIN {course_modules} cm ON cm.instance = q.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'quiz')
+        JOIN {course_sections} cs ON cs.id = cm.section";
+
+        $params = [];
+
+        // FIXED: Exclusive status filtering - trashed vs non-trashed
+        if (!empty($status)) {
+            if (strtolower($status) === 'abandoned' || strtolower($status) === 'trashed') {
+                // Show ONLY trashed items
+                $sql .= " WHERE qa.state = 'abandoned'";
+            } else {
+                // Show ONLY non-trashed items
+                $sql .= " WHERE qa.state IN ('finished', 'inprogress')";
+                
+                // Apply specific status filter for non-trashed items
+                $status_mapping = [
+                    'completed' => ['finished'],
+                    'finished' => ['finished'], 
+                    'in progress' => ['inprogress']
+                ];
+                
+                $db_states = $status_mapping[strtolower($status)] ?? [];
+                if (!empty($db_states)) {
+                    list($insql, $inparams) = $DB->get_in_or_equal($db_states, SQL_PARAMS_NAMED);
+                    $sql .= " AND qa.state $insql";
+                    $params = array_merge($params, $inparams);
+                }
+            }
+        } else {
+            // No status filter - show ONLY non-trashed items by default
+            $sql .= " WHERE qa.state IN ('finished', 'inprogress')";
+        }
+
+        // Add other basic filters
+        $sql .= " AND u.deleted = 0 AND c.visible = 1";
+
+        // --- Other Filters ---
+        if (!empty($userid))      { $sql .= " AND qa.userid = :userid";             $params['userid'] = $userid; }
+        if (!empty($studentname)) { $sql .= " AND CONCAT(u.firstname, ' ', u.lastname) = :studentname"; $params['studentname'] = $studentname; }
+        if (!empty($coursename))  { $sql .= " AND c.fullname = :coursename";        $params['coursename']  = $coursename; }
+        if (!empty($quizname))    { $sql .= " AND q.name = :quizname";              $params['quizname']    = $quizname; }
+        if (!empty($sectionid))   { $sql .= " AND cs.id = :sectionid";             $params['sectionid']   = $sectionid; }
+        if (!empty($categoryid))  { $sql .= " AND c.category = :categoryid";       $params['categoryid']  = $categoryid; }
+
+        // --- Exclude Staff Filter ---
+        if ($excludestaff) {
+            // Exclude site admins
+            global $CFG;
+            $siteadmins = explode(',', $CFG->siteadmins);
+            if (!empty($siteadmins)) {
+                list($adminsql, $adminparams) = $DB->get_in_or_equal($siteadmins, SQL_PARAMS_NAMED, 'admin', false);
+                $sql .= " AND u.id $adminsql";
+                $params = array_merge($params, $adminparams);
+            }
+
+            // Exclude users with staff roles in the course context
+            // Roles: manager (1), coursecreator (2), editingteacher (3), teacher (4)
+            // We check for role assignments in the course context
+            $sql .= " AND NOT EXISTS (
+                SELECT 1
+                FROM {role_assignments} ra
+                JOIN {context} ctx ON ra.contextid = ctx.id
+                WHERE ra.userid = u.id
+                AND ctx.contextlevel = 50 
+                AND ctx.instanceid = c.id
+                AND ra.roleid IN (1, 2, 3, 4)
+            )";
+        }
+
+        if (!empty($datefrom)) { $ts = strtotime($datefrom); if ($ts !== false) { $sql .= " AND qa.timefinish >= :datefrom"; $params['datefrom'] = $ts; } }
+        if (!empty($dateto))   { $ts = strtotime($dateto.' 23:59:59'); if ($ts !== false) { $sql .= " AND qa.timefinish <= :dateto";   $params['dateto']   = $ts; } }
+
+        // --- Quiz type filter (Essay / Non-Essay), schema-agnostic ---
+        if (!empty($quiztype)) {
+            $essay_quiz_ids = $this->quiz_ids_with_essay();
+            if ($quiztype === 'Essay') {
+                if (!empty($essay_quiz_ids)) { 
+                    list($insql, $inparams) = $DB->get_in_or_equal($essay_quiz_ids, SQL_PARAMS_NAMED); 
+                    $sql .= " AND q.id $insql"; 
+                    $params = array_merge($params, $inparams); 
+                } else { 
+                    $sql .= " AND 1 = 0"; 
+                }
+            } elseif ($quiztype === 'Non-Essay') {
+                if (!empty($essay_quiz_ids)) { 
+                    list($insql, $inparams) = $DB->get_in_or_equal($essay_quiz_ids, SQL_PARAMS_NAMED, 'p', false); 
+                    $sql .= " AND q.id $insql"; 
+                    $params = array_merge($params, $inparams); 
+                }
+            }
+        }
+
+        // --- Sorting ---
+        $allowed_sorts = [
+            'userid'       => 'qa.userid',
+            'studentname'  => 'studentname',
+            'courseid'     => 'c.id',
+            'coursename'   => 'c.fullname',
+            'quizname'     => 'q.name',
+            'questionname' => 'questionname',
+            'attemptnumber'=> 'qa.attempt',
+            'attemptno'    => 'qa.attempt',
+            'timestart'    => 'qa.timestart',
+            'timefinish'   => 'qa.timefinish',
+            'score'        => 'qa.sumgrades',
+            'percentage'   => 'percentage',
+            'grade'        => 'qa.sumgrades',
+            'status'       => 'qa.state',
+            'score_content_ideas' => 'gr.score_content_ideas',
+            'score_structure_organization' => 'gr.score_structure_organization',
+            'score_language_use' => 'gr.score_language_use',
+            'score_creativity_originality' => 'gr.score_creativity_originality',
+            'score_mechanics' => 'gr.score_mechanics'
+        ];
+        if (array_key_exists($sort, $allowed_sorts)) {
+            $sql .= " ORDER BY {$allowed_sorts[$sort]} ".(strtoupper($dir)==='DESC'?'DESC':'ASC');
+        } else {
+            $sql .= " ORDER BY c.fullname, q.name, u.lastname, u.firstname, qa.attempt";
+        }
+
+        // --- Run ---
+        $records = ($limit > 0) ? $DB->get_records_sql($sql, $params, $offset, $limit)
+                                : $DB->get_records_sql($sql, $params);
+
+        foreach ($records as $r) {
+            $r->quiz_type = $this->get_quiz_type_by_questions($r->attemptid);
+        }
+        return $records;
+    }
+
+    /**
+     * Gets all unique data for dashboard filters in a single query for performance.
+     */
+    /**
+     * Gets all unique data for dashboard filters in a single query for performance.
+     * FIXED: Added DISTINCT and unique row identifiers to prevent duplicate warnings
+     */
+    public function get_all_filter_data() {
+        global $DB;
+
+        // FIXED: Create unique identifiers and use ROW_NUMBER() to handle duplicates
+        $sql = "SELECT DISTINCT
+                    CONCAT('user_', u.id, '_', ROW_NUMBER() OVER (PARTITION BY u.id ORDER BY u.id)) as unique_id,
+                    u.id AS userid, 
+                    CONCAT(u.firstname, ' ', u.lastname) AS userfullname,
+                    c.id AS courseid, 
+                    c.fullname AS coursefullname,
+                    q.id AS quizid, 
+                    q.name AS quizname,
+                    qn.id AS questionid, 
+                    qn.name AS questionname
+                FROM {quiz_attempts} qa
+                JOIN {user} u ON u.id = qa.userid
+                JOIN {quiz} q ON q.id = qa.quiz
+                JOIN {course} c ON c.id = q.course
+                JOIN {question_attempts} qatt ON qatt.questionusageid = qa.uniqueid
+                JOIN {question} qn ON qn.id = qatt.questionid
+                WHERE qn.qtype = 'essay'
+                AND u.deleted = 0
+                AND c.visible = 1
+                AND qa.state IN ('finished', 'inprogress')
+                ORDER BY u.lastname, u.firstname, c.fullname, q.name, qn.name";
+
+        $results = $DB->get_records_sql($sql);
+
+        $filterdata = [
+            'users'     => [],
+            'courses'   => [],
+            'quizzes'   => [],
+            'questions' => [],
+            'userids'   => []
+        ];
+
+        // Process the single result set into separate arrays for each dropdown
+        // Use associative arrays to automatically handle duplicates
+        $seen_users = [];
+        $seen_courses = [];
+        $seen_quizzes = [];
+        $seen_questions = [];
+        $seen_userids = [];
+
+        foreach ($results as $row) {
+            // Users - prevent duplicates using userid as key
+            if (!isset($seen_users[$row->userid])) {
+                $filterdata['users'][$row->userid] = (object)[
+                    'id' => $row->userid, 
+                    'fullname' => $row->userfullname
+                ];
+                $seen_users[$row->userid] = true;
+            }
+            
+            // Courses
+            if (!isset($seen_courses[$row->courseid])) {
+                $filterdata['courses'][$row->courseid] = (object)[
+                    'id' => $row->courseid, 
+                    'fullname' => $row->coursefullname
+                ];
+                $seen_courses[$row->courseid] = true;
+            }
+            
+            // Quizzes
+            if (!isset($seen_quizzes[$row->quizid])) {
+                $filterdata['quizzes'][$row->quizid] = (object)[
+                    'id' => $row->quizid, 
+                    'name' => $row->quizname
+                ];
+                $seen_quizzes[$row->quizid] = true;
+            }
+            
+            // Questions
+            if (!isset($seen_questions[$row->questionid])) {
+                $filterdata['questions'][$row->questionid] = (object)[
+                    'id' => $row->questionid, 
+                    'name' => $row->questionname
+                ];
+                $seen_questions[$row->questionid] = true;
+            }
+            
+            // User IDs for the separate userid dropdown
+            if (!isset($seen_userids[$row->userid])) {
+                $filterdata['userids'][$row->userid] = (object)[
+                    'id' => $row->userid, 
+                    'userid' => $row->userid
+                ];
+                $seen_userids[$row->userid] = true;
+            }
+        }
+
+        // Sort the arrays by name/fullname
+        uasort($filterdata['users'], function($a, $b) { 
+            return strcmp($a->fullname, $b->fullname); 
+        });
+        uasort($filterdata['courses'], function($a, $b) { 
+            return strcmp($a->fullname, $b->fullname); 
+        });
+        uasort($filterdata['quizzes'], function($a, $b) { 
+            return strcmp($a->name, $b->name); 
+        });
+        uasort($filterdata['questions'], function($a, $b) { 
+            return strcmp($a->name, $b->name); 
+        });
+        // userids don't need sorting by name since they're numeric
+
+        return $filterdata;
+    }
+
+    public function get_quiz_type_by_questions($quiz_attempt_id) {
+        global $DB;
+        try {
+            $quiz_id = $DB->get_field('quiz_attempts', 'quiz', ['id' => $quiz_attempt_id]);
+            if (!$quiz_id) { return 'Unknown'; }
+            return $this->quiz_has_essay((int)$quiz_id) ? 'Essay' : 'Non-Essay';
+        } catch (\Throwable $e) { return 'Unknown'; }
+    }
+
+    /**
+     * Save comment for all essay questions in a quiz attempt.
+     */
+/**
+     * UPDATED: Save/update a comment and grade for an essay question in a quiz attempt.
+     * This function now correctly finds a previous auto-grade comment, regardless of its state,
+     * and overwrites it. If no previous comment exists, it creates a new one.
+     */
+    public function save_comment_and_grade(int $attemptid, string $comment, ?float $fraction): bool {
+    global $DB, $USER, $CFG;
+
+    // Find the specific essay question attempt and the quiz ID.
+    $sql = "
+        SELECT qa.id as qaid, qz.id as quizid, qa.maxmark, quiza.userid
+        FROM {quiz_attempts} quiza
+        JOIN {quiz} qz ON qz.id = quiza.quiz
+        JOIN {question_attempts} qa ON qa.questionusageid = quiza.uniqueid
+        JOIN {question} q ON q.id = qa.questionid AND q.qtype = 'essay'
+        WHERE quiza.id = :attemptid
+        ORDER BY qa.slot ASC
+        LIMIT 1
+    ";
+
+    $qa_record = $DB->get_record_sql($sql, ['attemptid' => $attemptid]);
+    if (!$qa_record) {
+        error_log("save_comment_and_grade: No essay question attempt found for attemptid {$attemptid}");
+        return false;
+    }
+
+    $tx = $DB->start_delegated_transaction();
+    try {
+        // MODIFIED: This query is now more robust. It finds the MOST RECENT grading step
+        // created by this plugin by looking for our '-comment' field, ignoring the 'state'.
+        $existing_step_sql = "
+            SELECT qas.id
+            FROM {question_attempt_steps} qas
+            JOIN {question_attempt_step_data} qasd ON qasd.attemptstepid = qas.id
+            WHERE qas.questionattemptid = :qaid
+            AND qasd.name = '-comment'
+            ORDER BY qas.sequencenumber DESC
+            LIMIT 1
+        ";
+        $existing_step = $DB->get_record_sql($existing_step_sql, ['qaid' => $qa_record->qaid]);
+
+        if ($existing_step) {
+            // --- UPDATE existing auto-grade step ---
+            $DB->set_field('question_attempt_step_data', 'value', $comment, ['attemptstepid' => $existing_step->id, 'name' => '-comment']);
+            $DB->set_field('question_attempt_steps', 'timecreated', time(), ['id' => $existing_step->id]);
+            if ($fraction !== null) {
+                $DB->set_field('question_attempt_steps', 'fraction', $fraction, ['id' => $existing_step->id]);
+                // Update the mark if it exists, otherwise create it.
+                if ($DB->record_exists('question_attempt_step_data', ['attemptstepid' => $existing_step->id, 'name' => '-mark'])) {
+                    $DB->set_field('question_attempt_step_data', 'value', (string)$fraction, ['attemptstepid' => $existing_step->id, 'name' => '-mark']);
+                } else {
+                    $mark_data = new \stdClass();
+                    $mark_data->attemptstepid = $existing_step->id;
+                    $mark_data->name          = '-mark';
+                    $mark_data->value         = (string)$fraction;
+                    $DB->insert_record('question_attempt_step_data', $mark_data);
+                }
+            }
+        } else {
+            // --- INSERT new auto-grade step ---
+            $max_seq = $DB->get_field('question_attempt_steps', 'MAX(sequencenumber)', ['questionattemptid' => $qa_record->qaid]) ?: 0;
+
+            $newstep = new \stdClass();
+            $newstep->questionattemptid = $qa_record->qaid;
+            $newstep->sequencenumber    = $max_seq + 1;
+            $newstep->state             = 'mangrpartial';
+            $newstep->fraction          = $fraction;
+            $newstep->timecreated       = time();
+            $newstep->userid            = $USER->id;
+            $stepid = $DB->insert_record('question_attempt_steps', $newstep);
+
+            if ($stepid) {
+                $comment_data = new \stdClass();
+                $comment_data->attemptstepid = $stepid;
+                $comment_data->name          = '-comment';
+                $comment_data->value         = $comment;
+                $DB->insert_record('question_attempt_step_data', $comment_data);
+
+                if ($fraction !== null) {
+                    $mark_data = new \stdClass();
+                    $mark_data->attemptstepid = $stepid;
+                    $mark_data->name          = '-mark';
+                    $mark_data->value         = (string)$fraction;
+                    $DB->insert_record('question_attempt_step_data', $mark_data);
+
+                    $maxmark_data = new \stdClass();
+                    $maxmark_data->attemptstepid = $stepid;
+                    $maxmark_data->name          = '-maxmark';
+                    $maxmark_data->value         = '1.0'; // Fraction is always out of 1.0
+                    $DB->insert_record('question_attempt_step_data', $maxmark_data);
+                }
+            }
+        }
+
+        // Force Moodle to re-calculate grades for the question and the quiz.
+        // Note: sync_question_attempt doesn't exist in standard Moodle API
+        // We'll handle this through the question usage below
+
+        // NEW: Get the quiz attempt and recalculate the total grade
+        $quiz_attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid], '*', MUST_EXIST);
+        $quiz = $DB->get_record('quiz', ['id' => $qa_record->quizid], '*', MUST_EXIST);
+
+        // Recalculate the total grade for this attempt
+        require_once($CFG->dirroot . '/mod/quiz/locallib.php');
+        
+        // Get the usage and recalculate grades
+        $quba = \question_engine::load_questions_usage_by_activity($quiz_attempt->uniqueid);
+        $quba->finish_all_questions();
+        
+        // Calculate new total grade
+        $total_grade = $quba->get_total_mark();
+        
+        // Update the quiz attempt with the new total
+        $DB->set_field('quiz_attempts', 'sumgrades', $total_grade, ['id' => $attemptid]);
+
+        // CRITICAL: Update the gradebook for this user and quiz
+        if (function_exists('quiz_update_grades')) {
+            quiz_update_grades($quiz, $qa_record->userid);
+        } else if (function_exists('mod_quiz_update_grades')) {
+            // Fallback for different Moodle versions
+            mod_quiz_update_grades($quiz, $qa_record->userid);
+        }
+
+        // Also update the overall course gradebook
+        require_once($CFG->libdir . '/gradelib.php');
+        grade_update('mod/quiz', $quiz->course, 'mod', 'quiz', $quiz->id, 0, null, ['reset' => false, 'userid' => $qa_record->userid]);
+
+        $tx->allow_commit();
+        
+        error_log("Successfully updated grade for attempt {$attemptid}. New total: {$total_grade}");
+        return true;
+
+    } catch (\Exception $e) {
+        $tx->rollback($e);
+        error_log('Error saving comment and grade: ' . $e->getMessage());
+        return false;
+    }
+    }
+
+
+    /**
+     * Get and concatenate all comments for a quiz attempt.
+     */
+    public function get_attempt_comment(int $attemptid): string {
+        global $DB;
+
+        // Get comments from ALL essay questions in the attempt and combine them.
+        $sql = "
+            SELECT cmt.value
+            FROM {quiz_attempts} quiza
+            JOIN {question_usages} qu           ON qu.id = quiza.uniqueid
+            JOIN {question_attempts} qa         ON qa.questionusageid = qu.id
+            JOIN {question} q                   ON q.id = qa.questionid AND q.qtype = 'essay'
+            JOIN {question_attempt_steps} qas   ON qas.questionattemptid = qa.id
+              AND qas.sequencenumber = (
+                SELECT MAX(x.sequencenumber)
+                FROM {question_attempt_steps} x
+                WHERE x.questionattemptid = qa.id
+              )
+            JOIN {question_attempt_step_data} cmt
+                   ON cmt.attemptstepid = qas.id AND cmt.name = 'comment'
+            WHERE quiza.id = :attemptid
+            ORDER BY qa.slot
+        ";
+        
+        try {
+            $comments = $DB->get_fieldset_sql($sql, ['attemptid' => $attemptid]);
+            if ($comments) {
+                // Join all found comments with a new line.
+                return implode("\n\n", $comments);
+            }
+            return '';
+        } catch (\Exception $e) {
+            error_log("Error getting comments for attempt $attemptid: " . $e->getMessage());
+            return '';
+        }
+    }
+
+    /**
+     * MODIFICATION: Fixed comment count to include ALL comment types including manual grading
+     */
+        public function get_attempt_comment_count(int $attemptid): int {
+        global $DB;
+
+        // MODIFIED: This SQL now specifically counts only the steps that represent
+        // a manual comment or a grade action added by a user. It ignores automated
+        // system steps like 'Started' or 'Answer saved'.
+        $sql = "
+            SELECT COUNT(qas.id)
+            FROM {quiz_attempts} quiza
+            JOIN {question_attempts} qa ON qa.questionusageid = quiza.uniqueid
+            JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+            WHERE quiza.id = :attemptid
+              -- This is the key condition: it ensures we only count steps
+              -- that are manual grades or have a user associated with them.
+              AND (qas.state LIKE 'mangr%' OR qas.userid IS NOT NULL)
+        ";
+        
+        try {
+            return (int)$DB->count_records_sql($sql, ['attemptid' => $attemptid]);
+        } catch (\Exception $e) {
+            error_log("Error counting comments for attempt $attemptid: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Save grade for quiz attempt 
+     */
+    public function save_attempt_grade($attempt_id, $grade) {
+        global $DB;
+        return $DB->set_field('quiz_attempts', 'sumgrades', $grade, ['id' => $attempt_id]);
+    }
+
+    /**
+     * Bulk operations for quiz attempts 
+     */
+    public function bulk_update_attempts($attempt_ids, $action, $data = []) {
+        global $DB;
+        
+        $success_count = 0;
+        foreach ($attempt_ids as $attempt_id) {
+            if (!is_numeric($attempt_id)) {
+                continue;
+            }
+            
+            try {
+                switch ($action) {
+                    case 'grade':
+                        if (isset($data['grade'])) {
+                            $this->save_attempt_grade($attempt_id, $data['grade']);
+                            $success_count++;
+                        }
+                        break;
+                    case 'approve':
+                        $DB->set_field('quiz_attempts', 'state', 'finished', ['id' => $attempt_id]);
+                        $success_count++;
+                        break;
+                    case 'reject':
+                        // Reject no longer supported - use delete instead
+                        if ($this->delete_quiz_attempt($attempt_id)) {
+                            $success_count++;
+                        }
+                        break;
+                    case 'delete':
+                        if ($this->delete_quiz_attempt($attempt_id)) {
+                            $success_count++;
+                        }
+                        break;
+                    case 'export':
+                        $success_count++;
+                        break;
+                }
+            } catch (\Exception $e) {
+                error_log("Error processing bulk action $action for attempt $attempt_id: " . $e->getMessage());
+            }
+        }
+        
+        return $success_count;
+    }
+
+
+    /**
+     * Permanently delete a quiz attempt and all associated data
+     * WARNING: This is irreversible!
+     */
+        public function delete_quiz_attempt($attemptid) {
+        global $DB;
+        
+        try {
+            $transaction = $DB->start_delegated_transaction();
+            
+            // Get the attempt record first
+            $attempt = $DB->get_record('quiz_attempts', ['id' => $attemptid]);
+            if (!$attempt) {
+                return false;
+            }
+            
+            // Delete related records first (foreign key constraints)
+            $DB->delete_records('question_attempt_steps', ['questionattemptid' => $attempt->uniqueid]);
+            $DB->delete_records('question_attempts', ['questionusageid' => $attempt->uniqueid]);
+            $DB->delete_records('question_usages', ['id' => $attempt->uniqueid]);
+            
+
+            // Delete backup records if they exist
+            $DB->delete_records('local_quizdashboard_trash_backup', ['attempt_id' => $attemptid]);
+            $DB->delete_records('local_quizdashboard_gradings', ['attempt_id' => $attemptid]);
+            
+            // Finally delete the attempt itself
+            $DB->delete_records('quiz_attempts', ['id' => $attemptid]);
+            
+            $transaction->allow_commit();
+            return true;
+            
+        } catch (Exception $e) {
+            $transaction->rollback($e);
+            error_log("Error deleting quiz attempt {$attemptid}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+
+
+
+    /**
+     * Move attempts to trash (mark as abandoned)
+     */
+    public function trash_attempts($attemptids) {
+        global $DB;
+        
+        $success_count = 0;
+        $error_count = 0;
+        
+        foreach ($attemptids as $attemptid) {
+            $attemptid = (int)trim($attemptid);
+            if ($attemptid <= 0) continue;
+            
+            try {
+                if ($DB->set_field('quiz_attempts', 'state', 'abandoned', ['id' => $attemptid])) {
+                    $success_count++;
+                } else {
+                    $error_count++;
+                }
+            } catch (\Exception $e) {
+                error_log("Error trashing attempt {$attemptid}: " . $e->getMessage());
+                $error_count++;
+            }
+        }
+        
+        return [
+            'success' => $success_count,
+            'errors' => $error_count
+        ];
+    }
+
+    /**
+     * Clean up old trash backup records (older than 30 days)
+     * Call this periodically to prevent database bloat
+     */
+    public function cleanup_old_trash_backups() {
+        global $DB;
+        
+        $cutoff_time = time() - (30 * 24 * 60 * 60); // 30 days ago
+        
+        try {
+            $deleted_count = $DB->delete_records_select(
+                'local_quizdashboard_trash_backup', 
+                'trashed_time < ?', 
+                [$cutoff_time]
+            );
+            
+            error_log("Cleaned up {$deleted_count} old trash backup records");
+            return $deleted_count;
+        } catch (\Exception $e) {
+            error_log("Error cleaning up trash backups: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Get trash backup info for an attempt
+     */
+    public function get_trash_backup($attemptid) {
+        global $DB;
+        return $DB->get_record('local_quizdashboard_trash_backup', ['attempt_id' => $attemptid]);
+    }
+
+    /**
+     * Export attempts data to CSV
+     */
+    public function export_attempts_data($attemptids) {
+        global $DB, $CFG;
+        
+        if (empty($attemptids)) {
+            throw new \moodle_exception('No attempts to export');
+        }
+        
+        // Clean and validate attempt IDs
+        $clean_ids = [];
+        foreach ($attemptids as $id) {
+            $clean_id = (int)trim($id);
+            if ($clean_id > 0) {
+                $clean_ids[] = $clean_id;
+            }
+        }
+        
+        if (empty($clean_ids)) {
+            throw new \moodle_exception('No valid attempt IDs provided');
+        }
+        
+        // Get attempt data
+        list($insql, $params) = $DB->get_in_or_equal($clean_ids, SQL_PARAMS_NAMED);
+        
+        $sql = "SELECT 
+                    qa.id AS attemptid,
+                    qa.userid,
+                    CONCAT(u.firstname, ' ', u.lastname) AS studentname,
+                    u.email,
+                    c.fullname AS coursename,
+                    q.name AS quizname,
+                    qa.attempt AS attemptnumber,
+                    qa.state AS status,
+                    qa.timestart,
+                    qa.timefinish,
+                    qa.sumgrades AS score,
+                    q.grade AS maxscore
+                FROM {quiz_attempts} qa
+                JOIN {quiz} q ON qa.quiz = q.id
+                JOIN {course} c ON q.course = c.id
+                JOIN {user} u ON qa.userid = u.id
+                WHERE qa.id {$insql}
+                ORDER BY c.fullname, q.name, u.lastname, u.firstname, qa.attempt";
+        
+        $records = $DB->get_records_sql($sql, $params);
+        
+        if (empty($records)) {
+            throw new \moodle_exception('No data found for export');
+        }
+        
+        // Create CSV content
+        $csv_content = [];
+        $csv_content[] = [
+            'Attempt ID',
+            'User ID', 
+            'Student Name',
+            'Email',
+            'Course',
+            'Quiz',
+            'Attempt Number',
+            'Status',
+            'Started',
+            'Finished',
+            'Score',
+            'Max Score',
+            'Percentage'
+        ];
+        
+        foreach ($records as $record) {
+            $percentage = ($record->score && $record->maxscore) 
+                ? round(($record->score / $record->maxscore) * 100, 2) 
+                : '';
+                
+            $csv_content[] = [
+                $record->attemptid,
+                $record->userid,
+                $record->studentname,
+                $record->email,
+                $record->coursename,
+                $record->quizname,
+                $record->attemptnumber,
+                $record->status,
+                $record->timestart ? date('Y-m-d H:i:s', $record->timestart) : '',
+                $record->timefinish ? date('Y-m-d H:i:s', $record->timefinish) : '',
+                $record->score ?: '',
+                $record->maxscore ?: '',
+                $percentage
+            ];
+        }
+        
+        // Generate filename and save file
+        $filename = 'quiz_attempts_export_' . date('Y-m-d_H-i-s') . '.csv';
+        $filepath = $CFG->tempdir . '/' . $filename;
+        
+        $fp = fopen($filepath, 'w');
+        if (!$fp) {
+            throw new \moodle_exception('Could not create export file');
+        }
+        
+        foreach ($csv_content as $row) {
+            fputcsv($fp, $row);
+        }
+        fclose($fp);
+        
+        // Create download URL
+        $download_url = new \moodle_url('/local/quizdashboard/download_export.php', [
+            'file' => $filename,
+            'sesskey' => sesskey()
+        ]);
+        
+        return [
+            'filename' => $filename,
+            'filepath' => $filepath,
+            'download_url' => $download_url->out(false),
+            'record_count' => count($records)
+        ];
+    }
+
+
+    
+
+    /**
+     * Check if attempt is a resubmission
+     */
+    public function is_resubmission($attempt_id) {
+        global $DB;
+        
+        $current = $DB->get_record('quiz_attempts', ['id' => $attempt_id]);
+        if (!$current) return false;
+        
+        $previous_count = $DB->count_records_select(
+            'quiz_attempts',
+            'userid = ? AND quiz = ? AND timestart < ? AND state IN (?, ?)',
+            [$current->userid, $current->quiz, $current->timestart, 'finished', 'inprogress']
+        );
+        
+        return $previous_count > 0;
+    }
+
+    /**
+     * Get submission chain for display
+     */
+    public function get_submission_chain($attempt_id) {
+        global $DB;
+        
+        $current = $DB->get_record('quiz_attempts', ['id' => $attempt_id]);
+        if (!$current) return [];
+        
+        $submissions = $DB->get_records_select(
+            'quiz_attempts',
+            'userid = ? AND quiz = ? AND state IN (?, ?)',
+            [$current->userid, $current->quiz, 'finished', 'inprogress'],
+            'timestart ASC'
+        );
+        
+        $chain = [];
+        $position = 1;
+        foreach ($submissions as $submission) {
+            $chain[] = [
+                'attempt_id' => $submission->id,
+                'position' => $position++,
+                'is_current' => ($submission->id == $attempt_id),
+                'is_graded' => $this->is_graded($submission->id),
+                'is_resubmission' => $position > 1
+            ];
+        }
+        
+        return $chain;
+    }
+
+    /**
+     * Get resubmission info for an attempt
+     */
+    public function get_resubmission_info($attempt_id) {
+        global $DB;
+        return $DB->get_record('local_quizdashboard_resubmissions', ['current_attempt_id' => $attempt_id]);
+    }
+
+
+    /** True if the quiz contains at least one essay question (schemaâ€'agnostic). */
+    private function quiz_has_essay(int $quizid): bool {
+        global $DB;
+        $slotscols = $DB->get_columns('quiz_slots');
+
+        if (isset($slotscols['questionid'])) {
+            // Moodle 3.x direct link
+            $sql = "SELECT 1
+                      FROM {quiz_slots} qs
+                      JOIN {question} q ON q.id = qs.questionid
+                     WHERE qs.quizid = ? AND q.qtype = 'essay'";
+            return $DB->record_exists_sql($sql, [$quizid]);
+        }
+
+        // Moodle 4.x question bank path
+        $sql = "SELECT 1
+                  FROM {quiz_slots} qs
+                  JOIN {question_references} qr
+                    ON qr.itemid = qs.id
+                   AND qr.component = 'mod_quiz'
+                   AND qr.questionarea = 'slot'
+                  JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+                  JOIN (
+                        SELECT questionbankentryid, MAX(version) AS maxver
+                          FROM {question_versions}
+                      GROUP BY questionbankentryid
+                       ) vmax ON vmax.questionbankentryid = qbe.id
+                  JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id AND qv.version = vmax.maxver
+                  JOIN {question} q ON q.id = qv.questionid
+                 WHERE qs.quizid = ? AND q.qtype = 'essay'";
+        return $DB->record_exists_sql($sql, [$quizid]);
+    }
+    /**
+     * Check if an attempt has been graded (has grading record)
+     */
+    public function is_graded($attempt_id) {
+        global $DB;
+        return $DB->record_exists('local_quizdashboard_gradings', ['attempt_id' => $attempt_id]);
+    }
+
+
+    /** All quiz IDs that contain at least one essay question (schemaâ€'agnostic). */
+    private function quiz_ids_with_essay(): array {
+        global $DB;
+        $slotscols = $DB->get_columns('quiz_slots');
+
+        if (isset($slotscols['questionid'])) {
+            // Moodle 3.x schema
+            $sql = "SELECT DISTINCT qs.quizid
+                      FROM {quiz_slots} qs
+                      JOIN {question} q ON q.id = qs.questionid
+                     WHERE q.qtype = 'essay'";
+            return $DB->get_fieldset_sql($sql);
+        }
+
+        // Moodle 4.x schema
+        $sql = "SELECT DISTINCT qs.quizid
+                  FROM {quiz_slots} qs
+                  JOIN {question_references} qr
+                    ON qr.itemid = qs.id
+                   AND qr.component = 'mod_quiz'
+                   AND qr.questionarea = 'slot'
+                  JOIN {question_bank_entries} qbe ON qbe.id = qr.questionbankentryid
+                  JOIN (
+                        SELECT questionbankentryid, MAX(version) AS maxver
+                          FROM {question_versions}
+                      GROUP BY questionbankentryid
+                       ) vmax ON vmax.questionbankentryid = qbe.id
+                  JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id AND qv.version = vmax.maxver
+                  JOIN {question} q ON q.id = qv.questionid
+                 WHERE q.qtype = 'essay'";
+        return $DB->get_fieldset_sql($sql);
+    }
+
+    // --- Misc helpers ---
+    public function get_quiz_type($quiz_attempt_id) { 
+        return $this->get_quiz_type_by_questions($quiz_attempt_id); 
+    }
+
+    public function get_total_attempts_count() {
+        global $DB;
+        $sql = "SELECT COUNT(*)
+                  FROM {quiz_attempts} qa
+                  JOIN {quiz} q ON qa.quiz = q.id
+                  JOIN {course} c ON q.course = c.id
+                  JOIN {user} u ON qa.userid = u.id
+                 WHERE qa.state IN ('finished', 'inprogress')
+                   AND u.deleted = 0
+                   AND c.visible = 1";
+        return (int)$DB->count_records_sql($sql);
+    }
+
+    public function get_unique_users() {
+        global $DB;
+        $sql = "SELECT DISTINCT u.id, CONCAT(u.firstname, ' ', u.lastname) AS fullname
+                  FROM {user} u
+                  JOIN {quiz_attempts} qa ON qa.userid = u.id
+                  JOIN {quiz} q ON qa.quiz = q.id
+                  JOIN {course} c ON q.course = c.id
+                 WHERE u.deleted = 0 
+                   AND c.visible = 1
+                   AND qa.state IN ('finished', 'inprogress')
+              ORDER BY u.lastname, u.firstname";
+        return $DB->get_records_sql($sql);
+    }
+
+    public function get_unique_course_names($categoryid = 0) {
+        global $DB;
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
+        $sql = "SELECT DISTINCT c.id, c.fullname
+                  FROM {course} c
+                  JOIN {quiz} q ON q.course = c.id
+                  JOIN {quiz_attempts} qa ON qa.quiz = q.id
+                {$where}
+              ORDER BY c.fullname";
+        $records = $DB->get_records_sql($sql, $params);
+
+        // Fallback for categories like Personal Review Courses where there may be no attempts yet
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname
+                       FROM {course} c
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT c.id, c.fullname
+                       FROM {course} c
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname",
+                    []
+                );
+            }
+        }
+        return $records;
+    }
+
+    public function get_unique_quiz_names() {
+        global $DB;
+        $sql = "SELECT DISTINCT q.id, q.name
+                  FROM {quiz} q
+                  JOIN {quiz_attempts} qa ON qa.quiz = q.id
+                  JOIN {course} c ON q.course = c.id
+                 WHERE c.visible = 1
+                   AND qa.state IN ('finished', 'inprogress')
+              ORDER BY q.name";
+        return $DB->get_records_sql($sql);
+    }
+
+    public function get_unique_sections($categoryid = 0, $courseid = 0) {
+        global $DB;
+        // If a specific course is selected, prefer structural lookup of its sections (works even without attempts)
+        if (!empty($courseid)) {
+            return $DB->get_records_sql(
+                "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                   FROM {course_sections} cs
+                   JOIN {course} c ON c.id = cs.course
+                  WHERE c.visible = 1 AND c.id = :courseid
+               ORDER BY cs.section",
+                ['courseid' => (int)$courseid]
+            );
+        }
+
+        // Default attempt-based list (original behavior)
+        $where = "WHERE c.visible = 1 AND qa.state IN ('finished','inprogress')";
+        $params = [];
+        if (!empty($categoryid)) {
+            $where .= " AND c.category = :catid";
+            $params['catid'] = (int)$categoryid;
+        }
+        $sql = "SELECT DISTINCT cs.id, cs.name, cs.section, c.fullname AS coursename
+                  FROM {course_sections} cs
+                  JOIN {course} c ON c.id = cs.course
+                  JOIN {course_modules} cm ON cm.section = cs.id AND cm.module = (SELECT id FROM {modules} WHERE name = 'quiz')
+                  JOIN {quiz} q ON q.id = cm.instance
+                  JOIN {quiz_attempts} qa ON qa.quiz = q.id
+                {$where}
+              ORDER BY c.fullname, cs.section";
+        $records = $DB->get_records_sql($sql, $params);
+
+        // Fallback structural list by category when attempts don't exist yet
+        if (empty($records)) {
+            if (!empty($categoryid)) {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1 AND c.category = :catid
+                   ORDER BY c.fullname, cs.section",
+                    ['catid' => (int)$categoryid]
+                );
+            } else {
+                return $DB->get_records_sql(
+                    "SELECT cs.id, cs.name, cs.section, c.fullname AS coursename
+                       FROM {course_sections} cs
+                       JOIN {course} c ON c.id = cs.course
+                      WHERE c.visible = 1
+                   ORDER BY c.fullname, cs.section",
+                    []
+                );
+            }
+        }
+        return $records;
+    }
+}
+?>

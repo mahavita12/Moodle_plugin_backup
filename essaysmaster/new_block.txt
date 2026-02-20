@@ -1,0 +1,51 @@
+        // \u2705 STORE/UPDATE FEEDBACK RECORD: Overwrite existing records to allow re-attempts
+        try {
+            // Check if feedback record already exists
+            // We check by attempt_id and round_number as primary identifiers
+            $existing_record = $DB->get_record('local_essaysmaster_feedback', [
+                'attempt_id' => $attemptid,
+                'round_number' => $round
+            ]);
+            
+            if ($existing_record) {
+                // UPDATE existing record
+                $existing_record->attempt_id = $attemptid; // Ensure required field is set
+                $existing_record->round_number = $round; // Update round number
+                // Update version_id if we have a new one, otherwise keep existing
+                if ($new_version_id > 0) {
+                    $existing_record->version_id = $new_version_id;
+                }
+                $existing_record->feedback_html = $nonce ? $feedback_text . "\n<!-- nonce:$nonce -->" : $feedback_text;
+                $existing_record->highlighted_areas = json_encode($highlights_array);
+                // Use actual AI score instead of hardcoded value
+                $existing_record->completion_score = isset($ai_result['score']) ? floatval($ai_result['score']) : 50.0;
+                $existing_record->feedback_generated_time = time();
+                $existing_record->api_response_time = 0.5; // Default response time
+                
+                $DB->update_record('local_essaysmaster_feedback', $existing_record);
+                error_log("Essays Master: Updated existing feedback record for attempt $attemptid, round $round (re-attempt)");
+            } else {
+                // INSERT new record
+                $feedback_record = new stdClass();
+                // Use the captured version ID if available, otherwise fallback to attemptid (though less ideal)
+                $feedback_record->version_id = ($new_version_id > 0) ? $new_version_id : $attemptid;
+                $feedback_record->attempt_id = $attemptid; // FIXED: Missing required field
+                $feedback_record->question_attempt_id = 0; // Default value
+                $feedback_record->round_number = $round; // FIXED: Set round number properly
+                $feedback_record->level_type = "round_$round";
+                
+                // \ud83d\udd0d PROBE B: Include nonce in feedback for tracking
+                if ($nonce) {
+                    $feedback_record->feedback_html = $feedback_text . "\n<!-- nonce:$nonce -->";
+                    error_log("Essays Master: Storing feedback with nonce: $nonce");
+                } else {
+                    $feedback_record->feedback_html = $feedback_text;
+                }
+                
+                $feedback_record->highlighted_areas = json_encode($highlights_array);
+                $feedback_record->completion_score = isset($ai_result['score']) ? floatval($ai_result['score']) : 50.0;
+                $feedback_record->feedback_generated_time = time();
+                $feedback_record->api_response_time = 0.5;
+                $feedback_record->timecreated = time();
+                
+                $DB->insert_record('local_essaysmaster_feedback', $feedback_record);

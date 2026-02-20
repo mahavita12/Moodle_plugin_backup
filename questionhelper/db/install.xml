@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/questionhelper/db" VERSION="2025092700" COMMENT="XMLDB file for Question Helper">
+  <TABLES>
+    <TABLE NAME="local_qh_saved_help" COMMENT="Saved AI help content per user and question and variant">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="questionid" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="variant" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="help"/>
+        <FIELD NAME="practice_question" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="optionsjson" TYPE="text" NOTNULL="false" COMMENT="JSON map of A-D"/>
+        <FIELD NAME="correct_answer" TYPE="char" LENGTH="1" NOTNULL="false"/>
+        <FIELD NAME="explanation" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="concept_explanation" TYPE="text" NOTNULL="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="user_q_variant_unique" TYPE="unique" FIELDS="userid, questionid, variant"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="userid_idx" UNIQUE="false" FIELDS="userid"/>
+        <INDEX NAME="questionid_idx" UNIQUE="false" FIELDS="questionid"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>
+

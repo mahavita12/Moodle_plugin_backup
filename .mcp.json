@@ -1,0 +1,50 @@
+{
+  "mcpServers": {
+    "moodle-local": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "C:/MCP_servers/moodle_mcp_server/moodle_mcp_server.py"
+      ],
+      "env": {}
+    },
+    "growminds-staging": {
+      "type": "stdio",
+      "command": "C:/Windows/System32/OpenSSH/ssh.exe",
+      "args": [
+        "-i",
+        "C:/Users/mahav/.ssh/id_mcp_prod_nopw2",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "ServerAliveInterval=60",
+        "-o",
+        "ServerAliveCountMax=3",
+        "master_jcnbsmnxtb@134.199.148.31",
+        "cd /home/master/applications/srfshmcmyg/public_html/moodle_staging_mcp && exec python3 -u moodle_staging_mcp.py"
+      ],
+      "env": {}
+    },
+    "growminds-production": {
+      "type": "stdio",
+      "command": "C:/Windows/System32/OpenSSH/ssh.exe",
+      "args": [
+        "-i",
+        "C:/Users/mahav/.ssh/id_mcp_prod_nopw2",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "ServerAliveInterval=60",
+        "-o",
+        "ServerAliveCountMax=3",
+        "master_jcnbsmnxtb@134.199.148.31",
+        "cd /home/master/applications/anbgdvzfrt/public_html/moodle_production_mcp && exec python3 -u moodle_production_mcp.py"
+      ],
+      "env": {}
+    }
+  }
+}

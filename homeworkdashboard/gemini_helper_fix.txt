@@ -1,0 +1,52 @@
+    public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en'): ?string {
+        if (!$this->is_configured()) {
+            return "AI Commentary unavailable: API Key not configured.";
+        }
+
+        // Calculate completion stats
+        $total_new = count($new_activities);
+        $completed_new = 0;
+        foreach ($new_activities as $act) {
+            $status = $act['status'] ?? 'Unknown';
+            $attempts_count = count($act['attempts'] ?? []);
+            error_log("GEMINI_DEBUG: New Activity '{$act['name']}' | Status: '$status' | Attempts: $attempts_count");
+
+            // Use status from table logic if available
+            if (isset($act['status'])) {
+                if ($act['status'] === 'Completed' || $act['status'] === 'Low grade') {
+                    $completed_new++;
+                    error_log("GEMINI_DEBUG: -> Counted as COMPLETED (Status match)");
+                } else {
+                    error_log("GEMINI_DEBUG: -> NOT counted (Status is '$status')");
+                }
+            } else {
+                // Fallback to attempt check (legacy)
+                if (!empty($act['attempts'])) {
+                    $completed_new++;
+                    error_log("GEMINI_DEBUG: -> Counted as COMPLETED (Fallback attempts)");
+                } else {
+                    error_log("GEMINI_DEBUG: -> NOT counted (No status, no attempts)");
+                }
+            }
+        }
+
+        $total_revision = count($revision_activities);
+        $completed_revision = 0;
+        foreach ($revision_activities as $act) {
+            // Use status from table logic if available
+            if (isset($act['status'])) {
+                if ($act['status'] === 'Completed' || $act['status'] === 'Low grade') {
+                    $completed_revision++;
+                }
+            } else {
+                // Fallback to attempt check (legacy)
+                if (!empty($act['attempts'])) {
+                    $completed_revision++;
+                }
+            }
+        }
+
+        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang);
+        error_log('GEMINI_DEBUG: Prompt constructed. Length: ' . strlen($prompt));
+        return $this->call_api($prompt);
+    }

@@ -1,0 +1,263 @@
+.hw-dashboard-container {
+    margin-top: 20px;
+}
+
+.hw-filters {
+    margin-bottom: 15px;
+}
+
+/* Filter Row Card Styling */
+/* Horizontal Filter Layout matching Quiz Dashboard */
+.essay-dashboard-container .filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 15px;
+}
+
+.essay-dashboard-container .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 15px;
+    width: 100%;
+}
+
+.essay-dashboard-container .filter-group {
+    flex: 1;
+    min-width: 140px;
+    margin-bottom: 0;
+}
+
+.essay-dashboard-container .filter-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.essay-dashboard-container .filter-group select,
+.essay-dashboard-container .filter-group input[type="text"] {
+    width: 100%;
+    height: 35px;
+    /* Consistent height */
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* Specific handling for Exclude Staff */
+.essay-dashboard-container .filter-group.checkbox-group {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding-bottom: 8px;
+    /* Align with inputs */
+    min-width: auto;
+}
+
+.essay-dashboard-container .filter-group.checkbox-group label {
+    margin-bottom: 0;
+    margin-left: 5px;
+    font-weight: normal;
+}
+
+/* Filter Actions (Buttons) */
+.essay-dashboard-container .filter-actions {
+    flex: 0 0 auto;
+    padding-bottom: 2px;
+    display: flex;
+    gap: 5px;
+}
+
+.essay-dashboard-container .filter-actions .btn {
+    height: 35px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .essay-dashboard-container .filter-group {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 992px) {
+    .essay-dashboard-container .filter-form {
+        gap: 10px;
+    }
+}
+
+.hw-legend {
+    margin: 10px 0 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.hw-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.hw-badge-icon {
+    font-size: 12px;
+}
+
+.hw-badge-completed {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.hw-badge-lowgrade {
+    background: #fff3cd;
+    color: #664d03;
+}
+
+.hw-badge-noattempt {
+    background: #f8d7da;
+    color: #842029;
+}
+
+.hw-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.hw-table th,
+.hw-table td {
+    padding: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Dark Header Style */
+.thead-dark th {
+    background-color: #343a40;
+    color: #fff;
+    border-color: #454d55;
+}
+
+.hw-table th {
+    text-align: left;
+    white-space: nowrap !important;
+    vertical-align: middle;
+    padding-right: 20px;
+}
+
+.hw-info {
+    margin-top: 10px;
+}
+
+.hw-attempts-table tr.hw-attempt-short td {
+    color: #6c757d;
+    background-color: #f8f9fa;
+    font-style: italic;
+}
+
+/* Alternating column backgrounds for better readability */
+.hw-table tbody tr td:nth-child(even) {
+    background: linear-gradient(to bottom, #f8f9fa 0%, #f1f3f5 100%);
+}
+
+.hw-table tbody tr:hover td:nth-child(even) {
+    background: linear-gradient(to bottom, #e9ecef 0%, #dee2e6 100%);
+}
+
+.hw-table tbody tr:hover td:nth-child(odd) {
+    background-color: #f8f9fa;
+}
+
+/* Classification badges matching timeline styling */
+.hw-classification-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.hw-classification-new {
+    background-color: #17a2b8;
+    color: #ffffff;
+}
+
+.hw-classification-revision {
+    background-color: #ffc107;
+    color: #ffffff;
+}
+
+/* Smaller Sort Arrows */
+.sort-arrows {
+    font-size: 10px;
+    margin-left: 4px;
+    color: #999;
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 0.8;
+    vertical-align: middle;
+}
+
+.sort-arrows .arrow {
+    cursor: pointer;
+}
+
+.sort-arrows .arrow.active {
+    color: #000;
+}
+
+/* Action Icons (Small Green Square Buttons) */
+.hw-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background-color: #28a745;
+    color: #fff;
+    border-radius: 3px;
+    text-decoration: none;
+    font-size: 10px;
+    margin-left: 5px;
+}
+
+.hw-action-icon:hover {
+    background-color: #218838;
+    color: #fff;
+    text-decoration: none;
+}
+
+.hw-action-icon i {
+    margin: 0;
+}
+
+/* Widen Backfill Dropdown */
+#backfill_duedates {
+    min-width: 250px;
+    width: auto;
+}
+/* Custom Table Header Color */
+.dashboard-table thead th,
+.dashboard-table thead.thead-dark th {
+    background-color: #003366 !important; /* Dark Blue */
+    color: #ffffff;
+    border-color: #00284d;
+}
+
+/* Ensure standard tables also get the color */
+table.generaltable thead th {
+    background-color: #003366 !important;
+    color: #ffffff !important;
+    border-color: #00284d !important;
+}

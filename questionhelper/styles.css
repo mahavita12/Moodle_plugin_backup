@@ -1,0 +1,243 @@
+/* This file is part of Moodle - http://moodle.org/
+ *
+ * Moodle is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Moodle is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/**
+ * CSS styles for the question helper plugin
+ *
+ * @package    local_questionhelper
+ * @copyright  2025
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+/* Help button styling */
+.question-helper-btn {
+    margin-left: 10px;
+    font-size: 13px;
+    transition: all 0.3s ease;
+}
+
+.question-helper-btn:hover {
+    transform: translateY(-1px);
+}
+
+.question-helper-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Question helper container for cases where we need to add our own container */
+.question-helper-container {
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+.question-helper-container .prevpage {
+    margin-right: 0;
+}
+
+.attempts-counter {
+    font-size: 12px;
+    color: #6c757d;
+    margin-left: 10px;
+}
+
+/* Modal content styling */
+.question-helper-popup {
+    max-width: 600px;
+    padding: 20px;
+}
+
+.question-helper-popup h3 {
+    color: #495057;
+    font-size: 1.2em;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 5px;
+}
+
+/* Practice question section */
+.practice-question-section {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid #17a2b8;
+}
+
+.practice-question-section p {
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+.practice-question-section ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.practice-question-section li {
+    background: #fff;
+    margin: 5px 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.practice-question-section li:before {
+    content: "○ ";
+    color: #6c757d;
+    font-weight: bold;
+}
+
+/* Concept explanation section */
+.concept-explanation-section {
+    background: #e7f3ff;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.concept-explanation-section p {
+    margin-bottom: 0;
+    line-height: 1.5;
+    color: #495057;
+}
+
+/* Loading state */
+.question-helper-loading {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+}
+
+.question-helper-loading:after {
+    content: '...';
+    animation: dots 1.5s steps(5, end) infinite;
+}
+
+@keyframes dots {
+    0%, 20% {
+        color: rgba(0,0,0,0);
+        text-shadow:
+            .25em 0 0 rgba(0,0,0,0),
+            .5em 0 0 rgba(0,0,0,0);
+    }
+    40% {
+        color: #6c757d;
+        text-shadow:
+            .25em 0 0 rgba(0,0,0,0),
+            .5em 0 0 rgba(0,0,0,0);
+    }
+    60% {
+        text-shadow:
+            .25em 0 0 #6c757d,
+            .5em 0 0 rgba(0,0,0,0);
+    }
+    80%, 100% {
+        text-shadow:
+            .25em 0 0 #6c757d,
+            .5em 0 0 #6c757d;
+    }
+}
+
+/* Popup footer */
+.popup-footer {
+    border-top: 1px solid #dee2e6;
+    padding-top: 15px;
+    margin-top: 20px;
+}
+
+/* Error styling */
+.question-helper-error {
+    color: #dc3545;
+    padding: 10px;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .question-helper-popup {
+        padding: 15px;
+    }
+
+    .practice-question-section,
+    .concept-explanation-section {
+        padding: 12px;
+    }
+
+    .question-helper-btn {
+        font-size: 12px;
+        margin-left: 5px;
+    }
+
+    .question-helper-container {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .question-helper-container .prevpage {
+        margin-right: 0;
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .question-helper-popup h3 {
+        font-size: 1.1em;
+    }
+
+    .practice-question-section li {
+        padding: 6px 10px;
+        font-size: 0.9em;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .practice-question-section {
+        border-left-width: 6px;
+        background: #ffffff;
+        border: 2px solid #17a2b8;
+    }
+
+    .concept-explanation-section {
+        border-left-width: 6px;
+        background: #ffffff;
+        border: 2px solid #007bff;
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .question-helper-btn {
+        transition: none;
+    }
+
+    .question-helper-btn:hover {
+        transform: none;
+    }
+
+    .question-helper-loading:after {
+        animation: none;
+    }
+}

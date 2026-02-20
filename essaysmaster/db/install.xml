@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/essaysmaster/db" VERSION="20240920" COMMENT="XMLDB file for Moodle local/essaysmaster"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_essaysmaster_sessions" COMMENT="Main tracking table for essay master sessions">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Quiz attempt ID"/>
+        <FIELD NAME="question_attempt_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Question attempt ID"/>
+        <FIELD NAME="user_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="User ID"/>
+        <FIELD NAME="current_level" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Current feedback level"/>
+        <FIELD NAME="feedback_rounds_completed" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Number of feedback rounds completed"/>
+        <FIELD NAME="max_level" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="3" SEQUENCE="false" COMMENT="Maximum levels configured"/>
+        <FIELD NAME="threshold_percentage" TYPE="number" LENGTH="5" NOTNULL="true" DEFAULT="80.00" SEQUENCE="false" DECIMALS="2" COMMENT="Completion threshold percentage"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="active" SEQUENCE="false" COMMENT="Session status"/>
+        <FIELD NAME="session_start_time" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Session start timestamp"/>
+        <FIELD NAME="session_end_time" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Session end timestamp"/>
+        <FIELD NAME="final_submission_allowed" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether final submission is allowed"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="attempt_question" TYPE="unique" FIELDS="attempt_id, question_attempt_id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_user_status" UNIQUE="false" FIELDS="user_id, status"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_essaysmaster_versions" COMMENT="Essay versions and revisions">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="session_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Reference to session"/>
+        <FIELD NAME="version_number" TYPE="int" LENGTH="5" NOTNULL="true" SEQUENCE="false" COMMENT="Version number within session"/>
+        <FIELD NAME="level_number" TYPE="int" LENGTH="2" NOTNULL="true" SEQUENCE="false" COMMENT="Level this version belongs to"/>
+        <FIELD NAME="original_text" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="Original essay text"/>
+        <FIELD NAME="revised_text" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Revised essay text"/>
+        <FIELD NAME="word_count" TYPE="int" LENGTH="8" NOTNULL="true" SEQUENCE="false" COMMENT="Word count"/>
+        <FIELD NAME="character_count" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Character count"/>
+        <FIELD NAME="submission_time" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Submission timestamp"/>
+        <FIELD NAME="is_initial" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Is this the initial version"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="session_fk" TYPE="foreign" FIELDS="session_id" REFTABLE="local_essaysmaster_sessions" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_session_version" UNIQUE="false" FIELDS="session_id, version_number"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_essaysmaster_feedback" COMMENT="AI feedback for each version">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="version_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Reference to version"/>
+        <FIELD NAME="level_type" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false" COMMENT="Type of feedback level"/>
+        <FIELD NAME="feedback_html" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="AI generated feedback HTML"/>
+        <FIELD NAME="highlighted_areas" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON data for text highlighting"/>
+        <FIELD NAME="completion_score" TYPE="number" LENGTH="5" NOTNULL="true" SEQUENCE="false" DECIMALS="2" COMMENT="Completion score for this feedback"/>
+        <FIELD NAME="feedback_generated_time" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="When feedback was generated"/>
+        <FIELD NAME="api_response_time" TYPE="number" LENGTH="6" NOTNULL="false" SEQUENCE="false" DECIMALS="3" COMMENT="API response time in seconds"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <!-- ADD these missing fields for proper feedback tracking -->
+        <FIELD NAME="attempt_id" TYPE="int" LENGTH="10" NOTNULL="true"/>
+        <FIELD NAME="question_attempt_id" TYPE="int" LENGTH="10" NOTNULL="true"/> 
+        <FIELD NAME="round_number" TYPE="int" LENGTH="2" NOTNULL="true"/>
+        <!-- ADD unique constraint -->
+        <KEY NAME="unique_feedback_round" TYPE="unique" FIELDS="attempt_id, question_attempt_id, round_number"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="version_fk" TYPE="foreign" FIELDS="version_id" REFTABLE="local_essaysmaster_versions" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_version_level" UNIQUE="false" FIELDS="version_id, level_type"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_essaysmaster_progress" COMMENT="Progress tracking for completion requirements">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="session_id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Reference to session"/>
+        <FIELD NAME="level_number" TYPE="int" LENGTH="2" NOTNULL="true" SEQUENCE="false" COMMENT="Level number"/>
+        <FIELD NAME="requirement_type" TYPE="char" LENGTH="50" NOTNULL="true" SEQUENCE="false" COMMENT="Type of requirement"/>
+        <FIELD NAME="requirement_description" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="Description of requirement"/>
+        <FIELD NAME="is_completed" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether requirement is completed"/>
+        <FIELD NAME="completion_time" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="When requirement was completed"/>
+        <FIELD NAME="completion_data" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON data about completion"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="session_fk" TYPE="foreign" FIELDS="session_id" REFTABLE="local_essaysmaster_sessions" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_session_level" UNIQUE="false" FIELDS="session_id, level_number"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME="local_essaysmaster_config" COMMENT="Configuration per quiz/question">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="quiz_id" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Quiz ID (null for global)"/>
+        <FIELD NAME="question_id" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Question ID (null for quiz-wide)"/>
+        <FIELD NAME="course_id" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Course ID (null for site-wide)"/>
+        <FIELD NAME="is_enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether Essays Master is enabled"/>
+        <FIELD NAME="levels_config" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="JSON configuration for levels"/>
+        <FIELD NAME="threshold_percentage" TYPE="number" LENGTH="5" NOTNULL="true" DEFAULT="80.00" SEQUENCE="false" DECIMALS="2" COMMENT="Completion threshold"/>
+        <FIELD NAME="max_revisions_per_level" TYPE="int" LENGTH="3" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Max revisions per level"/>
+        <FIELD NAME="time_limit_per_level" TYPE="int" LENGTH="8" NOTNULL="false" SEQUENCE="false" COMMENT="Time limit per level in seconds"/>
+        <FIELD NAME="copy_paste_prevention" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Enable copy/paste prevention"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="idx_quiz_question" UNIQUE="false" FIELDS="quiz_id, question_id"/>
+      </INDEXES>
+    </TABLE>
+
+    <TABLE NAME=\"local_essaysmaster_quiz_config\" COMMENT=\"Dashboard configuration for essay quizzes - default enabled\">
+      <FIELDS>
+        <FIELD NAME=\"id\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"true\"/>
+        <FIELD NAME=\"quiz_id\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"false\" COMMENT=\"Quiz ID\"/>
+        <FIELD NAME=\"course_id\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"false\" COMMENT=\"Course ID\"/>
+        <FIELD NAME=\"is_enabled\" TYPE=\"int\" LENGTH=\"1\" NOTNULL=\"true\" DEFAULT=\"1\" SEQUENCE=\"false\" COMMENT=\"Essays Master enabled (default 1)\"/>
+        <FIELD NAME=\"validation_thresholds\" TYPE=\"text\" NOTNULL=\"false\" SEQUENCE=\"false\" COMMENT=\"JSON config for validation score thresholds\"/>
+        <FIELD NAME=\"max_attempts_per_round\" TYPE=\"int\" LENGTH=\"3\" NOTNULL=\"true\" DEFAULT=\"3\" SEQUENCE=\"false\" COMMENT=\"Max attempts per validation round\"/>
+        <FIELD NAME=\"created_by\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"false\" COMMENT=\"User who created config\"/>
+        <FIELD NAME=\"modified_by\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"false\" SEQUENCE=\"false\" COMMENT=\"User who last modified config\"/>
+        <FIELD NAME=\"timecreated\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"false\"/>
+        <FIELD NAME=\"timemodified\" TYPE=\"int\" LENGTH=\"10\" NOTNULL=\"true\" SEQUENCE=\"false\"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME=\"primary\" TYPE=\"primary\" FIELDS=\"id\"/>
+        <KEY NAME=\"unique_quiz\" TYPE=\"unique\" FIELDS=\"quiz_id\"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME=\"idx_course_enabled\" UNIQUE=\"false\" FIELDS=\"course_id, is_enabled\"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

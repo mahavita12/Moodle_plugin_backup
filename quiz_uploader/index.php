@@ -1,0 +1,683 @@
+<?php
+require_once(__DIR__ . '/../../config.php');
+
+require_login();
+
+// Include helpers/services for tabs 2 and 3.
+require_once(__DIR__ . '/classes/preset_helper.php');
+require_once(__DIR__ . '/classes/copy_service.php');
+require_once(__DIR__ . '/classes/settings_service.php');
+
+$context = context_system::instance();
+$PAGE->set_context($context);
+$PAGE->set_url(new moodle_url('/local/quiz_uploader/index.php'));
+$PAGE->set_title('Quiz Uploader');
+$PAGE->set_heading('Quiz Uploader');
+$PAGE->set_pagelayout('admin');
+
+require_capability('local/quiz_uploader:uploadquiz', $context);
+
+$tab = optional_param('tab', 'upload', PARAM_ALPHA);
+
+if ($tab === 'upload') {
+    redirect(new moodle_url('/local/quiz_uploader/upload.php'));
+}
+
+// Tabs 2 and 3 are restricted to managers/admins.
+if ($tab !== 'upload') {
+    require_capability('moodle/category:manage', $context);
+}
+
+$selectedcat = optional_param('cat', 0, PARAM_INT);
+$sourcecourse = optional_param('sourcecourse', 0, PARAM_INT);
+$sourcesections = optional_param_array('sourcesections', [], PARAM_INT);
+$targetcourse = optional_param('targetcourse', 0, PARAM_INT);
+$targetsection = optional_param('targetsection', 0, PARAM_INT);
+$page = max(1, optional_param('page', 1, PARAM_INT));
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
+$legacysection = optional_param('sourcesection', 0, PARAM_INT);
+if ($legacysection && empty($sourcesections)) { $sourcesections = [$legacysection]; }
+
+// Default category to 'Category 1' when not specified.
+if (empty($selectedcat)) {
+    $defaultcatid = (int)$DB->get_field('course_categories', 'id', ['name' => 'Category 1'], IGNORE_MISSING);
+    if (!$defaultcatid) { $defaultcatid = 1; }
+    $selectedcat = $defaultcatid;
+}
+
+// For Copy tab, default source course to Central Question Bank (or CQB) when not specified.
+if ($tab === 'copy' && empty($sourcecourse)) {
+    $cqb = $DB->get_record('course', ['fullname' => 'Central Question Bank'], 'id', IGNORE_MISSING);
+    if (!$cqb) { $cqb = $DB->get_record('course', ['shortname' => 'CQB'], 'id', IGNORE_MISSING); }
+    if ($cqb) { $sourcecourse = (int)$cqb->id; }
+}
+$maxsections = (int)get_config('local_quiz_uploader', 'maxsections');
+if ($maxsections < 0) { $maxsections = 0; }
+
+$perpage = 0;
+
+$renderer = $PAGE->get_renderer('core');
+
+echo $OUTPUT->header();
+
+$tabs = [];
+$tabs[] = new tabobject('multisettings', new moodle_url('/local/quiz_uploader/multisettings.php'), 'Multi settings');
+$tabs[] = new tabobject('settings', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings']), 'Bulk settings');
+$tabs[] = new tabobject('copy', new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy']), 'Copy from other courses');
+$tabs[] = new tabobject('upload', new moodle_url('/local/quiz_uploader/upload.php'), 'Upload XML');
+print_tabs([$tabs], $tab);
+
+if ($tab === 'copy') {
+    echo html_writer::tag('h3', 'Copy quiz from other courses');
+
+    echo html_writer::start_tag('form', ['method' => 'get', 'action' => new moodle_url('/local/quiz_uploader/index.php')]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'copy']);
+
+    $catoptions = ['0' => '-- Select course category --'];
+    $categories = $DB->get_records('course_categories', null, 'name ASC', 'id, name');
+    foreach ($categories as $cat) {
+        $catoptions[$cat->id] = format_string($cat->name);
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Category', 'id_cat');
+    echo html_writer::select($catoptions, 'cat', $selectedcat, null, ['id' => 'id_cat', 'onchange' => 'this.form.submit()']);
+    echo html_writer::end_div();
+
+    $courseoptions = ['0' => '-- Select source course --'];
+    if ($selectedcat) {
+        $srcourses = $DB->get_records('course', ['category' => $selectedcat], 'shortname ASC', 'id, shortname, fullname');
+        foreach ($srcourses as $c) {
+            $courseoptions[$c->id] = $c->shortname . ' — ' . format_string($c->fullname);
+        }
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Source course', 'id_sourcecourse');
+    echo html_writer::select($courseoptions, 'sourcecourse', $sourcecourse, null, ['id' => 'id_sourcecourse', 'onchange' => 'this.form.submit()']);
+    echo html_writer::end_div();
+
+    $sectionoptions = [];
+    if ($sourcecourse) {
+        $sections = $DB->get_records('course_sections', ['course' => $sourcecourse], 'section ASC', 'id, section, name');
+        foreach ($sections as $s) {
+            $display = ($s->name !== null && $s->name !== '') ? $s->name : 'Section ' . $s->section;
+            $sectionoptions[$s->id] = $display;
+        }
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Source sections', 'id_sourcesections');
+    echo html_writer::select($sectionoptions, 'sourcesections[]', $sourcesections, null, ['id' => 'id_sourcesections', 'multiple' => 'multiple', 'size' => 8]);
+    echo html_writer::tag('button', 'Load quizzes', ['type' => 'submit', 'class' => 'btn btn-secondary', 'style' => 'margin-left:8px']);
+    echo html_writer::end_div();
+
+    echo html_writer::end_tag('form');
+
+    $quizrows = [];
+    $total = 0;
+    if ($sourcecourse && !empty($sourcesections)) {
+        $selcount = count($sourcesections);
+        if ($maxsections > 0 && $selcount > $maxsections) { echo $OUTPUT->notification("You selected $selcount sections; only the first $maxsections are used.", 'warning'); $sourcesections = array_slice($sourcesections, 0, $maxsections); }
+        if (!empty($sourcesections)) {
+            $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
+            if ($module) {
+                list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+                $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
+                $countsql = "SELECT COUNT(*)
+                           FROM {course_modules} cm
+                           JOIN {quiz} q ON q.id = cm.instance
+                           JOIN {course_sections} cs ON cs.id = cm.section
+                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
+                $total = $DB->count_records_sql($countsql, $params);
+
+                $offset = ($page - 1) * $perpage;
+                $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
+                          FROM {course_modules} cm
+                          JOIN {quiz} q ON q.id = cm.instance
+                          JOIN {course_sections} cs ON cs.id = cm.section
+                         WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
+                      ORDER BY cs.section ASC, q.name ASC";
+                $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
+                $quizrows = array_values($all);
+            }
+        }
+    }
+
+    echo html_writer::start_tag('form', ['method' => 'post']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'copy']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
+    if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
+
+    if (!empty($quizrows)) {
+        echo html_writer::tag('h4', 'Select quizzes to copy');
+        echo html_writer::start_div('');
+        echo html_writer::tag('button', 'Select all', ['type' => 'button', 'class' => 'btn btn-link select-all-cmids']);
+        echo html_writer::tag('button', 'Clear all', ['type' => 'button', 'class' => 'btn btn-link clear-all-cmids', 'style' => 'margin-left:6px;']);
+        echo html_writer::end_div();
+        echo html_writer::start_tag('div', ['style' => 'max-height:300px;overflow:auto;border:1px solid #ddd;padding:8px;']);
+        $cursec = -1;
+        foreach ($quizrows as $r) {
+            $secname = ($r->sectionname !== null && $r->sectionname !== '') ? $r->sectionname : ('Section ' . $r->sectionnum);
+            if ($cursec !== (int)$r->sectionid) {
+                if ($cursec !== -1) { echo html_writer::empty_tag('hr'); }
+                echo html_writer::start_div('section-header');
+                echo html_writer::tag('h5', s($secname));
+                echo html_writer::tag('button', 'Select section', ['type' => 'button', 'class' => 'btn btn-sm btn-link select-section', 'data-section' => $r->sectionid]);
+                echo html_writer::tag('button', 'Clear section', ['type' => 'button', 'class' => 'btn btn-sm btn-link clear-section', 'data-section' => $r->sectionid, 'style' => 'margin-left:6px;']);
+                echo html_writer::end_div();
+                $cursec = (int)$r->sectionid;
+            }
+            $id = 'q_' . $r->cmid;
+            echo html_writer::start_div('');
+            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id, 'data-section' => $r->sectionid]);
+            echo html_writer::label(format_string($r->name) . " (cmid: {$r->cmid})", $id);
+            echo html_writer::end_div();
+        }
+        echo html_writer::end_tag('div');
+
+        if ($perpage > 0 && $total > $perpage) {
+            $pburl = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'copy', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
+            if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl->param('sourcesections[]', $sid); } }
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl);
+        }
+    } else {
+        if ($sourcecourse && !empty($sourcesections)) {
+            echo $OUTPUT->notification('No quizzes found in the selected section(s).', 'info');
+        }
+    }
+
+    $tcourses = ['0' => '-- Select target course --'];
+    $allcourses = $DB->get_records_sql("SELECT id, shortname, fullname FROM {course} WHERE id > 1 ORDER BY shortname ASC");
+    // Default target course to Central Question Bank if not set.
+    if (empty($targetcourse)) {
+        $central = $DB->get_record('course', ['fullname' => 'Central Question Bank'], 'id');
+        if (!$central) { $central = $DB->get_record('course', ['shortname' => 'CQB'], 'id'); }
+        if ($central) { $targetcourse = (int)$central->id; }
+    }
+    foreach ($allcourses as $tc) {
+        $tcourses[$tc->id] = $tc->shortname . ' — ' . format_string($tc->fullname);
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Target course', 'id_targetcourse');
+    echo html_writer::select($tcourses, 'targetcourse', $targetcourse, null, ['id' => 'id_targetcourse']);
+    echo html_writer::end_div();
+
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Target section', 'id_targetsection');
+    echo html_writer::select(['' => 'Please select target course first...'], 'targetsection', $targetsection, null, ['id' => 'id_targetsection']);
+    echo html_writer::end_div();
+
+    // Preset selector (use Quiz Uploader defaults; user may switch to Test)
+    $presetoptions = [
+        'default' => 'Default (Quiz Uploader)',
+        'test' => 'Test (Quiz Uploader)'
+    ];
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Preset', 'id_preset_copy');
+    echo html_writer::select($presetoptions, 'preset', 'default', null, ['id' => 'id_preset_copy']);
+    echo html_writer::end_div();
+
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'dryrun_copy']);
+    echo html_writer::tag('button', 'Dry run copy', ['type' => 'submit', 'class' => 'btn btn-primary']);
+
+    echo html_writer::end_tag('form');
+
+    $PAGE->requires->js_call_amd('local_quiz_uploader/upload', 'init');
+    $PAGE->requires->js_amd_inline(<<<'JS'
+document.addEventListener('click', function(ev){
+  var t = ev.target;
+  if (!t) return;
+  if (t.classList.contains('select-all-cmids')) {
+    ev.preventDefault();
+    var form = t.closest('form');
+    var boxes = form ? form.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-all-cmids')) {
+    ev.preventDefault();
+    var form2 = t.closest('form');
+    var boxes2 = form2 ? form2.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes2.forEach(function(b){ b.checked = false; });
+  } else if (t.classList.contains('select-section')) {
+    ev.preventDefault();
+    var sec = t.getAttribute('data-section');
+    var f = t.closest('form');
+    var bs = f ? f.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]');
+    bs.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-section')) {
+    ev.preventDefault();
+    var sec2 = t.getAttribute('data-section');
+    var f2 = t.closest('form');
+    var bs2 = f2 ? f2.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]');
+    bs2.forEach(function(b){ b.checked = false; });
+  }
+});
+JS
+    );
+}
+
+if ($tab === 'settings') {
+    echo html_writer::tag('h3', 'Bulk change quiz settings');
+
+    echo html_writer::start_tag('form', ['method' => 'post']);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'settings']);
+
+    $catoptions = ['0' => '-- Select course category --'];
+    $categories = $DB->get_records('course_categories', null, 'name ASC', 'id, name');
+    foreach ($categories as $cat) {
+        $catoptions[$cat->id] = format_string($cat->name);
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Category', 'id_cat2');
+    echo html_writer::select($catoptions, 'cat', $selectedcat, null, ['id' => 'id_cat2', 'onchange' => 'this.form.submit()']);
+    echo html_writer::end_div();
+
+    $courseoptions = ['0' => '-- Select source course --'];
+    if ($selectedcat) {
+        $srcourses = $DB->get_records('course', ['category' => $selectedcat], 'shortname ASC', 'id, shortname, fullname');
+        foreach ($srcourses as $c) {
+            $courseoptions[$c->id] = $c->shortname . ' — ' . format_string($c->fullname);
+        }
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Course', 'id_sourcecourse2');
+    echo html_writer::select($courseoptions, 'sourcecourse', $sourcecourse, null, ['id' => 'id_sourcecourse2', 'onchange' => 'this.form.submit()']);
+    echo html_writer::end_div();
+
+    $sectionoptions = [];
+    if ($sourcecourse) {
+        $sections = $DB->get_records('course_sections', ['course' => $sourcecourse], 'section ASC', 'id, section, name');
+        foreach ($sections as $s) {
+            $display = ($s->name !== null && $s->name !== '') ? $s->name : 'Section ' . $s->section;
+            $sectionoptions[$s->id] = $display;
+        }
+    }
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Sections', 'id_sourcesections2');
+    echo html_writer::select($sectionoptions, 'sourcesections[]', $sourcesections, null, ['id' => 'id_sourcesections2', 'multiple' => 'multiple', 'size' => 8]);
+    echo html_writer::tag('button', 'Load quizzes', ['type' => 'submit', 'class' => 'btn btn-secondary', 'style' => 'margin-left:8px']);
+    echo html_writer::end_div();
+
+    $quizrows = [];
+    $total = 0;
+    if ($sourcecourse && !empty($sourcesections)) {
+        if ($maxsections > 0 && count($sourcesections) > $maxsections) { $sourcesections = array_slice($sourcesections, 0, $maxsections); }
+        if (!empty($sourcesections)) {
+            $module = $DB->get_record('modules', ['name' => 'quiz'], '*', IGNORE_MISSING);
+            if ($module) {
+                list($insql, $inparams) = $DB->get_in_or_equal($sourcesections, SQL_PARAMS_NAMED, 'sec');
+                $params = ['course' => $sourcecourse, 'module' => $module->id] + $inparams;
+                $countsql = "SELECT COUNT(*)
+                           FROM {course_modules} cm
+                           JOIN {quiz} q ON q.id = cm.instance
+                           JOIN {course_sections} cs ON cs.id = cm.section
+                          WHERE cm.course = :course AND cm.module = :module AND cm.section $insql";
+                $total = $DB->count_records_sql($countsql, $params);
+
+                $offset = ($page - 1) * $perpage;
+                $listsql = "SELECT cm.id AS cmid, q.id AS quizid, q.name, cs.id AS sectionid, cs.section AS sectionnum, cs.name AS sectionname
+                          FROM {course_modules} cm
+                          JOIN {quiz} q ON q.id = cm.instance
+                          JOIN {course_sections} cs ON cs.id = cm.section
+                         WHERE cm.course = :course AND cm.module = :module AND cm.section $insql
+                      ORDER BY cs.section ASC, q.name ASC";
+                $all = $DB->get_records_sql($listsql, $params, $offset, $perpage);
+                $quizrows = array_values($all);
+            }
+        }
+    }
+
+    if (!empty($quizrows)) {
+        echo html_writer::tag('h4', 'Select quizzes to update');
+        echo html_writer::start_div('');
+        echo html_writer::tag('button', 'Select all', ['type' => 'button', 'class' => 'btn btn-link select-all-cmids']);
+        echo html_writer::tag('button', 'Clear all', ['type' => 'button', 'class' => 'btn btn-link clear-all-cmids', 'style' => 'margin-left:6px;']);
+        echo html_writer::end_div();
+        echo html_writer::start_tag('div', ['style' => 'max-height:300px;overflow:auto;border:1px solid #ddd;padding:8px;']);
+        $cursec2 = -1;
+        foreach ($quizrows as $r) {
+            $secname2 = ($r->sectionname !== null && $r->sectionname !== '') ? $r->sectionname : ('Section ' . $r->sectionnum);
+            if ($cursec2 !== (int)$r->sectionid) {
+                if ($cursec2 !== -1) { echo html_writer::empty_tag('hr'); }
+                echo html_writer::start_div('section-header');
+                echo html_writer::tag('h5', s($secname2));
+                echo html_writer::tag('button', 'Select section', ['type' => 'button', 'class' => 'btn btn-sm btn-link select-section', 'data-section' => $r->sectionid]);
+                echo html_writer::tag('button', 'Clear section', ['type' => 'button', 'class' => 'btn btn-sm btn-link clear-section', 'data-section' => $r->sectionid, 'style' => 'margin-left:6px;']);
+                echo html_writer::end_div();
+                $cursec2 = (int)$r->sectionid;
+            }
+            $id = 'qq_' . $r->cmid;
+            echo html_writer::start_div('');
+            echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'cmids[]', 'value' => $r->cmid, 'id' => $id, 'data-section' => $r->sectionid]);
+            echo html_writer::label(format_string($r->name) . " (cmid: {$r->cmid})", $id);
+            echo html_writer::end_div();
+        }
+        echo html_writer::end_tag('div');
+
+        if ($perpage > 0 && $total > $perpage) {
+            $pburl2 = new moodle_url('/local/quiz_uploader/index.php', ['tab' => 'settings', 'cat' => $selectedcat, 'sourcecourse' => $sourcecourse]);
+            if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { $pburl2->param('sourcesections[]', $sid); } }
+            echo $OUTPUT->paging_bar($total, $page - 1, $perpage, $pburl2);
+        }
+    } else {
+        if ($sourcecourse && !empty($sourcesections)) {
+            echo $OUTPUT->notification('No quizzes found in the selected section(s).', 'info');
+        }
+    }
+
+    echo html_writer::tag('h4', 'Settings');
+    $presetoptions = [
+        'default' => 'Default (Quiz Uploader)',
+        'test' => 'Test (Quiz Uploader)',
+        'nochange' => 'No change'
+    ];
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Preset', 'id_preset');
+    echo html_writer::select($presetoptions, 'preset', 'default', null, ['id' => 'id_preset']);
+    echo html_writer::end_div();
+
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Close the quiz', 'id_timeclose');
+    echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timeclose_enable', 'id' => 'id_timeclose_enable', 'value' => 1]);
+    // hidden field that will be submitted as YYYY-MM-DD HH:MM
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose', 'id' => 'id_timeclose']);
+
+    // Build date/time selects: year, month, day, hour, minute
+    $nowts = time();
+    $initY = (int)date('Y', $nowts);
+    $initM = date('m', $nowts);
+    $initD = date('d', $nowts);
+    $initH = date('H', $nowts);
+    $initI = date('i', $nowts);
+
+    $yearoptions = [];
+    for ($y = $initY - 1; $y <= $initY + 3; $y++) { $yearoptions[(string)$y] = (string)$y; }
+    echo html_writer::select($yearoptions, 'timeclose_year', (string)$initY, null, ['id' => 'id_timeclose_year', 'style' => 'margin-left:8px;']);
+
+    $monthoptions = [];
+    for ($m = 1; $m <= 12; $m++) { $k = str_pad((string)$m, 2, '0', STR_PAD_LEFT); $monthoptions[$k] = date('F', mktime(0,0,0,$m,1)); }
+    echo html_writer::select($monthoptions, 'timeclose_month', (string)$initM, null, ['id' => 'id_timeclose_month', 'style' => 'margin-left:6px;']);
+
+    $dayoptions = [];
+    for ($d = 1; $d <= 31; $d++) { $k = str_pad((string)$d, 2, '0', STR_PAD_LEFT); $dayoptions[$k] = $k; }
+    echo html_writer::select($dayoptions, 'timeclose_day', (string)$initD, null, ['id' => 'id_timeclose_day', 'style' => 'margin-left:6px;']);
+
+    $houroptions = [];
+    for ($h = 0; $h <= 23; $h++) { $k = str_pad((string)$h, 2, '0', STR_PAD_LEFT); $houroptions[$k] = $k; }
+    echo html_writer::select($houroptions, 'timeclose_hour', (string)$initH, null, ['id' => 'id_timeclose_hour', 'style' => 'margin-left:12px;']);
+
+    $minoptions = [];
+    for ($i = 0; $i <= 59; $i++) { $k = str_pad((string)$i, 2, '0', STR_PAD_LEFT); $minoptions[$k] = $k; }
+    echo html_writer::select($minoptions, 'timeclose_min', (string)$initI, null, ['id' => 'id_timeclose_min', 'style' => 'margin-left:6px;']);
+
+    echo html_writer::end_div();
+
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Time limit (minutes) — applies when Preset = Test', 'id_timelimit');
+    echo html_writer::empty_tag('input', ['type' => 'checkbox', 'name' => 'timelimit_enable', 'id' => 'id_timelimit_enable', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'number', 'name' => 'timelimit', 'id' => 'id_timelimit', 'min' => 0, 'step' => 1, 'value' => 45]);
+    echo html_writer::end_div();
+
+    echo html_writer::start_div('form-group');
+    echo html_writer::label('Activity classification', 'id_activityclass');
+    echo html_writer::select(['None' => 'None', 'New' => 'New', 'Revision' => 'Revision'], 'activityclass', 'None', null, ['id' => 'id_activityclass']);
+    echo html_writer::end_div();
+
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'dryrun_settings']);
+    echo html_writer::tag('button', 'Dry run update', ['type' => 'submit', 'class' => 'btn btn-primary']);
+
+    echo html_writer::end_tag('form');
+
+    $PAGE->requires->js_amd_inline(<<<'JS'
+(function(){
+  function init(){
+    var e1 = document.getElementById('id_timeclose_enable');
+    var hiddenTime = document.getElementById('id_timeclose');
+    var ySel = document.getElementById('id_timeclose_year');
+    var mSel = document.getElementById('id_timeclose_month');
+    var dSel = document.getElementById('id_timeclose_day');
+    var hSel = document.getElementById('id_timeclose_hour');
+    var iSel = document.getElementById('id_timeclose_min');
+    var e2 = document.getElementById('id_timelimit_enable');
+    var t2 = document.getElementById('id_timelimit');
+    function setEnabled(input, enabled){
+      if (!input) return;
+      input.disabled = !enabled;
+      if (enabled) {
+        try { input.removeAttribute('disabled'); } catch(_) {}
+      } else {
+        try { input.setAttribute('disabled','disabled'); } catch(_) {}
+      }
+    }
+    function pad2(n){ n = parseInt(n, 10); return (n < 10 ? '0' : '') + n; }
+    function daysInMonth(yy, mm){
+      var y = parseInt(yy, 10); var m = parseInt(mm, 10); if (!y || !m) return 31;
+      return new Date(y, m, 0).getDate(); // mm is 1..12
+    }
+    function composeClose(){
+      if (!hiddenTime) return;
+      var yy = ySel ? ySel.value : '';
+      var mm = mSel ? mSel.value : '';
+      var dd = dSel ? dSel.value : '';
+      var hh = hSel ? hSel.value : '';
+      var ii = iSel ? iSel.value : '';
+      // Normalize day within month
+      var maxd = daysInMonth(yy, mm);
+      var ddi = parseInt(dd || '1', 10);
+      if (ddi > maxd) { ddi = maxd; if (dSel) dSel.value = pad2(ddi); }
+      hiddenTime.value = yy + '-' + mm + '-' + pad2(ddi) + ' ' + hh + ':' + ii;
+    }
+    function sync(){
+      // Keep time limit always editable; server-side respects the Enable checkbox
+      setEnabled(t2, true);
+      composeClose();
+    }
+    ['change','click'].forEach(function(ev){
+      if (e2) e2.addEventListener(ev, sync);
+      if (ySel) ySel.addEventListener(ev, sync);
+      if (mSel) mSel.addEventListener(ev, sync);
+      if (dSel) dSel.addEventListener(ev, sync);
+      if (hSel) hSel.addEventListener(ev, sync);
+      if (iSel) iSel.addEventListener(ev, sync);
+    });
+    // Ensure hidden field is composed before submit
+    var form = ySel ? ySel.closest('form') : null;
+    if (form) {
+      form.addEventListener('submit', function(){ composeClose(); });
+    }
+    sync();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+JS
+    );
+    $PAGE->requires->js_amd_inline(<<<'JS'
+document.addEventListener('click', function(ev){
+  var t = ev.target;
+  if (!t) return;
+  if (t.classList.contains('select-all-cmids')) {
+    ev.preventDefault();
+    var form = t.closest('form');
+    var boxes = form ? form.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-all-cmids')) {
+    ev.preventDefault();
+    var form2 = t.closest('form');
+    var boxes2 = form2 ? form2.querySelectorAll('input[type="checkbox"][name="cmids[]"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"]');
+    boxes2.forEach(function(b){ b.checked = false; });
+  } else if (t.classList.contains('select-section')) {
+    ev.preventDefault();
+    var sec = t.getAttribute('data-section');
+    var f = t.closest('form');
+    var bs = f ? f.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec + '"]');
+    bs.forEach(function(b){ b.checked = true; });
+  } else if (t.classList.contains('clear-section')) {
+    ev.preventDefault();
+    var sec2 = t.getAttribute('data-section');
+    var f2 = t.closest('form');
+    var bs2 = f2 ? f2.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]') : document.querySelectorAll('input[type="checkbox"][name="cmids[]"][data-section="' + sec2 + '"]');
+    bs2.forEach(function(b){ b.checked = false; });
+  }
+});
+JS
+    );
+}
+
+if ($action === 'dryrun_copy' && confirm_sesskey()) {
+    $cmids = optional_param_array('cmids', [], PARAM_INT);
+    $targetcourse = required_param('targetcourse', PARAM_INT);
+    $targetsection = required_param('targetsection', PARAM_INT);
+    $preset = optional_param('preset', 'default', PARAM_ALPHA);
+
+    if (empty($cmids)) {
+        echo $OUTPUT->notification('Select at least one quiz to copy.', 'warning');
+    } else if (empty($targetcourse) || empty($targetsection)) {
+        echo $OUTPUT->notification('Please select a target course and section.', 'warning');
+    } else {
+        $count = count($cmids);
+        // Compute collisions by quiz name in the target section.
+        $collisions = [];
+        foreach ($cmids as $cmid) {
+            $src = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
+            $srcquizname = $DB->get_field('quiz', 'name', ['id' => $src->instance], IGNORE_MISSING);
+            if ($srcquizname) {
+                $exists = \local_quiz_uploader\copy_service::find_target_quiz_by_name($targetcourse, $targetsection, $srcquizname);
+                if ($exists) { $collisions[] = $srcquizname; }
+            }
+        }
+
+        $msg = "Dry run: {$count} quiz(es) will be copied to the selected target section.";
+        if (!empty($collisions)) {
+            $msg .= ' Conflicts detected (will be overwritten if you proceed): ' . s(implode(', ', $collisions));
+        } else {
+            $msg .= ' No name conflicts detected.';
+        }
+        echo $OUTPUT->notification($msg, !empty($collisions) ? 'warning' : 'info');
+        echo html_writer::start_tag('form', ['method' => 'post']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'copy']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
+        if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
+        foreach ($cmids as $id) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cmids[]', 'value' => $id]); }
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'targetcourse', 'value' => $targetcourse]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'targetsection', 'value' => $targetsection]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'preset', 'value' => $preset]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'confirm_copy']);
+        echo html_writer::tag('button', 'Confirm and proceed', ['type' => 'submit', 'class' => 'btn btn-danger']);
+        echo html_writer::end_tag('form');
+    }
+}
+
+if ($action === 'dryrun_settings' && confirm_sesskey()) {
+    $cmids = optional_param_array('cmids', [], PARAM_INT);
+    $preset = optional_param('preset', 'default', PARAM_ALPHA);
+    $timeclose = optional_param('timeclose', '', PARAM_RAW);
+    $activityclass = optional_param('activityclass', 'New', PARAM_TEXT);
+    $timeclose_enable = optional_param('timeclose_enable', 0, PARAM_BOOL);
+    $timelimit = optional_param('timelimit', 0, PARAM_INT);
+    $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
+
+    // Server-side fallback: compose timeclose from Y/M/D/H/M selects if hidden field missing
+    if ($timeclose_enable && (empty($timeclose) || strlen(trim($timeclose)) < 10)) {
+        $yy = optional_param('timeclose_year', '', PARAM_RAW);
+        $mm = optional_param('timeclose_month', '', PARAM_RAW);
+        $dd = optional_param('timeclose_day', '', PARAM_RAW);
+        $hh = optional_param('timeclose_hour', '', PARAM_RAW);
+        $ii = optional_param('timeclose_min', '', PARAM_RAW);
+        if ($yy && $mm && $dd && $hh !== '' && $ii !== '') {
+            $timeclose = sprintf('%04d-%02d-%02d %02d:%02d', (int)$yy, (int)$mm, (int)$dd, (int)$hh, (int)$ii);
+        }
+    }
+
+    if (empty($cmids)) {
+        echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
+    } else {
+        $count = count($cmids);
+        $summary = 'Preset: ' . $preset . ' — Activity classification: ' . s($activityclass);
+        $summary .= $timeclose_enable ? ' — Close time: enabled' : ' — Close time: not changed';
+        if ($timelimit_enable) { $summary .= ' — Time limit: ' . (int)$timelimit . ' min (Test preset)'; }
+        echo $OUTPUT->notification("Dry run: {$count} quiz(es) will be updated. " . $summary, 'info');
+        echo html_writer::start_tag('form', ['method' => 'post']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'tab', 'value' => 'settings']);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cat', 'value' => $selectedcat]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcecourse', 'value' => $sourcecourse]);
+        if (!empty($sourcesections)) { foreach ($sourcesections as $sid) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sourcesections[]', 'value' => $sid]); } }
+        foreach ($cmids as $id) { echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'cmids[]', 'value' => $id]); }
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'preset', 'value' => $preset]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose', 'value' => $timeclose]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'activityclass', 'value' => $activityclass]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timeclose_enable', 'value' => (int)$timeclose_enable]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timelimit', 'value' => (int)$timelimit]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'timelimit_enable', 'value' => (int)$timelimit_enable]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'action', 'value' => 'confirm_settings']);
+        echo html_writer::tag('button', 'Confirm and proceed', ['type' => 'submit', 'class' => 'btn btn-danger']);
+        echo html_writer::end_tag('form');
+    }
+}
+
+if ($action === 'confirm_copy' && confirm_sesskey()) {
+    $cmids = optional_param_array('cmids', [], PARAM_INT);
+    $targetcourse = required_param('targetcourse', PARAM_INT);
+    $targetsection = required_param('targetsection', PARAM_INT);
+    $preset = optional_param('preset', 'default', PARAM_ALPHA);
+
+    if (empty($cmids) || empty($targetcourse) || empty($targetsection)) {
+        echo $OUTPUT->notification('Missing parameters to perform copy.', 'error');
+    } else {
+        // Threshold: sync when <=10, else queue (not implemented yet).
+        if (count($cmids) > 10) {
+            echo $OUTPUT->notification('More than 10 items selected. Queuing to background will be added next.', 'warning');
+        }
+        $results = \local_quiz_uploader\copy_service::copy_quizzes($cmids, $targetcourse, $targetsection, $preset, null, 'New');
+        $ok = array_reduce($results, function($c,$r){ return $c && !empty($r->success); }, true);
+        if ($ok) {
+            echo $OUTPUT->notification('Copy completed successfully.', 'success');
+        } else {
+            echo $OUTPUT->notification('Copy completed with some errors. Review the report below.', 'warning');
+        }
+        echo html_writer::tag('pre', print_r($results, true));
+    }
+}
+
+if ($action === 'confirm_settings' && confirm_sesskey()) {
+    $cmids = optional_param_array('cmids', [], PARAM_INT);
+    $preset = optional_param('preset', 'default', PARAM_ALPHA);
+    $timeclose = optional_param('timeclose', '', PARAM_RAW);
+    $activityclass = optional_param('activityclass', 'New', PARAM_TEXT);
+    $timeclose_enable = optional_param('timeclose_enable', 0, PARAM_BOOL);
+    $timelimit = optional_param('timelimit', 0, PARAM_INT);
+    $timelimit_enable = optional_param('timelimit_enable', 0, PARAM_BOOL);
+
+    // Server-side fallback (again) in case the hidden field is empty
+    if ($timeclose_enable && (empty($timeclose) || strlen(trim($timeclose)) < 10)) {
+        $yy = optional_param('timeclose_year', '', PARAM_RAW);
+        $mm = optional_param('timeclose_month', '', PARAM_RAW);
+        $dd = optional_param('timeclose_day', '', PARAM_RAW);
+        $hh = optional_param('timeclose_hour', '', PARAM_RAW);
+        $ii = optional_param('timeclose_min', '', PARAM_RAW);
+        if ($yy && $mm && $dd && $hh !== '' && $ii !== '') {
+            $timeclose = sprintf('%04d-%02d-%02d %02d:%02d', (int)$yy, (int)$mm, (int)$dd, (int)$hh, (int)$ii);
+        }
+    }
+
+    if (empty($cmids)) {
+        echo $OUTPUT->notification('Select at least one quiz to update.', 'warning');
+    } else {
+        $results = \local_quiz_uploader\settings_service::apply_bulk_settings($cmids, $preset, $timeclose, $activityclass, (int)$timeclose_enable, (int)$timelimit, (int)$timelimit_enable);
+        $ok = array_reduce($results, function($c,$r){ return $c && !empty($r->success); }, true);
+        if ($ok) {
+            echo $OUTPUT->notification('Settings updated successfully.', 'success');
+        } else {
+            echo $OUTPUT->notification('Settings updated with some errors. Review the report below.', 'warning');
+        }
+        echo html_writer::tag('pre', print_r($results, true));
+    }
+}
+
+echo $OUTPUT->footer();

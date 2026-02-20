@@ -1,0 +1,143 @@
+/**
+ * Quiz uploader styles
+ * File: local/quiz_uploader/styles.css
+ */
+
+/* Success message box */
+.quiz-upload-success {
+    margin: 20px 0;
+    padding: 20px;
+    border: 2px solid #d4edda;
+    background: #d4edda;
+    border-radius: 6px;
+    color: #155724;
+}
+
+.quiz-upload-success h4 {
+    margin-top: 0;
+    color: #155724;
+    font-weight: 600;
+}
+
+.quiz-upload-success p {
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+/* Error message box */
+.quiz-upload-error {
+    margin: 20px 0;
+    padding: 20px;
+    border: 2px solid #f8d7da;
+    background: #f8d7da;
+    border-radius: 6px;
+    color: #721c24;
+}
+
+/* Form styling */
+.path-local-quiz_uploader form .fitem {
+    margin-bottom: 20px;
+}
+
+.path-local-quiz_uploader form .fitem label {
+    font-weight: 500;
+    color: #333;
+}
+
+.path-local-quiz_uploader form .form-control {
+    max-width: 600px;
+}
+
+/* Section header */
+.path-local-quiz_uploader fieldset.collapsible legend {
+    font-size: 16px;
+    font-weight: 600;
+    color: #007cba;
+    cursor: pointer;
+}
+
+/* Buttons */
+.path-local-quiz_uploader .btn-primary {
+    background-color: #007cba;
+    border-color: #005a87;
+    padding: 10px 20px;
+    font-weight: 500;
+}
+
+.path-local-quiz_uploader .btn-primary:hover {
+    background-color: #005a87;
+    border-color: #004165;
+}
+
+.path-local-quiz_uploader .btn-secondary {
+    padding: 10px 20px;
+}
+
+/* Category note */
+.path-local-quiz_uploader .category_note small {
+    color: #666;
+    font-style: italic;
+}
+
+/* File picker */
+.path-local-quiz_uploader .fp-btn-choose {
+    background-color: #007cba;
+    color: #fff;
+}
+
+/* Multi settings columns - equal width and alignment */
+.path-local-quiz_uploader .column-wrapper {
+    flex: 1;
+    min-width: 0;
+    max-width: 20%;
+}
+
+.path-local-quiz_uploader .column-wrapper h4 {
+    text-align: center;
+}
+
+.path-local-quiz_uploader .column-wrapper .form-group {
+    margin-bottom: 12px;
+}
+
+.path-local-quiz_uploader .column-wrapper label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.path-local-quiz_uploader .column-wrapper select {
+    width: 100% !important;
+    max-width: none !important;
+}
+
+.path-local-quiz_uploader .column-wrapper button {
+    width: 100%;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .quiz-upload-success,
+    .quiz-upload-error {
+        padding: 15px;
+    }
+
+    .path-local-quiz_uploader .btn {
+        display: block;
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .path-local-quiz_uploader .column-wrapper {
+        max-width: 100%;
+    }
+}
+
+/* Custom Table Header Color */
+.dashboard-table thead th,
+.dashboard-table thead.thead-dark th,
+table.generaltable thead th {
+    background-color: #003366 !important; /* Dark Blue */
+    color: #ffffff !important;
+    border-color: #00284d !important;
+}

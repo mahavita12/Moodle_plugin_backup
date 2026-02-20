@@ -1,0 +1,223 @@
+<?php
+namespace local_personalcourse\task;
+
+defined('MOODLE_INTERNAL') || die();
+
+class flag_sync_task extends \core\task\adhoc_task {
+    public function get_component() {
+        return 'local_personalcourse';
+    }
+
+    public function execute() {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $data = (object)$this->get_custom_data();
+
+        $userid = (int)$data->userid;
+        $questionid = (int)$data->questionid;
+        $flagcolor = (string)$data->flagcolor;
+        $added = (bool)$data->added;
+        $cmid = (int)$data->cmid;
+        $quizid = isset($data->quizid) ? (int)$data->quizid : null;
+        $origin = isset($data->origin) ? (string)$data->origin : 'manual';
+
+        // Resolve course and student-only gating again (cron safety).
+        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
+        $courseid = (int)$cm->course;
+        if (!$quizid) { $quizid = (int)$cm->instance; }
+        $coursectx = \context_course::instance($courseid);
+        $roles = get_user_roles($coursectx, $userid, true);
+        $isstudent = false;
+        if (is_siteadmin($userid)) {
+            $isstudent = true; // Allow admin-driven testing to sync immediately.
+        } else {
+            foreach ($roles as $ra) { if (!empty($ra->shortname) && $ra->shortname === 'student') { $isstudent = true; break; } }
+        }
+        if (!$isstudent) { return; }
+
+        // Ensure personal course.
+        $cg = new \local_personalcourse\course_generator();
+        $pcctx = $cg->ensure_personal_course($userid);
+        $personalcourseid = (int)$pcctx->pc->id; // local table id
+        $personalcoursecourseid = (int)$pcctx->course->id; // mdl_course.id
+
+        // Enrol student to personal course.
+        $enrol = new \local_personalcourse\enrollment_manager();
+        $enrol->ensure_manual_instance_and_enrol_student($personalcoursecourseid, $userid);
+        // Enrol only staff who are actually enrolled in the student's public course.
+        $enrol->sync_staff_from_source_course($personalcoursecourseid, $courseid);
+
+        // Ensure mapping quiz exists for source quiz.
+        $pq = $DB->get_record('local_personalcourse_quizzes', [
+            'personalcourseid' => $personalcourseid,
+            'sourcequizid' => $quizid
+        ]);
+
+        if (!$pq) {
+            if (!\local_personalcourse\threshold_policy::allow_initial_creation((int)$userid, (int)$quizid)) {
+                return;
+            }
+            $quizrow = $DB->get_record('quiz', ['id' => $quizid], 'id,sumgrades,course,name', MUST_EXIST);
+
+            // Determine current flagged questions that belong to this source quiz (Moodle 4.4 references schema).
+            $flagged = $DB->get_records_sql(
+                "SELECT DISTINCT qf.questionid, qf.flagcolor
+                   FROM {local_questionflags} qf
+                   JOIN {question_versions} qv ON qv.questionid = qf.questionid
+                   JOIN {question_references} qr ON qr.questionbankentryid = qv.questionbankentryid
+                   JOIN {quiz_slots} qs ON qs.id = qr.itemid AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                  WHERE qs.quizid = ? AND qf.userid = ?",
+                [$quizid, $userid]
+            );
+
+            // Choose settings mode based on question types: essay-only => Moodle defaults (null), else interactive ('default').
+            $settingsmode = 'default';
+            if ($flagged) {
+                list($in, $params) = $DB->get_in_or_equal(array_keys($flagged), SQL_PARAMS_QM);
+                $qtypes = $DB->get_fieldset_select('question', 'DISTINCT qtype', 'id ' . $in, $params);
+                $allessay = !empty($qtypes) && count(array_unique(array_map('strval', $qtypes))) === 1 && reset($qtypes) === 'essay';
+                if ($allessay) { $settingsmode = null; }
+            } else {
+                // No flagged questions yet; default to interactive settings when created.
+                $settingsmode = 'default';
+            }
+
+            // Always create a new personal quiz in the personal course (no reuse-by-name).
+            $sourcecourse = $DB->get_record('course', ['id' => $quizrow->course], 'id,shortname,fullname', MUST_EXIST);
+            $prefix = (string)$sourcecourse->shortname;
+            $sm = new \local_personalcourse\section_manager();
+            $sectionnumber = $sm->ensure_section_by_prefix($personalcoursecourseid, $prefix);
+            $name = $quizrow->name;
+            $intro = '';
+            $qb = new \local_personalcourse\quiz_builder();
+            $res = $qb->create_quiz($personalcoursecourseid, $sectionnumber, $name, $intro, $settingsmode);
+
+            $pqrec = new \stdClass();
+            $pqrec->personalcourseid = $personalcourseid;
+            $pqrec->quizid = (int)$res->quizid;
+            $pqrec->sourcequizid = $quizid;
+            $pqrec->sectionname = $prefix;
+            $pqrec->quiztype = ($settingsmode === null) ? 'essay' : 'non_essay';
+            $pqrec->timecreated = time();
+            $pqrec->timemodified = $pqrec->timecreated;
+            $pqrec->id = $DB->insert_record('local_personalcourse_quizzes', $pqrec);
+            $pq = $pqrec;
+            // Stamp provenance marker on CM idnumber.
+            try {
+                if (!empty($res->cmid)) {
+                    $marker = 'pcq:' . (int)$userid . ':' . (int)$quizid;
+                    $DB->set_field('course_modules', 'idnumber', $marker, ['id' => (int)$res->cmid]);
+                }
+            } catch (\Throwable $e) {}
+
+            // Bulk inject all currently flagged questions for this quiz so state is up-to-date immediately.
+            if ($flagged) {
+                $qb = new \local_personalcourse\quiz_builder();
+                $ids = array_map(function($r){ return (int)$r->questionid; }, array_values($flagged));
+                if (!empty($ids)) {
+                    $qb->add_questions((int)$pq->quizid, $ids);
+                    // Record each mapping with current flagcolor.
+                    foreach ($flagged as $f) {
+                        // Resolve slot id via references schema (optional).
+                        $slotid = $DB->get_field_sql(
+                            "SELECT qs.id
+                               FROM {quiz_slots} qs
+                               JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                               JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                              WHERE qs.quizid = ? AND qv.questionid = ?
+                           ORDER BY qs.slot ASC",
+                            [(int)$pq->quizid, (int)$f->questionid]
+                        );
+                        $pcq = new \stdClass();
+                        $pcq->personalcourseid = $personalcourseid;
+                        $pcq->personalquizid = $pq->id;
+                        $pcq->questionid = (int)$f->questionid;
+                        $pcq->slotid = $slotid ? (int)$slotid : null;
+                        $pcq->flagcolor = (string)$f->flagcolor;
+                        $pcq->source = 'manual_flag';
+                        $pcq->originalposition = null;
+                        $pcq->currentposition = null;
+                        $pcq->timecreated = time();
+                        $pcq->timemodified = $pcq->timecreated;
+                        // Dedupe constraint on (personalcourseid, questionid) protects duplicates.
+                        if (!$DB->record_exists('local_personalcourse_questions', [
+                            'personalcourseid' => $personalcourseid,
+                            'questionid' => (int)$f->questionid,
+                        ])) {
+                            $DB->insert_record('local_personalcourse_questions', $pcq);
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($added) {
+            // Dedupe across personal course.
+            $existing = $DB->get_record('local_personalcourse_questions', [
+                'personalcourseid' => $personalcourseid,
+                'questionid' => $questionid
+            ]);
+            if ($existing && (int)$existing->personalquizid !== (int)$pq->id) {
+                // Remove from previous quiz in mod_quiz as well.
+                $oldpq = $DB->get_record('local_personalcourse_quizzes', ['id' => $existing->personalquizid], '*', MUST_EXIST);
+                $qb = new \local_personalcourse\quiz_builder();
+                $qb->remove_question((int)$oldpq->quizid, $questionid);
+                $DB->delete_records('local_personalcourse_questions', ['id' => $existing->id]);
+            }
+
+            // Add to current quiz if not present.
+            $present = $DB->record_exists('local_personalcourse_questions', [
+                'personalcourseid' => $personalcourseid,
+                'personalquizid' => $pq->id,
+                'questionid' => $questionid
+            ]);
+            if (!$present) {
+                // Guard marker: only mutate legitimate personal quiz.
+                try {
+                    $cmcur = get_coursemodule_from_instance('quiz', (int)$pq->quizid, (int)$personalcoursecourseid, false, MUST_EXIST);
+                    $marker = (string)$DB->get_field('course_modules', 'idnumber', ['id' => (int)$cmcur->id]);
+                    $expected = 'pcq:' . (int)$userid . ':' . (int)$quizid;
+                    if (stripos($marker ?: '', $expected) !== 0) { return; }
+                } catch (\Throwable $g) { return; }
+                $qb = new \local_personalcourse\quiz_builder();
+                $qb->add_questions((int)$pq->quizid, [$questionid]);
+                // Resolve slot id via references schema (optional).
+                $slotid = $DB->get_field_sql(
+                    "SELECT qs.id
+                       FROM {quiz_slots} qs
+                       JOIN {question_references} qr ON qr.itemid = qs.id AND qr.component = 'mod_quiz' AND qr.questionarea = 'slot'
+                       JOIN {question_versions} qv ON qv.questionbankentryid = qr.questionbankentryid
+                      WHERE qs.quizid = ? AND qv.questionid = ?
+                   ORDER BY qs.slot ASC",
+                    [(int)$pq->quizid, (int)$questionid]
+                );
+                $pcq = new \stdClass();
+                $pcq->personalcourseid = $personalcourseid;
+                $pcq->personalquizid = $pq->id;
+                $pcq->questionid = $questionid;
+                $pcq->slotid = $slotid ? (int)$slotid : null;
+                $pcq->flagcolor = $flagcolor;
+                $pcq->source = ($origin === 'auto') ? 'auto_incorrect' : 'manual_flag';
+                $pcq->originalposition = null;
+                $pcq->currentposition = null;
+                $pcq->timecreated = time();
+                $pcq->timemodified = $pcq->timecreated;
+                $DB->insert_record('local_personalcourse_questions', $pcq);
+            }
+        } else {
+            // Removal: remove this question from any personal quiz within the student's personal course.
+            $existing = $DB->get_record('local_personalcourse_questions', [
+                'personalcourseid' => $personalcourseid,
+                'questionid' => $questionid
+            ]);
+            if ($existing) {
+                $targetpq = $DB->get_record('local_personalcourse_quizzes', ['id' => $existing->personalquizid], 'id, quizid');
+                if ($targetpq) {
+                    $qb = new \local_personalcourse\quiz_builder();
+                    $qb->remove_question((int)$targetpq->quizid, $questionid);
+                }
+                $DB->delete_records('local_personalcourse_questions', ['id' => $existing->id]);
+            }
+        }
+    }
+}

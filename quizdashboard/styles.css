@@ -1,0 +1,109 @@
+
+/* Horizontal Filter Layout for Essay Dashboard */
+.essay-dashboard-container .filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 15px;
+}
+
+.essay-dashboard-container .filter-group {
+    flex: 1;
+    min-width: 140px;
+    margin-bottom: 0;
+}
+
+.essay-dashboard-container .filter-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.essay-dashboard-container .filter-group select,
+.essay-dashboard-container .filter-group input[type="text"] {
+    width: 100%;
+    height: 35px; /* Consistent height */
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* Specific handling for Exclude Staff */
+.essay-dashboard-container .filter-group:has(#excludestaff) {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding-bottom: 8px; /* Align with inputs */
+    min-width: auto;
+}
+
+.essay-dashboard-container .filter-group:has(#excludestaff) label {
+    margin-bottom: 0;
+    margin-left: 5px;
+    font-weight: normal;
+}
+
+/* Filter Actions (Buttons) */
+.essay-dashboard-container .filter-actions {
+    flex: 0 0 auto;
+    padding-bottom: 2px;
+    display: flex;
+    gap: 5px;
+}
+
+.essay-dashboard-container .filter-actions .btn {
+    height: 35px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .essay-dashboard-container .filter-group {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 992px) {
+    .essay-dashboard-container .filter-form {
+        gap: 10px;
+    }
+}
+
+/* Action Icons (Small Green Square Buttons) */
+.qd-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background-color: #28a745;
+    color: #fff;
+    border-radius: 3px;
+    text-decoration: none;
+    font-size: 10px;
+    margin-left: 5px;
+}
+
+.qd-action-icon:hover {
+    background-color: #218838;
+    color: #fff;
+    text-decoration: none;
+}
+
+.qd-action-icon i {
+    margin: 0;
+}
+
+/* Custom Table Header Color */
+.dashboard-table thead th,
+.dashboard-table thead.thead-dark th,
+table.generaltable thead th {
+    background-color: #003366 !important; /* Dark Blue */
+    color: #ffffff !important;
+    border-color: #00284d !important;
+}

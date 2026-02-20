@@ -1,0 +1,38 @@
+/* Feedback toggle button */
+.feedback-toggle-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1000;
+    background: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.feedback-toggle-btn {
+    padding: 8px 16px;
+    background-color: #f39c12;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.feedback-toggle-btn:hover {
+    background-color: #e67e22;
+}
+
+.feedback-toggle-btn.active {
+    background-color: #27ae60;
+}
+
+/* Hide feedback when toggle is active */
+body.hide-feedback .specificfeedback,
+body.hide-feedback .generalfeedback,
+body.hide-feedback .rightanswer,
+body.hide-feedback .outcome {
+    display: none !important;
+}

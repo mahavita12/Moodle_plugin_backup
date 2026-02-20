@@ -1,0 +1,519 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_essaysmaster/essay_interface
+
+    Main Essays Master interface template.
+
+    Context variables required for this template:
+    * question_name - Name of the essay question
+    * question_text - The essay question text
+    * current_essay_text - Current essay content
+    * word_count - Current word count
+    * character_count - Current character count
+    * session_id - Session ID for this essay
+    * current_level - Current level number
+    * max_levels - Maximum number of levels
+    * copy_paste_prevention - Boolean for copy/paste prevention
+    * time_remaining - Time remaining for current level (optional)
+
+    Example context (json):
+    {
+        "question_name": "Essay Question 1",
+        "question_text": "Discuss the impact of technology on education.",
+        "current_essay_text": "Technology has transformed education...",
+        "word_count": 45,
+        "character_count": 287,
+        "session_id": 123,
+        "current_level": 2,
+        "max_levels": 3,
+        "copy_paste_prevention": true,
+        "time_remaining": null
+    }
+}}
+
+<div id="essays-master-interface" class="essays-master-container">
+    <!-- Header Section -->
+    <div class="essays-master-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h2 class="mb-1">
+                        <i class="fa fa-edit text-primary"></i>
+                        {{#str}}essays_master_interface, local_essaysmaster{{/str}}
+                    </h2>
+                    <h4 class="text-muted mb-0">{{question_name}}</h4>
+                </div>
+                <div class="col-md-4 text-right">
+                    {{#time_remaining}}
+                    <div class="time-indicator alert alert-warning mb-0">
+                        <i class="fa fa-clock-o"></i>
+                        {{#str}}time_remaining, local_essaysmaster, {{time_remaining}}{{/str}}
+                    </div>
+                    {{/time_remaining}}
+                    <a href="#" class="btn btn-outline-secondary" id="back-to-quiz-btn">
+                        <i class="fa fa-arrow-left"></i>
+                        {{#str}}back_to_quiz, local_essaysmaster{{/str}}
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Question Display -->
+    <div class="question-display card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fa fa-question-circle text-info"></i>
+                Essay Question
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="question-text">
+                {{{question_text}}}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <div class="row">
+            <!-- Essay Editor Panel -->
+            <div class="col-lg-6">
+                <div class="essay-editor-panel card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fa fa-pencil text-success"></i>
+                                Your Essay
+                            </h5>
+                            {{#copy_paste_prevention}}
+                            <span class="badge badge-info">
+                                <i class="fa fa-shield"></i>
+                                Copy/Paste Protection Active
+                            </span>
+                            {{/copy_paste_prevention}}
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <!-- Essay Editor Container -->
+                        <div class="editor-container">
+                            <textarea id="essay-text"
+                                      class="essay-textarea form-control"
+                                      autocomplete="off"
+                                      data-gramm="false"
+                                      data-autocorrect="off"
+                                      data-autocomplete="off"
+                                      data-spellcheck="false"
+                                      spellcheck="false"
+                                      rows="20"
+                                      placeholder="Start typing your essay here..."
+                                      data-session-id="{{session_id}}"
+                                      data-copy-paste-prevention="{{copy_paste_prevention}}">{{current_essay_text}}</textarea>
+                        </div>
+
+                        <!-- Essay Statistics -->
+                        <div class="essay-stats mt-3">
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">
+                                        <i class="fa fa-font"></i>
+                                        {{#str}}essay_word_count, local_essaysmaster, <span id="word-count">{{word_count}}</span>{{/str}}
+                                    </small>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">
+                                        <i class="fa fa-text-width"></i>
+                                        {{#str}}essay_char_count, local_essaysmaster, <span id="char-count">{{character_count}}</span>{{/str}}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Auto-save Indicator -->
+                        <div class="autosave-indicator mt-2">
+                            <small class="text-muted">
+                                <i class="fa fa-circle text-success" id="autosave-status"></i>
+                                <span id="autosave-text">Draft saved</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Feedback Panel -->
+            <div class="col-lg-6">
+                <div id="feedback-panel-container">
+                    <!-- Feedback panel will be loaded here via AJAX -->
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <i class="fa fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                            <p class="text-muted">Loading feedback panel...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Indicator Section -->
+    <div class="progress-section mt-4">
+        <div id="progress-indicator-container">
+            <!-- Progress indicator will be loaded here via AJAX -->
+            <div class="text-center">
+                <i class="fa fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                <p class="text-muted">Loading progress indicator...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Footer -->
+    <div class="action-footer fixed-bottom bg-white border-top p-3">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <button type="button" class="btn btn-outline-secondary" id="save-draft-btn">
+                        <i class="fa fa-save"></i>
+                        {{#str}}save_draft, local_essaysmaster{{/str}}
+                    </button>
+                </div>
+                <div class="col-md-6 text-right">
+                    <button type="button" class="btn btn-success d-none" id="next-level-btn">
+                        <i class="fa fa-arrow-right"></i>
+                        <span id="next-level-text">{{#str}}proceed_to_next_level, local_essaysmaster, {{next_level}}{{/str}}</span>
+                    </button>
+                    <button type="button" class="btn btn-danger d-none" id="submit-final-btn">
+                        <i class="fa fa-check"></i>
+                        {{#str}}submit_final_essay, local_essaysmaster{{/str}}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmation-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Action</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="confirmation-message">
+                <!-- Message will be set dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-action-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.essays-master-container {
+    min-height: 100vh;
+    background-color: #f8f9fa;
+    padding-bottom: 100px; /* Space for fixed footer */
+}
+
+.essays-master-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+}
+
+.essays-master-header h2,
+.essays-master-header h4 {
+    color: white;
+}
+
+.question-display {
+    border-left: 4px solid #007bff;
+}
+
+.question-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.essay-editor-panel {
+    height: fit-content;
+    position: sticky;
+    top: 20px;
+}
+
+.essay-textarea {
+    resize: vertical;
+    min-height: 400px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.essay-textarea:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.essay-stats {
+    border-top: 1px solid #dee2e6;
+    padding-top: 1rem;
+}
+
+.autosave-indicator #autosave-status.saving {
+    color: #ffc107 !important;
+}
+
+.autosave-indicator #autosave-status.saved {
+    color: #28a745 !important;
+}
+
+.autosave-indicator #autosave-status.error {
+    color: #dc3545 !important;
+}
+
+.action-footer {
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.time-indicator {
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+}
+
+.progress-section {
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 992px) {
+    .essays-master-header {
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .essay-editor-panel {
+        position: static;
+        margin-bottom: 2rem;
+    }
+
+    .action-footer .container-fluid .row {
+        text-align: center;
+    }
+
+    .action-footer .col-md-6 {
+        margin-bottom: 0.5rem;
+    }
+
+    .action-footer .col-md-6.text-right {
+        text-align: center !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .essays-master-container {
+        padding-bottom: 120px;
+    }
+
+    .essay-textarea {
+        min-height: 300px;
+    }
+
+    .action-footer .row {
+        flex-direction: column;
+    }
+
+    .action-footer .col-md-6 {
+        width: 100%;
+        margin-bottom: 1rem;
+    }
+}
+</style>
+
+{{#js}}
+require(['jquery', 'local_essaysmaster/text_highlighter', 'local_essaysmaster/copy_paste_blocker'],
+function($, TextHighlighter, CopyPasteBlocker) {
+
+    // Initialize text highlighter
+    var highlighter = TextHighlighter.create('essay-text', {
+        highlightClass: 'essay-highlight'
+    });
+
+    // Initialize copy/paste blocker if enabled
+    {{#copy_paste_prevention}}
+    var pasteBlocker = CopyPasteBlocker.create('essay-text', 'feedback-panel-container', {
+        enabled: true,
+        rapidTypingThreshold: 50,
+        rapidTypingTimeWindow: 100,
+        maxPasteWarnings: 3
+    });
+    {{/copy_paste_prevention}}
+
+    // Word and character count tracking
+    function updateCounts() {
+        var text = $('#essay-text').val();
+        var wordCount = text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+        var charCount = text.length;
+
+        $('#word-count').text(wordCount);
+        $('#char-count').text(charCount);
+
+        // Trigger count update event
+        $(document).trigger('essaysmaster:counts-updated', {
+            wordCount: wordCount,
+            charCount: charCount
+        });
+    }
+
+    // Auto-save functionality
+    var autoSaveTimer;
+    var isAutoSaving = false;
+
+    function autoSave() {
+        if (isAutoSaving) return;
+
+        isAutoSaving = true;
+        $('#autosave-status').removeClass('saved error').addClass('saving');
+        $('#autosave-text').text('Saving...');
+
+        var essayText = $('#essay-text').val();
+
+        // Simulate save request (replace with actual AJAX call)
+        setTimeout(function() {
+            // Here you would make an AJAX call to save the essay
+            isAutoSaving = false;
+            $('#autosave-status').removeClass('saving error').addClass('saved');
+            $('#autosave-text').text('Draft saved at ' + new Date().toLocaleTimeString());
+
+            $(document).trigger('essaysmaster:draft-saved', {
+                text: essayText,
+                timestamp: new Date()
+            });
+        }, 1000);
+    }
+
+    // Text change handling
+    $('#essay-text').on('input', function() {
+        updateCounts();
+
+        // Clear previous auto-save timer
+        clearTimeout(autoSaveTimer);
+
+        // Set new auto-save timer
+        autoSaveTimer = setTimeout(autoSave, 2000); // Auto-save after 2 seconds of inactivity
+    });
+
+    // Manual save button
+    $('#save-draft-btn').on('click', function() {
+        clearTimeout(autoSaveTimer);
+        autoSave();
+    });
+
+    // Load feedback panel and progress indicator
+    function loadPanels() {
+        // Load feedback panel
+        $('#feedback-panel-container').load('/local/essaysmaster/ajax/get_feedback_panel.php', {
+            session_id: {{session_id}},
+            level: {{current_level}}
+        });
+
+        // Load progress indicator
+        $('#progress-indicator-container').load('/local/essaysmaster/ajax/get_progress_indicator.php', {
+            session_id: {{session_id}}
+        });
+    }
+
+    // Harden feedback container against copy/right-click
+    (function hardenFeedbackContainer(){
+        var $container = $('#feedback-panel-container');
+        if ($container.length) {
+            $container.on('contextmenu copy cut paste dragstart selectstart', function(e){ e.preventDefault(); });
+            $container.attr('oncontextmenu', 'return false');
+            $container.attr('oncopy', 'return false');
+            $container.attr('oncut', 'return false');
+            $container.attr('onpaste', 'return false');
+        }
+    })();
+
+    // Initialize panels
+    loadPanels();
+
+    // Event handlers for custom events
+    $(document).on('essaysmaster:request-feedback', function(event, data) {
+        // Handle feedback request
+        console.log('Feedback requested for level:', data.level);
+        // Reload feedback panel with new data
+        loadPanels();
+    });
+
+    $(document).on('essaysmaster:proceed-level', function(event, data) {
+        // Handle level progression
+        var message = 'Are you sure you want to proceed to Level ' + data.nextLevel + '?';
+        $('#confirmation-message').text(message);
+        $('#confirmation-modal').modal('show');
+
+        $('#confirm-action-btn').off('click').on('click', function() {
+            // Proceed to next level
+            window.location.href = '/local/essaysmaster/interface.php?session=' + {{session_id}} + '&level=' + data.nextLevel;
+        });
+    });
+
+    $(document).on('essaysmaster:submit-final', function(event, data) {
+        // Handle final submission
+        var message = 'Are you sure you want to submit your final essay? This action cannot be undone.';
+        $('#confirmation-message').text(message);
+        $('#confirmation-modal').modal('show');
+
+        $('#confirm-action-btn').off('click').on('click', function() {
+            // Submit final essay
+            window.location.href = '/local/essaysmaster/submit.php?session=' + {{session_id}} + '&final=1';
+        });
+    });
+
+    // Back to quiz button
+    $('#back-to-quiz-btn').on('click', function(e) {
+        e.preventDefault();
+        var message = 'Your progress will be saved. Return to quiz attempt?';
+        $('#confirmation-message').text(message);
+        $('#confirmation-modal').modal('show');
+
+        $('#confirm-action-btn').off('click').on('click', function() {
+            autoSave();
+            setTimeout(function() {
+                window.location.href = '/mod/quiz/attempt.php?attempt={{attempt_id}}&essaysmaster=draft';
+            }, 500);
+        });
+    });
+
+    // Initialize counts
+    updateCounts();
+
+    // Prevent accidental page leave
+    window.addEventListener('beforeunload', function(e) {
+        if ($('#essay-text').val().trim() !== '{{current_essay_text}}'.trim()) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+});
+{{/js}}
