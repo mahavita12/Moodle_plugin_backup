@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && confirm_sesskey()) {
 
     // Provider + API settings
     $provider = isset($_POST['provider']) ? trim((string)$_POST['provider']) : 'anthropic';
-    if (!in_array($provider, ['anthropic', 'openai'])) { $provider = 'anthropic'; }
+    if (!in_array($provider, ['anthropic', 'openai', 'gemini'])) { $provider = 'anthropic'; }
     set_config('provider', $provider, 'local_essaysmaster');
 
     // OpenAI settings
@@ -43,6 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && confirm_sesskey()) {
     }
     if (isset($_POST['anthropic_model'])) {
         set_config('anthropic_model', trim((string)$_POST['anthropic_model']), 'local_essaysmaster');
+    }
+
+    // Gemini settings
+    if (isset($_POST['gemini_apikey']) && $_POST['gemini_apikey'] !== '') {
+        set_config('gemini_apikey', trim((string)$_POST['gemini_apikey']), 'local_essaysmaster');
+    }
+    if (isset($_POST['gemini_model'])) {
+        set_config('gemini_model', trim((string)$_POST['gemini_model']), 'local_essaysmaster');
     }
 
     // Save messages
@@ -68,7 +76,9 @@ $provider = get_config('local_essaysmaster', 'provider') ?? 'anthropic';
 $openai_apikey = get_config('local_essaysmaster', 'openai_apikey') ?? '';
 $openai_model = get_config('local_essaysmaster', 'openai_model') ?? 'gpt-4o';
 $anthropic_apikey = get_config('local_essaysmaster', 'anthropic_apikey') ?? '';
-$anthropic_model = get_config('local_essaysmaster', 'anthropic_model') ?? 'sonnet-4';
+$anthropic_model = get_config('local_essaysmaster', 'anthropic_model') ?? 'claude-sonnet-4-6';
+$gemini_apikey = get_config('local_essaysmaster', 'gemini_apikey') ?? '';
+$gemini_model = get_config('local_essaysmaster', 'gemini_model') ?? 'gemini-2.5-pro-preview-05-06';
 
 $msg_short_sentence = get_config('local_essaysmaster', 'msg_short_sentence') ?? 'This sentence is very short. Consider expanding it with more detail.';
 $msg_repetitive_word = get_config('local_essaysmaster', 'msg_repetitive_word') ?? 'The word \'{word}\' appears {count} times. Consider using synonyms for variety.';
@@ -136,11 +146,26 @@ echo $OUTPUT->heading('Essays Master Configuration');
             <div class="form-group">
                 <label for="provider">Provider</label>
                 <select name="provider" id="provider">
+                    <option value="gemini" <?php echo ($provider === 'gemini') ? 'selected' : ''; ?>>Gemini (Google)</option>
                     <option value="anthropic" <?php echo ($provider === 'anthropic') ? 'selected' : ''; ?>>Anthropic</option>
                     <option value="openai" <?php echo ($provider === 'openai') ? 'selected' : ''; ?>>OpenAI</option>
                 </select>
-                <small>Select Anthropic (Sonnet 4) by default while keeping OpenAI available.</small>
+                <small>Select Gemini (Google) by default. Anthropic and OpenAI also available.</small>
             </div>
+
+            <div class="form-group">
+                <label for="gemini_apikey">Gemini API Key</label>
+                <input type="password" name="gemini_apikey" id="gemini_apikey" value="" placeholder="Leave blank to keep existing">
+                <small>Stored securely in config. Current status: <?php echo $gemini_apikey ? 'Configured' : 'Not configured'; ?></small>
+            </div>
+
+            <div class="form-group">
+                <label for="gemini_model">Gemini Model</label>
+                <input type="text" name="gemini_model" id="gemini_model" value="<?php echo htmlspecialchars($gemini_model); ?>">
+                <small>Default: gemini-2.5-pro-preview-05-06</small>
+            </div>
+
+            <hr>
 
             <div class="form-group">
                 <label for="anthropic_apikey">Anthropic API Key</label>
@@ -151,7 +176,7 @@ echo $OUTPUT->heading('Essays Master Configuration');
             <div class="form-group">
                 <label for="anthropic_model">Anthropic Model</label>
                 <input type="text" name="anthropic_model" id="anthropic_model" value="<?php echo htmlspecialchars($anthropic_model); ?>">
-                <small>Default: sonnet-4</small>
+                <small>Default: claude-sonnet-4-6</small>
             </div>
 
             <hr>
