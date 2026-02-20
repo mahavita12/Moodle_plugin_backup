@@ -792,6 +792,7 @@ if ($tab === 'leaderboard') {
                         <th class="text-center">MAX</th>
                         <th class="sortable-column text-center" data-sort="points_all" style="cursor:pointer;">ALL TIME <?php echo local_homeworkdashboard_sort_arrows('points_all', $sort, $dir); ?></th>
                         <th class="text-center">MAX</th>
+                        <?php if ($canmanage): ?><th class="text-center" style="min-width:60px;">ADJ</th><th class="text-center" style="width:40px;"></th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -977,6 +978,24 @@ if ($tab === 'leaderboard') {
                                 <td class="text-center" style="color: #999;">
                                     <?php echo number_format(($row->max_all ?? 0) / 10, 1); ?>
                                 </td>
+                                <?php if ($canmanage):
+                                    $adj_val = ($row->adjustment_total ?? 0) / 10;
+                                    $adj_color = $adj_val > 0 ? '#28a745' : ($adj_val < 0 ? '#dc3545' : '#999');
+                                    $adj_display = $adj_val > 0 ? '+' . number_format($adj_val, 1) : ($adj_val < 0 ? number_format($adj_val, 1) : '-');
+                                    // Build courses JSON for the modal dropdown
+                                    $user_courses_json = htmlspecialchars(json_encode(array_map(function($cid, $c) {
+                                        return ['id' => $cid, 'name' => $c['name']];
+                                    }, array_keys($row->courses), $row->courses)), ENT_QUOTES);
+                                ?>
+                                <td class="text-center font-weight-bold" style="color: <?php echo $adj_color; ?>;"><?php echo $adj_display; ?></td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-secondary adj-btn" title="Adjust Points"
+                                        data-userid="<?php echo $row->userid; ?>"
+                                        data-username="<?php echo htmlspecialchars($row->fullname); ?>"
+                                        data-courses="<?php echo $user_courses_json; ?>"
+                                        style="padding:2px 6px;font-size:12px;">±</button>
+                                </td>
+                                <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -986,6 +1005,212 @@ if ($tab === 'leaderboard') {
     </div>
 </div>
 <?php endif; // End admin-only table ?>
+
+<!-- Point Adjustment Modal (admin only) -->
+<?php if ($canmanage): ?>
+<div class="modal fade" id="adjustModal" tabindex="-1" role="dialog" aria-labelledby="adjustModalLabel">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#2C3E50; color:white;">
+        <h5 class="modal-title" id="adjustModalLabel">Point Adjustments</h5>
+        <button type="button" class="close" data-dismiss="modal" style="color:white;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="adj_userid" value="">
+        <div class="form-row align-items-end mb-3" style="border-bottom:1px solid #eee; padding-bottom:15px;">
+          <div class="col-md-3">
+            <label class="small font-weight-bold">Course</label>
+            <select class="form-control form-control-sm" id="adj_course"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="small font-weight-bold">Points</label>
+            <input type="number" step="0.1" class="form-control form-control-sm" id="adj_points" placeholder="+5 or -10">
+          </div>
+          <div class="col-md-3">
+            <label class="small font-weight-bold">Reason</label>
+            <input type="text" class="form-control form-control-sm" id="adj_reason" placeholder="e.g. Cheating penalty">
+          </div>
+          <div class="col-md-2">
+            <label class="small font-weight-bold">Date</label>
+            <input type="date" class="form-control form-control-sm" id="adj_date" value="<?php echo date('Y-m-d'); ?>">
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-sm btn-primary w-100" id="adj_add_btn">
+              <i class="fa fa-plus"></i> Add Adjustment
+            </button>
+          </div>
+        </div>
+        <h6 class="font-weight-bold text-muted">Adjustment History</h6>
+        <div id="adj_history" style="max-height:300px;overflow-y:auto;">
+          <table class="table table-sm table-striped" id="adj_history_table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Course</th><th>Points</th><th>Reason</th><th>Admin</th><th style="width:40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="adj_history_body"></tbody>
+          </table>
+        </div>
+        <div class="mt-2 text-right">
+          <strong>Net Adjustment: <span id="adj_net" style="font-size:1.1em;">0</span></strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+    var sesskey = '<?php echo sesskey(); ?>';
+    var ajaxUrl = '<?php echo (new moodle_url("/local/homeworkdashboard/ajax_adjust_points.php"))->out(false); ?>';
+
+    // Open modal
+    document.querySelectorAll('.adj-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var uid = this.getAttribute('data-userid');
+            var name = this.getAttribute('data-username');
+            var courses = JSON.parse(this.getAttribute('data-courses'));
+
+            document.getElementById('adj_userid').value = uid;
+            document.getElementById('adjustModalLabel').textContent = 'Point Adjustments — ' + name;
+
+            // Populate course dropdown
+            var sel = document.getElementById('adj_course');
+            sel.innerHTML = '';
+            courses.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                sel.appendChild(opt);
+            });
+
+            // Clear form
+            document.getElementById('adj_points').value = '';
+            document.getElementById('adj_reason').value = '';
+
+            // Load history
+            loadHistory(uid);
+
+            $('#adjustModal').modal('show');
+        });
+    });
+
+    // Add adjustment
+    document.getElementById('adj_add_btn').addEventListener('click', function() {
+        var uid = document.getElementById('adj_userid').value;
+        var cid = document.getElementById('adj_course').value;
+        var pts = document.getElementById('adj_points').value;
+        var reason = document.getElementById('adj_reason').value;
+
+        if (!pts || pts == 0) { alert('Points cannot be zero.'); return; }
+        if (!reason.trim()) { alert('Please enter a reason.'); return; }
+
+        var dateVal = document.getElementById('adj_date').value;
+        var params = 'sesskey=' + sesskey + '&action=add&userid=' + uid + '&courseid=' + cid +
+                     '&points=' + pts + '&reason=' + encodeURIComponent(reason) + '&dateapplied=' + dateVal;
+
+        fetch(ajaxUrl + '?' + params, {method:'POST'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    renderHistory(data.adjustments, data.net_total);
+                    document.getElementById('adj_points').value = '';
+                    document.getElementById('adj_reason').value = '';
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown'));
+                }
+            });
+    });
+
+    function loadHistory(uid) {
+        fetch(ajaxUrl + '?sesskey=' + sesskey + '&action=list&userid=' + uid)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    renderHistory(data.adjustments, data.net_total);
+                }
+            });
+    }
+
+    function renderHistory(adjustments, net) {
+        var tbody = document.getElementById('adj_history_body');
+        if (!adjustments || adjustments.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No adjustments yet.</td></tr>';
+        } else {
+            tbody.innerHTML = adjustments.map(function(a) {
+                var pts = parseFloat(a.points);
+                var ptsStr = pts > 0 ? '+' + pts.toFixed(1) : pts.toFixed(1);
+                var ptsColor = pts > 0 ? '#28a745' : '#dc3545';
+                var ts = parseInt(a.timeapplied) > 0 ? parseInt(a.timeapplied) : parseInt(a.timecreated);
+                var d = new Date(ts * 1000);
+                var dateStr = d.toLocaleDateString('en-AU', {day:'numeric',month:'short',year:'numeric'});
+                var isoDate = d.toISOString().split('T')[0];
+                return '<tr>' +
+                    '<td class="small">' + dateStr + '</td>' +
+                    '<td class="small">' + (a.coursename || '') + '</td>' +
+                    '<td class="small font-weight-bold" style="color:' + ptsColor + ';">' + ptsStr + '</td>' +
+                    '<td class="small">' + (a.reason || '') + '</td>' +
+                    '<td class="small">' + (a.admin_firstname || '') + ' ' + (a.admin_lastname || '') + '</td>' +
+                    '<td style="white-space:nowrap;">' +
+                    '<button class="btn btn-sm btn-link adj-edit-btn" data-adjustid="' + a.id + '" data-points="' + pts + '" data-reason="' + (a.reason || '').replace(/"/g,'&quot;') + '" data-date="' + isoDate + '" title="Edit" style="padding:0 2px;">&#9998;</button>' +
+                    '<button class="btn btn-sm btn-link text-danger adj-delete-btn" data-adjustid="' + a.id + '" title="Delete" style="padding:0 2px;">&#128465;</button></td>' +
+                    '</tr>';
+            }).join('');
+
+            // Bind edit buttons
+            tbody.querySelectorAll('.adj-edit-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var aid = this.getAttribute('data-adjustid');
+                    var curPts = this.getAttribute('data-points');
+                    var curReason = this.getAttribute('data-reason');
+                    var curDate = this.getAttribute('data-date') || '';
+                    var newPts = prompt('Edit points:', curPts);
+                    if (newPts === null) return;
+                    var newReason = prompt('Edit reason:', curReason);
+                    if (newReason === null) return;
+                    var newDate = prompt('Edit date (YYYY-MM-DD):', curDate);
+                    if (newDate === null) return;
+                    if (parseFloat(newPts) === 0) { alert('Points cannot be zero.'); return; }
+                    var uid = document.getElementById('adj_userid').value;
+                    fetch(ajaxUrl + '?sesskey=' + sesskey + '&action=edit&adjustid=' + aid + '&userid=' + uid +
+                          '&points=' + newPts + '&reason=' + encodeURIComponent(newReason) + '&dateapplied=' + newDate, {method:'POST'})
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.success) {
+                                renderHistory(data.adjustments, data.net_total);
+                            } else {
+                                alert('Error: ' + (data.message || 'Unknown'));
+                            }
+                        });
+                });
+            });
+
+            // Bind delete buttons
+            tbody.querySelectorAll('.adj-delete-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    if (!confirm('Delete this adjustment?')) return;
+                    var aid = this.getAttribute('data-adjustid');
+                    var uid = document.getElementById('adj_userid').value;
+                    fetch(ajaxUrl + '?sesskey=' + sesskey + '&action=delete&adjustid=' + aid + '&userid=' + uid, {method:'POST'})
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (data.success) {
+                                renderHistory(data.adjustments, data.net_total);
+                            }
+                        });
+                });
+            });
+        }
+
+        // Update net total
+        var netVal = parseFloat(net) / 10;
+        var netStr = netVal > 0 ? '+' + netVal.toFixed(1) : netVal.toFixed(1);
+        var netColor = netVal > 0 ? '#28a745' : (netVal < 0 ? '#dc3545' : '#333');
+        document.getElementById('adj_net').innerHTML = '<span style="color:' + netColor + ';">' + netStr + '</span>';
+    }
+})();
+</script>
+<?php endif; ?>
 
 <?php if ($canmanage): // Breakdown data and modal for admin only ?>
 <!-- Breakdown Data (stored in JavaScript) -->

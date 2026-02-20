@@ -19,8 +19,8 @@ class gemini_helper {
     public function __construct() {
         $config = get_config('local_homeworkdashboard');
         $this->api_key = $config->gemini_api_key ?? '';
-        // Default to Gemini 3 Pro Preview as requested
-        $this->model = $config->gemini_model ?? 'gemini-3-pro-preview';
+        // Default to Gemini 3.1 Pro Preview as requested
+        $this->model = $config->gemini_model ?? 'gemini-3.1-pro-preview';
     }
 
     /**
@@ -154,10 +154,16 @@ class gemini_helper {
             $prompt .= "      - **점수 분석**: 점수가 낮다면(60% 미만) '개념 이해가 부족하니 해당 주제 복습이 시급함'을 구체적으로 알리세요.\n";
 
             $prompt .= "   3. **Revision Work (복습 과제) 상세 분석** (헤더: <h4 style='color: #D35400; border-bottom: 1px solid #D35400; padding-bottom: 5px;'>Revision Work</h4>):\n";
-            $prompt .= "      - **통계 요약 필수**: '이번 주 복습 과제에서 총 {$rev_stats['total_qs']}문항을 검토했으며, 플래그(Flag) {$rev_stats['flags']}개, 노트(Note) {$rev_stats['notes']}개를 작성했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
-            $prompt .= "      - **점수 변화**를 중점적으로 분석하세요 (1차 시도 vs 마지막 시도).\n";
-            $prompt .= "      - 점수 향상 시: '1차 시도 대비 OO% 향상되어 학습 효과가 뚜렷합니다'라고 칭찬.\n";
-            $prompt .= "      - 변화 없음/하락 시: '오답 노트 피드백이 충분히 학습되지 않은 것으로 보입니다. 가정에서 오답 정리를 다시 지도해주시기 바랍니다'라고 조언.\n";
+            if ($completed_revision === 0 && $total_revision > 0) {
+                $prompt .= "      - **중요**: 이번 주 복습 과제가 완료되지 않았습니다. 단순히 '{$student_name}(은)는 이번 주 배정된 {$total_revision}개의 복습 과제를 완료하지 않았습니다. 마감일 전에 복습 과제를 완료할 수 있도록 지도 부탁드립니다.'라고만 작성하세요.\n";
+                $prompt .= "      - 복습 시도 데이터를 분석하거나 복습 성과에 대한 코멘트를 하지 마세요. 완료되지 않았다는 사실만 언급하세요.\n";
+            } else {
+                $prompt .= "      - **통계 요약 필수**: '이번 주 복습 과제에서 총 {$rev_stats['total_qs']}문항을 검토했으며, 플래그(Flag) {$rev_stats['flags']}개, 노트(Note) {$rev_stats['notes']}개를 작성했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
+                $prompt .= "      - **점수 변화**를 중점적으로 분석하세요 (1차 시도 vs 마지막 시도).\n";
+                $prompt .= "      - 점수 향상 시: '1차 시도 대비 OO% 향상되어 학습 효과가 뚜렷합니다'라고 칭찬.\n";
+                $prompt .= "      - 변화 없음/하락 시: '오답 노트 피드백이 충분히 학습되지 않은 것으로 보입니다. 가정에서 오답 정리를 다시 지도해주시기 바랍니다'라고 조언.\n";
+            }
+            $prompt .= "      - **필수 규칙**: 과제 기간(마감일 기준 7일 이내)의 데이터만 분석하세요. 이 기간 외의 퀴즈 시도나 활동에 대해 언급하지 마세요.\n";
             
             $prompt .= "   4. **학습 태도 및 제언** (헤더: <h4 style='color: #8E44AD; border-bottom: 1px solid #8E44AD; padding-bottom: 5px;'>Learning Attitude</h4>):\n";
             $prompt .= "      - 만약 1차, 2차 시도 모두 **시간이 매우 짧고(문제당 1분 미만)** 점수가 **매우 높다면(80% 이상)**:\n";
@@ -203,10 +209,16 @@ class gemini_helper {
             $prompt .= "      - 'Selective Trial Test' expected: 40 mins. 'OC Trial Test': 30-40 mins. Warn if significantly faster.\n";
 
             $prompt .= "   3. **Revision Work Detailed Analysis** (Header: <h4 style='color: #D35400; border-bottom: 1px solid #D35400; padding-bottom: 5px;'>Revision Work</h4>):\n";
-            $prompt .= "      - **Mandatory Stats**: 'In their REVISION work, {$student_name} reviewed {$rev_stats['total_qs']} questions, flagged {$rev_stats['flags']} issues, and wrote {$rev_stats['notes']} notes.'\n";
-            $prompt .= "      - **Score Progression**: Compare 1st attempt vs last attempt scores.\n";
-            $prompt .= "      - **Score Improved**: 'Improved by XX% compared to the first attempt, showing clear learning progress.' - Praise.\n";
-            $prompt .= "      - **No Change/Dropped**: 'The feedback does not appear to be fully absorbed. We recommend reviewing incorrect answers at home.'\n";
+            if ($completed_revision === 0 && $total_revision > 0) {
+                $prompt .= "      - **IMPORTANT**: The revision homework has NOT been completed this week. Simply state: '{$student_name} has not completed any of the {$total_revision} assigned revision activities this week. We recommend ensuring revision work is completed before the due date.'\n";
+                $prompt .= "      - Do NOT analyze any revision attempt data or make comments about revision performance. Just state it was not done.\n";
+            } else {
+                $prompt .= "      - **Mandatory Stats**: 'In their REVISION work, {$student_name} reviewed {$rev_stats['total_qs']} questions, flagged {$rev_stats['flags']} issues, and wrote {$rev_stats['notes']} notes.'\n";
+                $prompt .= "      - **Score Progression**: Compare 1st attempt vs last attempt scores.\n";
+                $prompt .= "      - **Score Improved**: 'Improved by XX% compared to the first attempt, showing clear learning progress.' - Praise.\n";
+                $prompt .= "      - **No Change/Dropped**: 'The feedback does not appear to be fully absorbed. We recommend reviewing incorrect answers at home.'\n";
+            }
+            $prompt .= "      - **CRITICAL RULE**: Only analyze attempts and data from within the homework window (7 days before due date). Do NOT reference or comment on any quiz attempts or activity outside this window.\n";
             
             $prompt .= "   4. **Learning Attitude Check** (Header: <h4 style='color: #8E44AD; border-bottom: 1px solid #8E44AD; padding-bottom: 5px;'>Learning Attitude</h4>):\n";
             $prompt .= "      - If BOTH 1st and 2nd attempts are **very short (< 1 min/question)** AND score is **very high (> 80%)**:\n";
@@ -299,13 +311,13 @@ class gemini_helper {
         ];
 
         // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
-        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3-pro') !== false) {
-            // Gemini 3 Pro / Thinking models often support/require higher token limits
+        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3.1-pro') !== false) {
+            // Gemini 3.1 Pro / Thinking models often support/require higher token limits
             // and specific thinking config.
             // Note: 'thinking_config' is specific to some experimental endpoints.
             // For standard Gemini 1.5 Pro, maxOutputTokens is higher (8192).
             
-            // Adjust for Gemini 3 Pro Preview / Thinking
+            // Adjust for Gemini 3.1 Pro Preview / Thinking
             // Max Output Tokens: Increased to 8192 to allow for thinking process + output
 
             $generation_config['temperature'] = 1.0;

@@ -71,7 +71,7 @@ class ai_helper {
     protected function get_provider(): string {
         $provider = get_config('local_essaysmaster', 'provider');
         $provider = is_string($provider) ? strtolower(trim($provider)) : '';
-        return in_array($provider, ['anthropic', 'openai']) ? $provider : 'anthropic';
+        return in_array($provider, ['anthropic', 'openai', 'gemini']) ? $provider : 'anthropic';
     }
 
     /**
@@ -123,9 +123,29 @@ class ai_helper {
         // Map friendly aliases to official Claude 4 Sonnet model identifier
         if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
             // Use official Claude 4 Sonnet model from Anthropic docs
-            return 'claude-sonnet-4-20250514';
+            return 'claude-sonnet-4-6';
         }
         return $model;
+    }
+
+    /**
+     * Get Gemini API key from Essays Master config.
+     */
+    protected function get_gemini_api_key(): string {
+        $key = get_config('local_essaysmaster', 'gemini_apikey');
+        if (empty($key)) {
+            throw new \moodle_exception('Gemini API key not configured. Set it in Essays Master configuration.');
+        }
+        return preg_replace('/\s+/', '', trim((string)$key));
+    }
+
+    /**
+     * Get Gemini model from Essays Master config.
+     */
+    protected function get_gemini_model(): string {
+        $model = get_config('local_essaysmaster', 'gemini_model');
+        $model = is_string($model) ? trim($model) : '';
+        return $model !== '' ? $model : 'gemini-2.5-pro-preview-05-06';
     }
 
     /**
@@ -138,14 +158,24 @@ class ai_helper {
         $prompt = $this->get_feedback_prompt($round, $student_text, $question_prompt, $student_name);
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $prompt['system'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_tokens' => 4096
+            ];
+            $result = $this->make_gemini_api_call($data, "feedback_round_$round");
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $prompt['system'],
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $prompt['user']] ]]
                 ],
-                'max_tokens' => 1500
+                'max_tokens' => 4096
             ];
             $result = $this->make_anthropic_api_call($data, "feedback_round_$round");
         } else {
@@ -155,7 +185,7 @@ class ai_helper {
                     ['role' => 'system', 'content' => $prompt['system']],
                     ['role' => 'user', 'content' => $prompt['user']]
                 ],
-                'max_completion_tokens' => 1500
+                'max_completion_tokens' => 4096
             ];
             $result = $this->make_openai_api_call($data, "feedback_round_$round");
         }
@@ -186,7 +216,17 @@ class ai_helper {
         $prompt = $this->get_validation_prompt($round, $original_text, $current_text, $question_prompt, $previous_feedback, $student_name);
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $prompt['system'],
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt['user']]
+                ],
+                'max_tokens' => 2000
+            ];
+            $result = $this->make_gemini_api_call($data, "validation_round_$round");
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $prompt['system'],
@@ -644,6 +684,118 @@ DO NOT use section headers - just list improvements directly. DO NOT use emojis,
         }
 
         return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
+    }
+
+    /**
+     * Make robust Gemini API call via Google AI Studio REST endpoint.
+     */
+    protected function make_gemini_api_call($data, $operation_name = 'API call') {
+        $attempts = 0;
+        $last_error = '';
+
+        $model = $data['model'] ?? $this->get_gemini_model();
+        unset($data['model']);
+        error_log("Essays Master (Gemini): Using model: {$model}");
+
+        $system_text = '';
+        if (isset($data['system'])) {
+            $system_text = $data['system'];
+            unset($data['system']);
+        }
+
+        $gemini_contents = [];
+        $messages = $data['messages'] ?? [];
+        foreach ($messages as $msg) {
+            $role = ($msg['role'] === 'assistant') ? 'model' : 'user';
+            $parts = [];
+            if (is_string($msg['content'])) {
+                $parts[] = ['text' => $msg['content']];
+            } elseif (is_array($msg['content'])) {
+                foreach ($msg['content'] as $block) {
+                    if (is_array($block) && isset($block['text'])) {
+                        $parts[] = ['text' => $block['text']];
+                    } elseif (is_string($block)) {
+                        $parts[] = ['text' => $block];
+                    }
+                }
+            }
+            $gemini_contents[] = ['role' => $role, 'parts' => $parts];
+        }
+
+        $max_tokens = $data['max_tokens'] ?? ($data['max_completion_tokens'] ?? 4096);
+
+        $payload = [
+            'contents' => $gemini_contents,
+            'generationConfig' => [
+                'maxOutputTokens' => (int)$max_tokens,
+                'temperature'     => (float)($data['temperature'] ?? 0.7),
+            ],
+        ];
+        if ($system_text !== '') {
+            $payload['systemInstruction'] = ['parts' => [['text' => $system_text]]];
+        }
+
+        while ($attempts < self::MAX_RETRY_ATTEMPTS) {
+            $attempts++;
+            error_log("Essays Master (Gemini): Attempting {$operation_name} - attempt {$attempts}/" . self::MAX_RETRY_ATTEMPTS);
+
+            try {
+                $apikey = $this->get_gemini_api_key();
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apikey}";
+
+                global $CFG; require_once($CFG->libdir . '/filelib.php');
+                $curl = new \curl();
+                $curl->setHeader(['Content-Type: application/json']);
+                $curl->setopt([
+                    'CURLOPT_TIMEOUT'        => self::API_TOTAL_TIMEOUT,
+                    'CURLOPT_CONNECTTIMEOUT' => self::API_CONNECT_TIMEOUT,
+                    'CURLOPT_NOSIGNAL'       => 1,
+                ]);
+
+                $response = $curl->post($url, json_encode($payload));
+
+                if ($curl->get_errno() !== 0) {
+                    $last_error = "cURL error: " . $curl->error;
+                    error_log("Essays Master (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(2 * $attempts); continue; }
+                    return ['success' => false, 'message' => "Timeout after {$attempts} attempts: " . $curl->error];
+                }
+
+                $body = json_decode($response, true);
+
+                if (isset($body['error'])) {
+                    $msg = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string)$body['error'];
+                    $last_error = "Gemini API error: {$msg}";
+                    error_log("Essays Master (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(5 * $attempts); continue; }
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                $text = '';
+                if (isset($body['candidates'][0]['content']['parts'])) {
+                    foreach ($body['candidates'][0]['content']['parts'] as $part) {
+                        if (isset($part['text'])) { $text .= $part['text']; }
+                    }
+                }
+
+                if ($text === '') {
+                    $last_error = 'Empty Gemini response';
+                    error_log("Essays Master (Gemini): {$operation_name} attempt {$attempts} - empty response");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(2 * $attempts); continue; }
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                error_log("Essays Master (Gemini): {$operation_name} succeeded on attempt {$attempts}");
+                return ['success' => true, 'response' => $text];
+
+            } catch (\Exception $e) {
+                $last_error = 'Exception: ' . $e->getMessage();
+                error_log("Essays Master (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(3 * $attempts); continue; }
+            }
+        }
+
+        return ['success' => false, 'message' => "Gemini failed after {$attempts} attempts. Last error: {$last_error}"];
     }
 
     /**

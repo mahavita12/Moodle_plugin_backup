@@ -18,6 +18,8 @@ if (data_submitted() && confirm_sesskey()) {
     $openai_key = optional_param('openai_api_key', '', PARAM_TEXT);
     $openai_model = optional_param('openai_model', 'gpt-5', PARAM_TEXT);
     $anthropic_key = optional_param('anthropic_apikey', '', PARAM_TEXT);
+    $gemini_key = optional_param('gemini_apikey', '', PARAM_TEXT);
+    $gemini_model = optional_param('gemini_model', '', PARAM_TEXT);
     $anthropic_model = optional_param('anthropic_model', 'sonnet-4', PARAM_TEXT);
     $google_folder_id = optional_param('google_folder_id', '', PARAM_TEXT);
     // Similarity settings
@@ -62,6 +64,12 @@ if (data_submitted() && confirm_sesskey()) {
     // Save Anthropic API key
     if (!empty($anthropic_key)) {
         set_config('anthropic_apikey', trim($anthropic_key), 'local_quizdashboard');
+    }
+    if (!empty($gemini_key)) {
+        set_config('gemini_apikey', trim($gemini_key), 'local_quizdashboard');
+    }
+    if (!empty($gemini_model)) {
+        set_config('gemini_model', trim($gemini_model), 'local_quizdashboard');
         \core\notification::success('Anthropic API key saved successfully.');
     }
     
@@ -116,6 +124,8 @@ if (data_submitted() && confirm_sesskey()) {
 $current_provider = get_config('local_quizdashboard', 'provider') ?: 'anthropic';
 $current_openai_key = get_config('local_quizdashboard', 'openai_api_key');
 $current_anthropic_key = get_config('local_quizdashboard', 'anthropic_apikey');
+$current_gemini_key = get_config('local_quizdashboard', 'gemini_apikey');
+$current_gemini_model = get_config('local_quizdashboard', 'gemini_model') ?: 'gemini-2.5-pro-preview-05-06';
 $current_anthropic_model = get_config('local_quizdashboard', 'anthropic_model') ?: 'sonnet-4';
 $current_folder_id = get_config('local_quizdashboard', 'google_drive_folder_id');
 $current_openai_model = get_config('local_quizdashboard', 'openai_model') ?: 'gpt-5';
@@ -142,10 +152,36 @@ echo $OUTPUT->header();
                 <label for="provider" class="col-sm-3 col-form-label">AI Provider:</label>
                 <div class="col-sm-9">
                     <select class="form-control" id="provider" name="provider">
+                        <option value="gemini" <?php echo ($current_provider === 'gemini') ? 'selected' : ''; ?>>Gemini (Google)</option>
                         <option value="anthropic" <?php echo ($current_provider === 'anthropic') ? 'selected' : ''; ?>>Anthropic (Claude)</option>
                         <option value="openai" <?php echo ($current_provider === 'openai') ? 'selected' : ''; ?>>OpenAI (GPT)</option>
                     </select>
                     <small class="form-text text-muted">Choose AI provider for essay grading</small>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label for="gemini_apikey" class="col-sm-3 col-form-label">Gemini API Key:</label>
+                <div class="col-sm-9">
+                    <input type="password" class="form-control" id="gemini_apikey" name="gemini_apikey" 
+                        placeholder="<?php echo $current_gemini_key ? 'Enter new key to replace existing one' : 'Enter your Gemini API key'; ?>"
+                        value="">
+                    <small class="form-text text-muted">
+                        <?php if ($current_gemini_key): ?>
+                            Status: &#10004; Gemini API key is configured. Leave blank to keep current key.
+                        <?php else: ?>
+                            Your Google AI Studio API key for Gemini access
+                        <?php endif; ?>
+                    </small>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label for="gemini_model" class="col-sm-3 col-form-label">Gemini Model:</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="gemini_model" name="gemini_model" 
+                           value="<?php echo htmlspecialchars($current_gemini_model); ?>">
+                    <small class="form-text text-muted">Default: gemini-2.5-pro-preview-05-06</small>
                 </div>
             </div>
 
@@ -170,7 +206,7 @@ echo $OUTPUT->header();
                 <div class="col-sm-9">
                     <input type="text" class="form-control" id="anthropic_model" name="anthropic_model" 
                            value="<?php echo htmlspecialchars($current_anthropic_model); ?>">
-                    <small class="form-text text-muted">Default: sonnet-4 (maps to Claude 4 Sonnet)</small>
+                    <small class="form-text text-muted">Default: claude-sonnet-4-6</small>
                 </div>
             </div>
             

@@ -2549,7 +2549,7 @@ class homework_manager {
             LEFT JOIN {local_personalcourse_quizzes} pq ON pq.quizid = q.id
             LEFT JOIN {course} sc ON sc.id = pq.sourcecourseid
             WHERE $rev_where
-            GROUP BY lqf.userid, u.id, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber, 
+            GROUP BY lqf.userid, u.firstname, u.lastname, u.firstnamephonetic, u.lastnamephonetic, u.middlename, u.alternatename, u.idnumber, 
                      q.id, q.name, c.id, c.fullname, cc.id, cc.name, pq.sourcecategory, sc.id, sc.category, sc.fullname
         ";
         
@@ -2861,6 +2861,43 @@ class homework_manager {
         unset($row);
 
         // =====================================================
+        // STEP 7.8: Apply Point Adjustments (Bonus / Penalty)
+        // =====================================================
+        $adj_totals = $this->get_adjustment_totals();
+        foreach ($final_rows as &$row) {
+            $uid = $row->userid;
+            $adj_sum = 0.0;
+            // Sum adjustments for courses belonging to this category row
+            foreach ($adj_totals as $at) {
+                if ((int)$at->userid !== (int)$uid) continue;
+                $cid = (int)$at->courseid;
+                // Check if this course belongs to this row's courses
+                if (isset($row->courses[$cid])) {
+                    $adj_sum += (float)$at->adj_total;
+                }
+            }
+            $row->adjustment_total = $adj_sum;
+            // Apply to all period totals
+            $row->points_all += $adj_sum;
+            $row->points_10w += $adj_sum;
+            $row->points_4w += $adj_sum;
+            $row->points_2w += $adj_sum;
+            // Also apply to term leaderboard — only if adjustment date >= restart_date
+            if ($term_courseid > 0 && $restart_date > 0) {
+                $term_adj_sql = "SELECT SUM(points) AS adj_total
+                                 FROM {local_hw_adjustments}
+                                 WHERE userid = :uid AND courseid = :cid AND timeapplied >= :restart";
+                $term_adj = $DB->get_field_sql($term_adj_sql, [
+                    'uid' => $uid, 'cid' => $term_courseid, 'restart' => $restart_date
+                ]);
+                if ($term_adj) {
+                    $row->points_term += (float)$term_adj;
+                }
+            }
+        }
+        unset($row);
+
+        // =====================================================
         // STEP 8: Sort breakdown details (Date DESC, then New before Revision)
         // =====================================================
         foreach ($final_rows as &$row) {
@@ -3107,5 +3144,74 @@ class homework_manager {
         }
         
         return 0; // Default to End of Week
+    }
+
+    // =====================================================
+    // POINT ADJUSTMENT METHODS (Bonus / Penalty)
+    // =====================================================
+
+    /**
+     * Add a point adjustment (bonus or penalty) for a student.
+     */
+    public function add_points_adjustment(int $userid, int $courseid, float $points, string $reason, int $timeapplied = 0): int {
+        global $DB, $USER;
+        $record = new \stdClass();
+        $record->userid = $userid;
+        $record->courseid = $courseid;
+        $record->points = $points;
+        $record->reason = substr(trim($reason), 0, 255);
+        $record->createdby = $USER->id;
+        $record->timecreated = time();
+        $record->timeapplied = $timeapplied > 0 ? $timeapplied : time();
+        return $DB->insert_record('local_hw_adjustments', $record);
+    }
+
+    /**
+     * Get all adjustments for a specific user.
+     */
+    public function get_user_adjustments(int $userid): array {
+        global $DB;
+        $sql = "SELECT a.*, u.firstname AS admin_firstname, u.lastname AS admin_lastname,
+                       c.fullname AS coursename
+                FROM {local_hw_adjustments} a
+                JOIN {user} u ON u.id = a.createdby
+                JOIN {course} c ON c.id = a.courseid
+                WHERE a.userid = :userid
+                ORDER BY a.timecreated DESC";
+        return array_values($DB->get_records_sql($sql, ['userid' => $userid]));
+    }
+
+    /**
+     * Get net adjustment total per user per course.
+     */
+    public function get_adjustment_totals(): array {
+        global $DB;
+        $sql = "SELECT CONCAT(userid, '_', courseid) AS ukey, userid, courseid, SUM(points) AS adj_total
+                FROM {local_hw_adjustments}
+                GROUP BY userid, courseid";
+        return $DB->get_records_sql($sql);
+    }
+
+    /**
+     * Update an existing adjustment.
+     */
+    public function update_adjustment(int $id, float $points, string $reason, int $timeapplied = 0): bool {
+        global $DB;
+        $record = $DB->get_record('local_hw_adjustments', ['id' => $id]);
+        if (!$record) return false;
+        $record->points = $points;
+        $record->reason = substr(trim($reason), 0, 255);
+        if ($timeapplied > 0) {
+            $record->timeapplied = $timeapplied;
+        }
+        return $DB->update_record('local_hw_adjustments', $record);
+    }
+
+    /**
+     * Delete a specific adjustment.
+     */
+    public function delete_adjustment(int $id): bool {
+        global $DB;
+        return $DB->delete_records('local_hw_adjustments', ['id' => $id]);
     }
 }
