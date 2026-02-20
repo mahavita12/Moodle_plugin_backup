@@ -98,5 +98,28 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025120401, 'local', 'homeworkdashboard');
     }
 
+    if ($oldversion < 2026022001) {
+        $dbman = $DB->get_manager();
+
+        $table = new xmldb_table('local_hw_adjustments');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('points', XMLDB_TYPE_NUMBER, '10, 2', null, XMLDB_NOTNULL, null, '0.00');
+        $table->add_field('reason', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+        $table->add_field('createdby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_index('idx_userid', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+        $table->add_index('idx_courseid', XMLDB_INDEX_NOTUNIQUE, ['courseid']);
+        $table->add_index('idx_userid_courseid', XMLDB_INDEX_NOTUNIQUE, ['userid', 'courseid']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026022001, 'local', 'homeworkdashboard');
+    }
+
     return true;
 }
