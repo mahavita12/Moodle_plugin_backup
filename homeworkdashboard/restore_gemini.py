@@ -21,7 +21,7 @@ class gemini_helper {
         $config = get_config('local_homeworkdashboard');
         $this->api_key = $config->gemini_api_key ?? '';
         // Default to Gemini 3 Pro Preview as requested
-        $this->model = $config->gemini_model ?? 'gemini-3-pro-preview';
+        $this->model = $config->gemini_model ?? 'gemini-3.1-pro-preview';
     }
 
     /**
@@ -236,7 +236,7 @@ call_api = r'''    /**
         ];
 
         // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
-        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3-pro') !== false) {
+        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3.1-pro') !== false) {
             // Gemini 3 Pro / Thinking models often support/require higher token limits
             // and specific thinking config.
             // Note: 'thinking_config' is specific to some experimental endpoints.

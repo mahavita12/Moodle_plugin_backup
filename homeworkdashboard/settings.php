@@ -33,9 +33,9 @@ if ($hassiteconfig) {
         'local_homeworkdashboard/gemini_model',
         'Gemini Model',
         'Select the Gemini model to use.',
-        'gemini-3-pro-preview',
+        'gemini-3.1-pro-preview',
         [
-            'gemini-3-pro-preview' => 'Gemini 3 Pro Preview (Latest)',
+            'gemini-3.1-pro-preview' => 'Gemini 3.1 Pro Preview (Latest)',
             'gemini-2.0-flash' => 'Gemini 2.0 Flash (Fast & Smart)',
             'gemini-1.5-pro' => 'Gemini 1.5 Pro (Stable)',
             'gemini-1.5-flash' => 'Gemini 1.5 Flash (Fast)'

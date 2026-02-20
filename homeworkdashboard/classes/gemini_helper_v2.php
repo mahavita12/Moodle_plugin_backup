@@ -19,8 +19,8 @@ class gemini_helper {
     public function __construct() {
         $config = get_config('local_homeworkdashboard');
         $this->api_key = $config->gemini_api_key ?? '';
-        // Default to Gemini 3 Pro Preview as requested
-        $this->model = $config->gemini_model ?? 'gemini-3-pro-preview';
+        // Default to Gemini 3.1 Pro Preview as requested
+        $this->model = $config->gemini_model ?? 'gemini-3.1-pro-preview';
     }
 
     /**
@@ -299,13 +299,13 @@ class gemini_helper {
         ];
 
         // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
-        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3-pro') !== false) {
-            // Gemini 3 Pro / Thinking models often support/require higher token limits
+        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3.1-pro') !== false) {
+            // Gemini 3.1 Pro / Thinking models often support/require higher token limits
             // and specific thinking config.
             // Note: 'thinking_config' is specific to some experimental endpoints.
             // For standard Gemini 1.5 Pro, maxOutputTokens is higher (8192).
             
-            // Adjust for Gemini 3 Pro Preview / Thinking
+            // Adjust for Gemini 3.1 Pro Preview / Thinking
             // Max Output Tokens: Increased to 8192 to allow for thinking process + output
 
             $generation_config['temperature'] = 1.0;
