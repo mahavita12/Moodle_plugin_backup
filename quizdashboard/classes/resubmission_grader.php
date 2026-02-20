@@ -153,7 +153,18 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                        "\n\nCurrent ({$ordinal}) Essay:\n" . $current_essay_data['answer_text'];
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'max_tokens' => 5000,
+                'temperature' => 0.3
+            ];
+            $result = $this->make_gemini_api_call($data, 'generate_comparative_feedback');
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $system_prompt,

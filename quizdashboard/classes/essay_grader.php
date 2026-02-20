@@ -112,7 +112,7 @@ class essay_grader {
     protected function get_provider(): string {
         $provider = get_config('local_quizdashboard', 'provider');
         $provider = is_string($provider) ? strtolower(trim($provider)) : '';
-        return in_array($provider, ['anthropic', 'openai']) ? $provider : 'anthropic';
+        return in_array($provider, ['anthropic', 'openai', 'gemini']) ? $provider : 'gemini';
     }
 
     /**
@@ -135,7 +135,30 @@ class essay_grader {
         $model = is_string($model) ? trim($model) : '';
         // Map friendly aliases to official Claude 4 Sonnet model identifier
         if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
-            return 'claude-sonnet-4-20250514';
+            return 'claude-sonnet-4-6';
+        }
+        return $model;
+    }
+
+    /**
+     * Get Gemini API key from Quiz Dashboard config.
+     */
+    protected function get_gemini_api_key(): string {
+        $key = get_config('local_quizdashboard', 'gemini_apikey');
+        if (empty($key)) {
+            throw new \moodle_exception('Gemini API key not configured. Set it in Quiz Dashboard configuration.');
+        }
+        return preg_replace('/\s+/', '', trim((string)$key));
+    }
+
+    /**
+     * Get Gemini model from Quiz Dashboard config.
+     */
+    protected function get_gemini_model(): string {
+        $model = get_config('local_quizdashboard', 'gemini_model');
+        $model = is_string($model) ? trim($model) : '';
+        if ($model === '') {
+            return 'gemini-2.5-pro-preview-05-06';
         }
         return $model;
     }
@@ -494,7 +517,17 @@ Final Submission:
 Provide an encouraging but factual commentary about the student's writing journey from initial draft to final submission.";
         
         try {
-            if ($provider === 'anthropic') {
+            if ($provider === 'gemini') {
+                $data = [
+                    'model' => $this->get_gemini_model(),
+                    'system' => $system_prompt,
+                    'messages' => [
+                        ['role' => 'user', 'content' => $user_prompt]
+                    ],
+                    'max_tokens' => 500
+                ];
+                $result = $this->make_gemini_api_call($data, 'generate_progress_commentary');
+            } elseif ($provider === 'anthropic') {
                 $data = [
                     'model' => $this->get_anthropic_model(),
                     'system' => $system_prompt,
@@ -1047,7 +1080,18 @@ Provide an encouraging but factual commentary about the student's writing journe
 
         $user_content = "Essay Question:\n" . $essay_data['question_text'] . "\n\nStudent Essay:\n" . $essay_data['answer_text'];
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'max_tokens' => 6000,
+                'temperature' => 0.3
+            ];
+            $result = $this->make_gemini_api_call($data, 'generate_essay_feedback');
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $system_prompt,
@@ -1184,7 +1228,18 @@ Provide an encouraging but factual commentary about the student's writing journe
         }
         
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => "Essay Question:\n" . ($feedback_data['question_text'] ?? '') . "\n\nStudent Essay to Revise:\n" . $essay_text]
+                ],
+                'max_tokens' => 4000,
+                'temperature' => 0.25
+            ];
+            $result = $this->make_gemini_api_call($data, 'get_clean_revision');
+        } elseif ($provider === 'anthropic') {
             $data = [ 
                 'model' => $this->get_anthropic_model(),
                 'system' => $system_prompt,
@@ -1269,7 +1324,21 @@ Provide an encouraging but factual commentary about the student's writing journe
             $user_content = "Please compare the following texts sentence by sentence and apply the formatting rules for a student revision.\\n\\n---\\n[Original Text]:\\n{$original_text}\\n\\n---\\n[Revised Text]:\\n{$revised_text}\\n---";
             
             $provider = $this->get_provider();
-            if ($provider === 'anthropic') {
+            if ($provider === 'gemini') {
+                $data = [
+                    'model' => $this->get_gemini_model(),
+                    'system' => $system_prompt,
+                    'messages' => [
+                        ['role' => 'user', 'content' => $user_content]
+                    ],
+                    'max_tokens' => 3000,
+                    'temperature' => 0.2
+                ];
+                $api_result = $this->make_gemini_api_call($data, 'get_formatted_diff');
+                if (!$api_result['success']) {
+                    error_log('ERROR: Gemini get_formatted_diff failed: ' . ($api_result['message'] ?? 'unknown'));
+                }
+            } elseif ($provider === 'anthropic') {
                 $data = [
                     'model' => $this->get_anthropic_model(),
                     'system' => $system_prompt,
@@ -2048,7 +2117,17 @@ Provide an encouraging but factual commentary about the student's writing journe
         $system_prompt = "You are an AI detection tool. Analyse the following text and determine the likelihood that it was written or heavily assisted by an AI. Consider factors like vocabulary choice, sentence structure complexity, tone, and the presence of common AI-generated phrases. Your response MUST be a JSON object with a single key 'likelihood', containing an integer value from 0 to 100. For example: {\"likelihood\": 85}. Do not provide any other text, explanation, or markdown.";
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => $truncated_essay]
+                ],
+                'max_tokens' => 400
+            ];
+            $result = $this->make_gemini_api_call($data, 'detect_ai_assistance');
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $system_prompt,
@@ -2816,7 +2895,18 @@ PROMPT;
         $user_content .= "LEVEL: " . $level;
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => $system_prompt,
+                'messages' => [
+                    ['role' => 'user', 'content' => $user_content]
+                ],
+                'max_tokens' => 9000,
+                'temperature' => 0.45
+            ];
+            $result = $this->make_gemini_api_call($data, 'homework generation');
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => $system_prompt,
@@ -2972,6 +3062,120 @@ PROMPT;
         }
 
         return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
+    }
+
+    /**
+     * Make robust Gemini API call via Google AI Studio REST endpoint.
+     */
+    protected function make_gemini_api_call($data, $operation_name = 'API call') {
+        $attempts = 0;
+        $last_error = '';
+
+        $model = $data['model'] ?? $this->get_gemini_model();
+        unset($data['model']);
+        error_log("Quiz Dashboard (Gemini): Using model: {$model}");
+
+        $system_text = '';
+        if (isset($data['system'])) {
+            $system_text = $data['system'];
+            unset($data['system']);
+        }
+
+        $gemini_contents = [];
+        $messages = $data['messages'] ?? [];
+        foreach ($messages as $msg) {
+            $role = ($msg['role'] === 'assistant') ? 'model' : 'user';
+            $parts = [];
+            if (is_string($msg['content'])) {
+                $parts[] = ['text' => $msg['content']];
+            } elseif (is_array($msg['content'])) {
+                foreach ($msg['content'] as $block) {
+                    if (is_array($block) && isset($block['text'])) {
+                        $parts[] = ['text' => $block['text']];
+                    } elseif (is_array($block) && isset($block['content'])) {
+                        $parts[] = ['text' => (string)$block['content']];
+                    } elseif (is_string($block)) {
+                        $parts[] = ['text' => $block];
+                    }
+                }
+            }
+            $gemini_contents[] = ['role' => $role, 'parts' => $parts];
+        }
+
+        $max_tokens = $data['max_tokens'] ?? ($data['max_completion_tokens'] ?? 4096);
+
+        $payload = [
+            'contents' => $gemini_contents,
+            'generationConfig' => [
+                'maxOutputTokens' => (int)$max_tokens,
+                'temperature'     => (float)($data['temperature'] ?? 0.7),
+            ],
+        ];
+        if ($system_text !== '') {
+            $payload['systemInstruction'] = ['parts' => [['text' => $system_text]]];
+        }
+
+        while ($attempts < self::MAX_RETRY_ATTEMPTS) {
+            $attempts++;
+            error_log("Quiz Dashboard (Gemini): Attempting {$operation_name} - attempt {$attempts}/" . self::MAX_RETRY_ATTEMPTS);
+
+            try {
+                $apikey = $this->get_gemini_api_key();
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$apikey}";
+
+                global $CFG; require_once($CFG->libdir . '/filelib.php');
+                $curl = new \curl();
+                $curl->setHeader(['Content-Type: application/json']);
+                $curl->setopt([
+                    'CURLOPT_TIMEOUT'        => self::API_TOTAL_TIMEOUT,
+                    'CURLOPT_CONNECTTIMEOUT' => self::API_CONNECT_TIMEOUT,
+                    'CURLOPT_NOSIGNAL'       => 1,
+                ]);
+
+                $response = $curl->post($url, json_encode($payload));
+
+                if ($curl->get_errno() !== 0) {
+                    $last_error = "cURL error: " . $curl->error;
+                    error_log("Quiz Dashboard (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(2 * $attempts); continue; }
+                    return ['success' => false, 'message' => "Timeout after {$attempts} attempts: " . $curl->error];
+                }
+
+                $body = json_decode($response, true);
+
+                if (isset($body['error'])) {
+                    $msg = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string)$body['error'];
+                    $last_error = "Gemini API error: {$msg}";
+                    error_log("Quiz Dashboard (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(5 * $attempts); continue; }
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                $text = '';
+                if (isset($body['candidates'][0]['content']['parts'])) {
+                    foreach ($body['candidates'][0]['content']['parts'] as $part) {
+                        if (isset($part['text'])) { $text .= $part['text']; }
+                    }
+                }
+
+                if ($text === '') {
+                    $last_error = 'Empty Gemini response';
+                    error_log("Quiz Dashboard (Gemini): {$operation_name} attempt {$attempts} - empty response");
+                    if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(2 * $attempts); continue; }
+                    return ['success' => false, 'message' => $last_error];
+                }
+
+                error_log("Quiz Dashboard (Gemini): {$operation_name} succeeded on attempt {$attempts}");
+                return ['success' => true, 'response' => $text];
+
+            } catch (\Exception $e) {
+                $last_error = 'Exception: ' . $e->getMessage();
+                error_log("Quiz Dashboard (Gemini): {$operation_name} attempt {$attempts} failed - {$last_error}");
+                if ($attempts < self::MAX_RETRY_ATTEMPTS) { sleep(3 * $attempts); continue; }
+            }
+        }
+
+        return ['success' => false, 'message' => "Gemini failed after {$attempts} attempts. Last error: {$last_error}"];
     }
 
     /**
@@ -3150,7 +3354,18 @@ PROMPT;
                         $rules;
 
         $provider = $this->get_provider();
-        if ($provider === 'anthropic') {
+        if ($provider === 'gemini') {
+            $data = [
+                'model' => $this->get_gemini_model(),
+                'system' => 'Return only a single valid JSON object. No prose.',
+                'messages' => [ [ 'role' => 'user', 'content' => $user_content ] ],
+                'max_tokens' => 8000,
+                'temperature' => 0.2,
+            ];
+            $resp = $this->make_gemini_api_call($data, 'homework json');
+            if (!$resp['success']) { return $resp; }
+            $text = trim((string)$resp['response']);
+        } elseif ($provider === 'anthropic') {
             $data = [
                 'model' => $this->get_anthropic_model(),
                 'system' => 'Return only a single valid JSON object. No prose.',
@@ -3308,7 +3523,19 @@ PROMPT;
             $repair_payload = "SCHEMA EXAMPLE:\n".json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n\n".
                               $repair_rules."\n\nORIGINAL OUTPUT TO REPAIR (may contain non-JSON):\n".$raw;
 
-            if ($provider === 'anthropic') {
+            if ($provider === 'gemini') {
+                $data2 = [
+                    'model' => $this->get_gemini_model(),
+                    'system' => 'Return only a single valid JSON object. No prose.',
+                    'messages' => [ [ 'role' => 'user', 'content' => $repair_payload ] ],
+                    'max_tokens' => 8000,
+                    'temperature' => 0,
+                ];
+                $resp2 = $this->make_gemini_api_call($data2, 'homework json repair');
+                if ($resp2['success']) {
+                    $text = trim((string)$resp2['response']);
+                }
+            } elseif ($provider === 'anthropic') {
                 $data2 = [
                     'model' => $this->get_anthropic_model(),
                     'system' => 'Return only a single valid JSON object. No prose.',
@@ -3417,8 +3644,8 @@ PROMPT;
                 }
                 if (!empty($items)) { $json = ['version'=>'1.0','meta'=>['attemptid'=>$attempt_id,'level'=>$level],'items'=>$items]; }
 
-                // Cross-provider fallback: try OpenAI if current provider is Anthropic
-                if ($provider === 'anthropic') {
+                // Cross-provider fallback: try OpenAI if current provider is Anthropic or Gemini
+                if ($provider === 'anthropic' || $provider === 'gemini') {
                     $data3 = [
                         'model' => $this->get_openai_model(),
                         'messages' => [
