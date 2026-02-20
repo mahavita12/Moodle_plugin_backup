@@ -165,7 +165,7 @@ class ai_helper {
                 'messages' => [
                     ['role' => 'user', 'content' => $prompt['user']]
                 ],
-                'max_tokens' => 1500
+                'max_tokens' => 4096
             ];
             $result = $this->make_gemini_api_call($data, "feedback_round_$round");
         } elseif ($provider === 'anthropic') {
@@ -175,7 +175,7 @@ class ai_helper {
                 'messages' => [
                     ['role' => 'user', 'content' => [ ['type' => 'text', 'text' => $prompt['user']] ]]
                 ],
-                'max_tokens' => 1500
+                'max_tokens' => 4096
             ];
             $result = $this->make_anthropic_api_call($data, "feedback_round_$round");
         } else {
@@ -185,7 +185,7 @@ class ai_helper {
                     ['role' => 'system', 'content' => $prompt['system']],
                     ['role' => 'user', 'content' => $prompt['user']]
                 ],
-                'max_completion_tokens' => 1500
+                'max_completion_tokens' => 4096
             ];
             $result = $this->make_openai_api_call($data, "feedback_round_$round");
         }
