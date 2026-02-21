@@ -121,5 +121,18 @@ function xmldb_local_homeworkdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026022001, 'local', 'homeworkdashboard');
     }
 
+    if ($oldversion < 2026022002) {
+        $dbman = $DB->get_manager();
+
+        $table = new xmldb_table('local_hw_adjustments');
+        $field = new xmldb_field('timeapplied', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'timecreated');
+
+        if ($dbman->table_exists($table) && !$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026022002, 'local', 'homeworkdashboard');
+    }
+
     return true;
 }
