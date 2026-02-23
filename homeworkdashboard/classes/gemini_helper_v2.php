@@ -214,6 +214,7 @@ class gemini_helper {
                 $prompt .= "      - Do NOT analyze any revision attempt data or make comments about revision performance. Just state it was not done.\n";
             } else {
                 $prompt .= "      - **Mandatory Stats**: 'In their REVISION work, {$student_name} reviewed {$rev_stats['total_qs']} questions, flagged {$rev_stats['flags']} issues, and wrote {$rev_stats['notes']} notes.'\n";
+                $prompt .= "      - **Uncompleted Activities**: If an individual revision activity is marked as 'Not done' or 'No attempt', explicitly state that it was not completed. Do NOT invent or analyze scores for it.\n";
                 $prompt .= "      - **Score Progression**: Compare 1st attempt vs last attempt scores.\n";
                 $prompt .= "      - **Score Improved**: 'Improved by XX% compared to the first attempt, showing clear learning progress.' - Praise.\n";
                 $prompt .= "      - **No Change/Dropped**: 'The feedback does not appear to be fully absorbed. We recommend reviewing incorrect answers at home.'\n";

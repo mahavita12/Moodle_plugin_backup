@@ -217,6 +217,14 @@ foreach ($rows as $r) {
         // Pass status directly (it is already 'Completed', 'Low grade', or 'No attempt')
         $status_label = $r->status ?? 'No attempt';
 
+        // Fix: If status is 'Not done' or 'No attempt', clear all stats to prevent AI hallucination from past week's data overlap
+        if (in_array(strtolower($status_label), ['not done', 'no attempt'])) {
+            $attempts_clean = [];
+            $stats->flag_count = 0;
+            $stats->note_count = 0;
+            $sample_notes = [];
+        }
+
         $act_data = [
             'name' => $r->quizname,
             'coursename' => $r->coursename,
