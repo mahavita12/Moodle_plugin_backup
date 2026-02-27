@@ -314,12 +314,7 @@ $html .= '
     </div>
 
     <!-- AI Commentary Section -->
-    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
- 
-';
-    $html .= '
-    <!-- AI Commentary Section -->
-    <div class="ai-commentary" style="background-color: #f8f9fa; border-left: 4px solid #0056b3; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
+    <div class="ai-commentary" style="background-color: #f8f9fa; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
         <h4 style="margin-top: 0; color: #0056b3; margin-bottom: 15px;">GrowMinds Academy Summary</h4>';
     $html .= '
     <table class="report-table" style="' . $style_table . '">

@@ -303,7 +303,8 @@ class essay_grader {
             // 5. Generate homework if requested
             $homework_html = '';
             if ($include_homework) {
-                $homework_result = $this->generate_homework_exercises($essay_data['answer_text'], $feedback_result['data'], $level);
+                $homework_base_text = !empty($initial_essay) ? $initial_essay : $essay_data['answer_text'];
+                $homework_result = $this->generate_homework_exercises($homework_base_text, $essay_data['question_text'], $level);
                 if ($homework_result['success']) {
                     $homework_html = $homework_result['homework_html'];
                 }
@@ -595,10 +596,12 @@ Provide an encouraging but factual commentary about the student's writing journe
                     return ['success' => false, 'message' => 'Could not extract essay data.'];
                 }
 
-                // Generate homework using existing feedback
+                // Generate homework using initial submission and question text
+                $initial_essay = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
+                $homework_base_text = !empty($initial_essay) ? $initial_essay : $essay_data['answer_text'];
                 $homework_result = $this->generate_homework_exercises(
-                    $essay_data['answer_text'], 
-                    ['feedback_html' => $existing_grading->feedback_html], 
+                    $homework_base_text, 
+                    $essay_data['question_text'], 
                     $level
                 );
 
@@ -2741,7 +2744,7 @@ Provide an encouraging but factual commentary about the student's writing journe
         return ['success' => false, 'message' => "Failed after {$attempts} attempts. Last error: {$last_error}"];
     }
 
-    protected function generate_homework_exercises($essay_text, $feedback_data, $level) {
+    protected function generate_homework_exercises($essay_text, $question_text, $level) {
         try {
             $apikey = $this->get_openai_api_key();
         } catch (\Exception $e) {
@@ -2884,15 +2887,17 @@ EXACT HTML SCAFFOLD TO USE (abbreviated):
 PROMPT;
         }
 
-        // Rest remains exactly the same
-        $feedback_text = strip_tags($feedback_data['feedback_html'] ?? '');
-        $feedback_text = mb_strimwidth($feedback_text, 0, 3000, "...");
-        $essay_text_truncated = mb_strimwidth($essay_text, 0, 1500, "...");
+        $essay_text_truncated = mb_strimwidth($essay_text, 0, 2000, "...");
 
-        $user_content = "Create personalized homework exercises based on this student's essay and feedback:\n\n";
-        $user_content .= "ESSAY:\n" . $essay_text_truncated . "\n\n";
-        $user_content .= "FEEDBACK:\n" . $feedback_text . "\n\n";
-        $user_content .= "LEVEL: " . $level;
+        $user_content = "Create personalized homework exercises based solely on the student's initial draft. You must first independently diagnose the student's primary grammatical, structural, and stylistic weaknesses from their writing.\n\n";
+        $user_content .= "QUESTION PROMPT (Context only):\n" . $question_text . "\n\n";
+        $user_content .= "STUDENT'S INITIAL ESSAY DRAFT:\n" . $essay_text_truncated . "\n\n";
+        $user_content .= "LEVEL: " . $level . "\n\n";
+        $user_content .= "INSTRUCTIONS:\n";
+        $user_content .= "1. Analyze the student's initial draft to identify their most frequent or critical language errors.\n";
+        $user_content .= "2. Select grammar/mechanics topics based directly on those identified weaknesses.\n";
+        $user_content .= "3. Use the student's essay theme and the original question prompt to create highly contextualized examples for the MCQs.\n";
+        $user_content .= "4. The final section must be 10 genuine problematic sentences extracted directly from the student's draft.\n";
 
         $provider = $this->get_provider();
         if ($provider === 'gemini') {
@@ -3235,10 +3240,11 @@ PROMPT;
         if (!$essay) {
             return ['success' => false, 'message' => 'Could not extract essay data.'];
         }
-        $essay_text = $this->sanitize_original_essay_text($essay['answer_text'] ?? '');
-        $feedback_text = strip_tags($grading->feedback_html ?? '');
-        $feedback_text = mb_strimwidth($feedback_text, 0, 2500, '...');
-        $essay_text = mb_strimwidth($essay_text, 0, 2000, '...');
+        $initial_essay = $this->get_initial_essay_submission($essay['attempt_uniqueid']);
+        $base_text = !empty($initial_essay) ? $initial_essay : ($essay['answer_text'] ?? '');
+        $essay_text = $this->sanitize_original_essay_text($base_text);
+        $essay_text = mb_strimwidth($essay_text, 0, 2500, '...');
+        $question_text = $essay['question_text'] ?? '';
 
         // Strict JSON-only instruction and schema
         $schema = [
@@ -3326,15 +3332,15 @@ PROMPT;
                  "- Output is flat array. Order: 20 MCQ first, then 10 SI.\n".
                  "- Every MCQ stem should feel personalized to this specific essay.\n";
 
-        $user_content = "Create personalized, contextualized homework for this student's essay.\n\n".
-                        "STUDENT'S ESSAY:\n$essay_text\n\n".
-                        "TEACHER FEEDBACK:\n$feedback_text\n\n".
+        $user_content = "Create personalized, contextualized homework based purely on the student's initial draft.\n\n".
+                        "QUESTION PROMPT (Context only):\n$question_text\n\n".
+                        "STUDENT'S INITIAL ESSAY DRAFT:\n$essay_text\n\n".
                         "HOMEWORK LEVEL: $level\n\n".
                         "INSTRUCTIONS:\n".
-                        "1. Read the essay carefully and identify the student's specific errors\n".
-                        "2. Note character names, settings, plot events to reference in MCQs\n".
-                        "3. Create MCQs that feel like they were written specifically for THIS essay\n".
-                        "4. Extract 10 actual problematic sentences for the SI section\n\n".
+                        "1. Act as an expert diagnostician. Read the student's initial draft carefully to identify their true, most frequent grammatical and structural weaknesses.\n".
+                        "2. Base your MCQ exercise topics specifically on the weaknesses you found in their writing (e.g., if they struggle with Subject-Verb Agreement, make that an exercise).\n".
+                        "3. Note character names, settings, and plot events from the essay or the original question prompt to contextualize all MCQs. Make the questions feel like they belong in the student's story.\n".
+                        "4. Extract 10 actual problematic sentences directly from the student's draft for the Sentence Improvement (SI) section.\n\n".
                         "EXAMPLE MCQ (contextualized):\n".
                         "{\n".
                         "  \"type\": \"mcq\",\n".
