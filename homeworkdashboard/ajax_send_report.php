@@ -280,26 +280,8 @@ $style_td = 'border: 1px solid #ddd; padding: 8px; text-align: left;';
 $style_badge = 'padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; display: inline-block; text-align: center; min-width: 60px;';
 $style_class = 'padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block;';
 
-// Greeting
-$html = '<div style="font-family: \'Segoe UI\', sans-serif; color: #333; margin-bottom: 20px;">';
-// Greeting
-if ($lang === 'ko') {
-    $date_str = userdate($timeclose, get_string('strftimedate', 'langconfig'));
-    $html .= '<p>안녕하세요</p>';
-    $html .= '<p>이번주 (' . $date_str . ') 의 ' . s($user->firstname) . ' 의 Progress Report를 보내드립니다.</p>';
-    $html .= '<p>아래 리포트는 ' . s($user->firstname) . '(이)가 얼마나 숙제를 성실하게 했는지, 잘했거나 부족한 부분이 무엇인지를 보여드리기 위해 작성했습니다.</p>';
-    $html .= '<p>질문이 있으시거나 좀 더 필요한 부분이 있으시면 말씀주세요.</p>';
-    $html .= '<p>GrowMinds Academy Team</p>';
-} else {
-    $html .= '<p>To ' . s($user->firstname) . '\'s parents,</p>';
-    $html .= '<p>Please find ' . s($user->firstname) . '\'s progress report for the week ending ' . userdate($timeclose, get_string('strftimedate', 'langconfig')) . ' below.</p>';
-    $html .= '<p>This report details ' . s($user->firstname) . '\'s progress for homework activities and outlines areas for improvement.</p>';
-    $html .= '<p>Should you have any questions or require further support, please reach out to us.</p>';
-    $html .= '<p>Warm regards,<br>GrowMinds Academy Team</p>';
-}
-$html .= '</div>';
-
-$html .= '
+// Initialize HTML
+$html = '
 <div class="homework-report-container" style="' . $style_container . '">
     <div class="report-header" style="' . $style_header . '">
         <h2 style="' . $style_h2 . '">Progress Report - ' . s($classroom) . '</h2>
@@ -320,7 +302,6 @@ $html .= '
     <table class="report-table" style="' . $style_table . '">
         <thead>
             <tr>
-                <th style="' . $style_th . '">Name</th>
                 <th style="' . $style_th . '">Course</th>
                 <th style="' . $style_th . '">Quiz</th>
                 <th style="' . $style_th . '">Attempt</th>
@@ -369,7 +350,6 @@ foreach ($rows as $idx => $r) {
 
     $html .= '
         <tr>
-            <td style="' . $style_td . '">' . s($user->firstname) . '</td>
             <td style="' . $style_td . '">' . s($r->coursename) . '</td>
             <td style="' . $style_td . '">' . s($r->quizname) . '</td>
             <td style="' . $style_td . '">' . $attemptno . '</td>
@@ -395,7 +375,6 @@ if (!empty($activities2)) {
     $html .= '<table class="report-table" style="' . $style_table . '">
         <thead>
             <tr>
-                <th style="' . $style_th . '">Name</th>
                 <th style="' . $style_th . '">Course</th>
                 <th style="' . $style_th . '">Quiz</th>
                 <th style="' . $style_th . '">Classification</th>
@@ -416,7 +395,6 @@ if (!empty($activities2)) {
         }
         
         $html .= '<tr>
-            <td style="' . $style_td . '">' . s($user->firstname) . '</td>
             <td style="' . $style_td . '">' . s($act->coursename ?? '') . '</td>
             <td style="' . $style_td . '">' . s($act->name) . '</td>
             <td style="' . $style_td . '"><span style="' . $clStyle . '">' . s($clLabel) . '</span></td>
