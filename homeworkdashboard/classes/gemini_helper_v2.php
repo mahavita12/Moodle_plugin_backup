@@ -312,24 +312,17 @@ class gemini_helper {
         ];
 
         // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
-        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3.1-pro') !== false) {
-            // Gemini 3.1 Pro / Thinking models often support/require higher token limits
-            // and specific thinking config.
-            // Note: 'thinking_config' is specific to some experimental endpoints.
-            // For standard Gemini 1.5 Pro, maxOutputTokens is higher (8192).
-            
-            // Adjust for Gemini 3.1 Pro Preview / Thinking
-            // Max Output Tokens: Increased to 8192 to allow for thinking process + output
-
+        if (strpos($this->model, 'thinking') !== false) {
             $generation_config['temperature'] = 1.0;
             $generation_config['maxOutputTokens'] = 8192;
-
-            // Note: thinking_level defaults to 'high' if not specified.
-            // We explicitly set it to ensure deep reasoning.
             $generation_config['thinking_config'] = [
                 'include_thoughts' => false,
                 'thinking_level' => 'high'
             ];
+        } else if (strpos($this->model, 'gemini-3.1-pro') !== false) {
+            $generation_config['temperature'] = 0.7;
+            $generation_config['maxOutputTokens'] = 8192;
+            // Removed thinking_config for gemini-3.1-pro as it may cause 400/503 errors
         }
 
         $payload = [
@@ -345,18 +338,50 @@ class gemini_helper {
 
         $curl = new \curl();
         $options = [
-            'CURLOPT_HTTPHEADER' => ['Content-Type: application/json']
+            'CURLOPT_HTTPHEADER' => ['Content-Type: application/json'],
+            'CURLOPT_TIMEOUT' => 120, // Increase timeout to handle slow API responses
+            'CURLOPT_RETURNTRANSFER' => true
         ];
 
-        $response = $curl->post($url, json_encode($payload), $options);
+        $max_retries = 3;
+        $retry_count = 0;
+        $response = null;
+        $http_code = 200;
+
+        while ($retry_count < $max_retries) {
+            $response = $curl->post($url, json_encode($payload), $options);
+            $info = $curl->get_info();
+            $http_code = isset($info['http_code']) ? $info['http_code'] : 200;
+
+            if ($curl->get_errno()) {
+                $this->last_error = 'Curl Error: ' . $curl->error;
+                error_log("GEMINI_DEBUG: Attempt " . ($retry_count + 1) . " failed with curl error: " . $this->last_error);
+            } else if ($http_code != 200) {
+                $this->last_error = 'HTTP Error ' . $http_code . ': ' . substr($response, 0, 200);
+                error_log("GEMINI_DEBUG: Attempt " . ($retry_count + 1) . " failed with " . $this->last_error);
+                
+                // Do not retry on client errors (4xx) other than 429 Too Many Requests
+                if ($http_code >= 400 && $http_code < 500 && $http_code != 429) {
+                    break;
+                }
+            } else {
+                // Success
+                break;
+            }
+
+            $retry_count++;
+            if ($retry_count < $max_retries) {
+                $sleep_time = 2 * $retry_count; // 2s, 4s wait
+                error_log("GEMINI_DEBUG: Retrying in {$sleep_time} seconds...");
+                sleep($sleep_time);
+            }
+        }
 
         $this->last_response = $response; // Store raw response
         error_log('GEMINI_DEBUG: Raw API Response: ' . substr($response, 0, 500)); // Log first 500 chars
 
-        if ($curl->get_errno()) {
-            $this->last_error = 'Curl Error: ' . $curl->error;
-            error_log('GEMINI_DEBUG: ' . $this->last_error);
-            return null;
+        if ($curl->get_errno() || $http_code != 200) {
+            return null; // Ensure we return null if all retries failed or it was a fatal error
         }
 
         $data = json_decode($response, true);
