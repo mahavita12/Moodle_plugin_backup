@@ -311,18 +311,14 @@ class gemini_helper {
             'maxOutputTokens' => 4000,
         ];
 
-        // Thinking Model Configuration (e.g. gemini-2.0-flash-thinking)
-        if (strpos($this->model, 'thinking') !== false) {
+        // Thinking Model Configuration (gemini-3.1-pro-preview is a thinking model)
+        if (strpos($this->model, 'thinking') !== false || strpos($this->model, 'gemini-3.1-pro') !== false) {
             $generation_config['temperature'] = 1.0;
             $generation_config['maxOutputTokens'] = 8192;
             $generation_config['thinking_config'] = [
                 'include_thoughts' => false,
                 'thinking_level' => 'high'
             ];
-        } else if (strpos($this->model, 'gemini-3.1-pro') !== false) {
-            $generation_config['temperature'] = 0.7;
-            $generation_config['maxOutputTokens'] = 8192;
-            // Removed thinking_config for gemini-3.1-pro as it may cause 400/503 errors
         }
 
         $payload = [
@@ -371,7 +367,7 @@ class gemini_helper {
 
             $retry_count++;
             if ($retry_count < $max_retries) {
-                $sleep_time = 2 * $retry_count; // 2s, 4s wait
+                $sleep_time = 5 * $retry_count; // 5s, 10s wait
                 error_log("GEMINI_DEBUG: Retrying in {$sleep_time} seconds...");
                 sleep($sleep_time);
             }
