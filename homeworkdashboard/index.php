@@ -1124,6 +1124,16 @@ if ($tab === 'leaderboard') {
 (function() {
     var sesskey = '<?php echo sesskey(); ?>';
     var ajaxUrl = '<?php echo (new moodle_url("/local/homeworkdashboard/ajax_adjust_points.php"))->out(false); ?>';
+    var defaultBookPts = {
+        finished: <?php 
+            $cf = get_config('local_homeworkdashboard', 'book_points_finished'); 
+            echo ($cf !== false && $cf !== '') ? (float)$cf : 200; 
+        ?>,
+        inprogress: <?php 
+            $ci = get_config('local_homeworkdashboard', 'book_points_inprogress'); 
+            echo ($ci !== false && $ci !== '') ? (float)$ci : 100; 
+        ?>
+    };
 
     // Open modal
     document.querySelectorAll('.adj-btn').forEach(function(btn) {
@@ -1156,8 +1166,17 @@ if ($tab === 'leaderboard') {
             bookLoadDueDates(uid);
             bookLoadList(uid);
 
+            // Set initial book points based on the default select
+            document.getElementById('book_points').value = (document.getElementById('book_finished').value == "1") ? defaultBookPts.finished : defaultBookPts.inprogress;
+
             $('#adjustModal').modal('show');
         });
+    });
+
+    // Handle book status change to update default points
+    document.getElementById('book_finished').addEventListener('change', function() {
+        var isFinished = this.value == "1";
+        document.getElementById('book_points').value = isFinished ? defaultBookPts.finished : defaultBookPts.inprogress;
     });
 
     // Add adjustment

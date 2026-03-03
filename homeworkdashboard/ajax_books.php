@@ -25,7 +25,7 @@ try {
             $author     = optional_param('author', '', PARAM_TEXT);
             $finished   = optional_param('finished', 0, PARAM_INT);
             $week_ending = required_param('week_ending', PARAM_INT);
-            $custom_points = optional_param('points', 0, PARAM_FLOAT);
+            $custom_points = optional_param('points', '', PARAM_TEXT);
 
             if (empty(trim($title))) {
                 throw new moodle_exception('Book title is required.');
@@ -38,13 +38,15 @@ try {
             }
 
             // Use custom points if provided, otherwise use config defaults
-            if ($custom_points > 0) {
-                $points = $custom_points;
+            if ($custom_points !== '') {
+                $points = (float) $custom_points;
             } else {
-                $pts_finished = (float) get_config('local_homeworkdashboard', 'book_points_finished');
-                $pts_inprogress = (float) get_config('local_homeworkdashboard', 'book_points_inprogress');
-                if ($pts_finished <= 0) $pts_finished = 200.0;
-                if ($pts_inprogress <= 0) $pts_inprogress = 100.0;
+                $pts_finished_str = get_config('local_homeworkdashboard', 'book_points_finished');
+                $pts_inprogress_str = get_config('local_homeworkdashboard', 'book_points_inprogress');
+                
+                $pts_finished = ($pts_finished_str !== false && trim((string)$pts_finished_str) !== '') ? (float)$pts_finished_str : 200.0;
+                $pts_inprogress = ($pts_inprogress_str !== false && trim((string)$pts_inprogress_str) !== '') ? (float)$pts_inprogress_str : 100.0;
+                
                 $points = $finished ? $pts_finished : $pts_inprogress;
             }
 
