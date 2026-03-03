@@ -74,5 +74,22 @@ if ($hassiteconfig) {
         ]
     ));
 
+    // Book Reading Tracker Points
+    $settings->add(new admin_setting_configtext(
+        'local_homeworkdashboard/book_points_finished',
+        'Book Points (Finished)',
+        'Intellect Points awarded when a student finishes a book.',
+        '200',
+        PARAM_FLOAT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'local_homeworkdashboard/book_points_inprogress',
+        'Book Points (In Progress)',
+        'Intellect Points awarded for a book that is in progress.',
+        '100',
+        PARAM_FLOAT
+    ));
+
     $ADMIN->add('localplugins', $settings);
 }

@@ -84,7 +84,7 @@ class gemini_helper {
      * @param string $lang Language code ('en' or 'ko')
      * @return string|null Generated commentary or null on failure
      */
-    public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en'): ?string {
+    public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en', array $books = []): ?string {
         if (!$this->is_configured()) {
             return "AI Commentary unavailable: API Key not configured for provider '{$this->provider}'.";
         }
@@ -141,8 +141,8 @@ class gemini_helper {
             $new_stats['notes'] += ($act['stats_notes'] ?? 0);
         }
 
-        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats);
-        error_log('AI_DEBUG: Prompt constructed. Length: ' . strlen($prompt) . ' | Provider: ' . $this->provider);
+        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats, $books);
+        error_log('AI_DEBUG: Prompt constructed. Length: ' . strlen($prompt) . ' | Provider: ' . $this->provider . ' | Books: ' . count($books));
 
         // Route to the selected provider
         if ($this->provider === 'anthropic') {
@@ -152,7 +152,7 @@ class gemini_helper {
         return $this->call_api($prompt);
     }
 
-    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang, array $new_stats = [], array $rev_stats = []): string {
+    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang, array $new_stats = [], array $rev_stats = [], array $books = []): string {
 
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
@@ -176,11 +176,21 @@ class gemini_helper {
             $prompt .= "- **어조**: 전문적, 분석적, 정중함 (예: '분석됩니다', '권장합니다', '확인이 필요합니다').\n";
             $prompt .= "- **길이**: **상세하게 작성하세요 (400단어 이상)**. 단순 요약이 아닌, 데이터에 기반한 심층 분석이 필요합니다.\n";
             $prompt .= "- **금지 사항**: 학부모가 통제할 수 없는 것(교육과정 난이도, 진도 조정 등)에 대한 조언은 하지 마세요. 가정에서 실천 가능한 것(복습 시간 확보, 오답노트 확인, 집중력 향상 등)에 집중하세요.\n";
+            $prompt .= "- **이모티콘 사용 금지**: 보고서 전체에서 이모티콘(이모지)을 절대 사용하지 마세요. 엄격하게 금지합니다.\n";
             
             $prompt .= "[필수 포함 내용]\n";
             $prompt .= "   1. **종합 요약** (헤더: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
-            $prompt .= "      - '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'로 시작.\n";
-            $prompt .= "      - 전체적인 성실도와 학습 태도를 총평해주세요.\n";
+            $prompt .= "      - **독서 코멘트로 가장 먼저 시작하세요.**\n";
+            
+            if (!empty($books)) {
+                $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $books);
+                $books_str = implode(', ', $book_titles);
+                $prompt .= "      - **독서 활동**: 이번 주에 읽은 책({$books_str})을 첫 문장으로 명시하고 독서 성과를 강력하게 칭찬하세요.\n";
+            } else {
+                $prompt .= "      - **독서 경고 필수**: 첫 문장으로 이번 주 독서 기록이 전혀 없음을 단호하게 지적하고, 매주 최소 한 권의 책을 읽는 것의 압도적인 중요성을 강력하게 권고하세요.\n";
+            }
+            $prompt .= "      - 독서 코멘트 직후, 다음 문장을 추가하세요: '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'\n";
+            $prompt .= "      - 그 다음, 전체적인 성실도와 학습 태도를 총평해주세요.\n";
             
             $prompt .= "   2. **New Topics (새로운 과제) 상세 분석** (헤더: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
             $prompt .= "      - **통계 요약 필수**: '이번 주 새로운 과제에서 총 {$new_stats['total_qs']}문항을 풀었으며, 플래그(Flag) {$new_stats['flags']}개, 노트(Note) {$new_stats['notes']}개를 기록했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
@@ -206,6 +216,8 @@ class gemini_helper {
             $prompt .= "        - **부정행위 가능성 경고**: '두 번의 시도 모두 풀이 시간이 비정상적으로 짧아(예: 5분), 답안을 암기하여 수행했을 가능성이 우려됩니다. 가정에서 실제 이해도를 확인해주실 것을 권장합니다'라고 정중히 경고하세요.\n";
             $prompt .= "      - 복습 과제 완료 속도가 너무 빠르면 '학습의 질'에 대한 우려를 표명하세요.\n";
 
+
+
             $prompt .= "- **형식**: HTML 태그(<p>, <strong>, <ul>, <li>)를 사용하세요. **모든 <ul> 태그는 반드시 닫아야 합니다**.\n\n";
 
         } else {
@@ -230,11 +242,21 @@ class gemini_helper {
             $prompt .= "- **Tone**: Professional, analytical, polite (e.g., 'We observed...', 'We recommend...', 'Verification is needed.').\n";
             $prompt .= "- **Length**: **Write in detail (400+ words)**. This is not a simple summary but an in-depth, data-driven analysis.\n";
             $prompt .= "- **Avoid**: Do NOT give advice about things parents cannot control (e.g., curriculum difficulty, pacing changes). Focus on actionable items at home (review time, checking notes, improving focus, etc.).\n";
+            $prompt .= "- **No Emojis**: Do NOT use any emojis or emoticons anywhere in the report. This is strictly forbidden.\n";
             
             $prompt .= "[Required Content]\n";
             $prompt .= "   1. **Summary** (Header: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
-            $prompt .= "      - Start with: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
-            $prompt .= "      - Provide an overall assessment of diligence and learning attitude.\n";
+            $prompt .= "      - **The very first sentence must be about reading activity.**\n";
+            
+            if (!empty($books)) {
+                $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $books);
+                $books_str = implode(', ', $book_titles);
+                $prompt .= "      - **Reading Activity**: Start the Summary by mentioning the books read this week ({$books_str}) and heavily praise their reading achievement.\n";
+            } else {
+                $prompt .= "      - **Reading Warning**: Start the Summary with a firm, strong warning that no books were recorded this week, emphasizing the critical importance of reading at least one book per week.\n";
+            }
+            $prompt .= "      - After the reading commentary, state: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
+            $prompt .= "      - Then provide an overall assessment of diligence and learning attitude.\n";
             
             $prompt .= "   2. **New Topics Detailed Analysis** (Header: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
             $prompt .= "      - **Mandatory Stats**: 'From this week's NEW homework activities, {$student_name} attempted {$new_stats['total_qs']} questions. There were {$new_stats['flags']} flags raised and {$new_stats['notes']} revision notes added.'\n";
@@ -262,6 +284,15 @@ class gemini_helper {
             $prompt .= "        - **Cheating Concern**: 'Both attempts were completed unusually fast (e.g., 5 mins), raising concerns about answer memorization. We recommend verifying actual understanding at home.' - Warn politely.\n";
             $prompt .= "      - If revision work is completed too quickly, express concern about 'quality of learning'.\n";
             $prompt .= "      - **Revision Quality**: Analyze Flag vs Note counts. If many flags but few notes, warn: 'Many questions were flagged but notes are lacking.'\n";
+
+            if (!empty($books)) {
+                $prompt .= "   5. **Reading Activity** (Header: <h4 style='color: #27AE60; border-bottom: 1px solid #27AE60; padding-bottom: 5px;'>Reading</h4>):\n";
+                $prompt .= "      - Comment on the student's reading engagement. Mention specific book titles.\n";
+                $prompt .= "      - If a book is finished, praise the achievement. If in progress, encourage continuation.\n";
+                $prompt .= "      - Connect reading habits to overall academic development.\n";
+            } else {
+                $prompt .= "   5. **Reading Activity**: No books were recorded this week. Briefly encourage independent reading.\n";
+            }
 
             $prompt .= "- **Formatting**: Use HTML (<p>, <strong>, <ul>, <li>). **All <ul> tags must be properly closed**.\n\n";
 
@@ -330,6 +361,18 @@ class gemini_helper {
                         $prompt .= "  - Attempt {$att['attempt']}: Score {$att['score']}, Duration {$duration_min} mins.\n";
                     }
                 }
+            }
+        }
+
+        // Reading Activity Data
+        $prompt .= "\nReading Activity:\n";
+        if (empty($books)) {
+            $prompt .= "- No books recorded this week.\n";
+        } else {
+            foreach ($books as $bk) {
+                $status = !empty($bk['finished']) ? 'Finished' : 'In Progress';
+                $author_str = !empty($bk['author']) ? ' by ' . $bk['author'] : '';
+                $prompt .= "- {$status}: \"{$bk['title']}\"{$author_str} (+{$bk['points']} pts)\n";
             }
         }
 

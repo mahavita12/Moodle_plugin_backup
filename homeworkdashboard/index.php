@@ -1017,6 +1017,14 @@ if ($tab === 'leaderboard') {
       </div>
       <div class="modal-body">
         <input type="hidden" id="adj_userid" value="">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" id="adjustTabs" role="tablist">
+          <li class="nav-item"><a class="nav-link active" id="tab-adjustments" data-toggle="tab" href="#pane-adjustments" role="tab">Adjustments</a></li>
+          <li class="nav-item"><a class="nav-link" id="tab-books" data-toggle="tab" href="#pane-books" role="tab">📚 Books</a></li>
+        </ul>
+        <div class="tab-content">
+        <!-- Adjustments Tab -->
+        <div class="tab-pane fade show active" id="pane-adjustments" role="tabpanel">
         <div class="form-row align-items-end mb-3" style="border-bottom:1px solid #eee; padding-bottom:15px;">
           <div class="col-md-3">
             <label class="small font-weight-bold">Course</label>
@@ -1054,6 +1062,59 @@ if ($tab === 'leaderboard') {
         <div class="mt-2 text-right">
           <strong>Net Adjustment: <span id="adj_net" style="font-size:1.1em;">0</span></strong>
         </div>
+        </div><!-- /pane-adjustments -->
+
+        <!-- Books Tab -->
+        <div class="tab-pane fade" id="pane-books" role="tabpanel">
+          <div class="form-row align-items-end mb-3" style="border-bottom:1px solid #eee; padding-bottom:15px;">
+            <div class="col-md-4">
+              <label class="small font-weight-bold">Book Title</label>
+              <input type="text" class="form-control form-control-sm" id="book_title" placeholder="e.g. Charlotte's Web">
+            </div>
+            <div class="col-md-3">
+              <label class="small font-weight-bold">Author <span class="text-muted">(optional)</span></label>
+              <input type="text" class="form-control form-control-sm" id="book_author" placeholder="e.g. E.B. White">
+            </div>
+            <div class="col-md-2">
+              <label class="small font-weight-bold">Status</label>
+              <select class="form-control form-control-sm" id="book_finished">
+                <option value="1">Finished</option>
+                <option value="0">In Progress</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="small font-weight-bold">Due Date</label>
+              <select class="form-control form-control-sm" id="book_duedate"></select>
+            </div>
+            <div class="col-md-1">
+              <label class="small font-weight-bold">Points</label>
+              <input type="number" step="10" class="form-control form-control-sm" id="book_points" value="200">
+            </div>
+            <div class="col-md-1">
+              <label class="small font-weight-bold">&nbsp;</label>
+              <button class="btn btn-sm btn-success w-100 d-block" onclick="bookAddEntry()" title="Add Book">
+                <i class="fa fa-plus"></i>
+              </button>
+            </div>
+          </div>
+          <h6 class="font-weight-bold text-muted">📚 Book Reading History</h6>
+          <div id="book_history" style="max-height:300px;overflow-y:auto;">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>Due Date</th><th>Title</th><th>Author</th><th>Status</th><th>Points</th><th style="width:40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="book_history_body"></tbody>
+            </table>
+          </div>
+          <div class="mt-2 text-right">
+            <strong>Total Book Points: <span id="book_total_pts" style="font-size:1.1em; color:#27AE60;">0</span></strong>
+          </div>
+          <div class="mt-1 text-muted small" id="book_cat1_info"></div>
+        </div><!-- /pane-books -->
+
+        </div><!-- /tab-content -->
       </div>
     </div>
   </div>
@@ -1090,6 +1151,10 @@ if ($tab === 'leaderboard') {
 
             // Load history
             loadHistory(uid);
+
+            // Pre-load books data too (for when user switches to Books tab)
+            bookLoadDueDates(uid);
+            bookLoadList(uid);
 
             $('#adjustModal').modal('show');
         });
@@ -1208,6 +1273,108 @@ if ($tab === 'leaderboard') {
         var netColor = netVal > 0 ? '#28a745' : (netVal < 0 ? '#dc3545' : '#333');
         document.getElementById('adj_net').innerHTML = '<span style="color:' + netColor + ';">' + netStr + '</span>';
     }
+
+    // ==================== BOOK READING TRACKER ====================
+    var bookAjaxUrl = M.cfg.wwwroot + '/local/homeworkdashboard/ajax_books.php';
+    console.log('BOOK_TRACKER: Initialized. URL:', bookAjaxUrl);
+
+    window.bookLoadDueDates = function(uid) {
+        console.log('BOOK_TRACKER: Loading due dates for uid:', uid);
+        $.get(bookAjaxUrl, {sesskey: sesskey, action: 'duedates', userid: uid}, function(data) {
+            console.log('BOOK_TRACKER: Due dates response:', data);
+            if (data.success) {
+                var sel = document.getElementById('book_duedate');
+                sel.innerHTML = '';
+                data.duedates.forEach(function(d) {
+                    var opt = document.createElement('option');
+                    opt.value = d.timeclose;
+                    opt.textContent = d.label;
+                    sel.appendChild(opt);
+                });
+            }
+        }, 'json');
+    };
+
+    window.bookLoadList = function(uid) {
+        console.log('BOOK_TRACKER: Loading books for uid:', uid);
+        $.get(bookAjaxUrl, {sesskey: sesskey, action: 'list', userid: uid}, function(data) {
+            console.log('BOOK_TRACKER: Books response:', data);
+            if (data.success) {
+                window.bookRenderList(data.books, data.total_points);
+                if (data.cat1_course) {
+                    document.getElementById('book_cat1_info').textContent = 'ℹ️ Points applied to: ' + data.cat1_course + ' (Category 1)';
+                }
+            }
+        }, 'json');
+    };
+
+    window.bookAddEntry = function() {
+        var uid = document.getElementById('adj_userid').value;
+        var title = document.getElementById('book_title').value.trim();
+        var author = document.getElementById('book_author').value.trim();
+        var finished = document.getElementById('book_finished').value;
+        var weekEnding = document.getElementById('book_duedate').value;
+        var bookPoints = document.getElementById('book_points').value;
+
+        console.log('BOOK_TRACKER: Adding book:', {uid:uid, title:title, finished:finished, weekEnding:weekEnding, points:bookPoints});
+
+        if (!title) { alert('Please enter a book title.'); return; }
+        if (!weekEnding) { alert('Please select a due date.'); return; }
+
+        $.post(bookAjaxUrl, {
+            sesskey: sesskey, action: 'add', userid: uid,
+            title: title, author: author, finished: finished,
+            week_ending: weekEnding, points: bookPoints
+        }, function(data) {
+            console.log('BOOK_TRACKER: Add response:', data);
+            if (data.success) {
+                window.bookRenderList(data.books, data.total_points);
+                document.getElementById('book_title').value = '';
+                document.getElementById('book_author').value = '';
+                if (data.cat1_course) {
+                    document.getElementById('book_cat1_info').textContent = 'ℹ️ Points applied to: ' + data.cat1_course + ' (Category 1)';
+                }
+            } else {
+                alert('Error: ' + (data.message || 'Unknown'));
+            }
+        }, 'json').fail(function(xhr, status, err) {
+            console.error('BOOK_TRACKER: Add failed:', status, err, xhr.responseText);
+            alert('Server error: ' + err + '\n' + (xhr.responseText || '').substring(0, 200));
+        });
+    };
+
+    window.bookDeleteEntry = function(bookid) {
+        if (!confirm('Delete this book entry?')) return;
+        var uid = document.getElementById('adj_userid').value;
+        $.post(bookAjaxUrl, {sesskey: sesskey, action: 'delete', bookid: bookid, userid: uid}, function(data) {
+            if (data.success) {
+                window.bookRenderList(data.books, data.total_points);
+            }
+        }, 'json');
+    };
+
+    window.bookRenderList = function(books, totalPts) {
+        var tbody = document.getElementById('book_history_body');
+        if (!books || books.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No books recorded yet.</td></tr>';
+        } else {
+            tbody.innerHTML = books.map(function(b) {
+                var statusBadge = b.finished
+                    ? '<span class="badge" style="background-color:#d4edda;color:#155724;">Finished ✓</span>'
+                    : '<span class="badge" style="background-color:#fff3cd;color:#856404;">In Progress</span>';
+                var ptsStr = '+' + parseFloat(b.points_awarded).toFixed(0);
+                return '<tr>' +
+                    '<td class="small">' + (b.week_label || '') + '</td>' +
+                    '<td class="small font-weight-bold">' + b.title + '</td>' +
+                    '<td class="small">' + (b.author || '-') + '</td>' +
+                    '<td class="small">' + statusBadge + '</td>' +
+                    '<td class="small" style="color:#27AE60; font-weight:bold;">' + ptsStr + '</td>' +
+                    '<td><button class="btn btn-sm btn-link text-danger" onclick="bookDeleteEntry(' + b.id + ')" title="Delete">&#128465;</button></td>' +
+                    '</tr>';
+            }).join('');
+        }
+        document.getElementById('book_total_pts').textContent = '+' + parseFloat(totalPts || 0).toFixed(0);
+    };
 })();
 </script>
 <?php endif; ?>

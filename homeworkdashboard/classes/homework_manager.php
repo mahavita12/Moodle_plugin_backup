@@ -3214,4 +3214,119 @@ class homework_manager {
         global $DB;
         return $DB->delete_records('local_hw_adjustments', ['id' => $id]);
     }
+
+    // ==================== BOOK READING TRACKER ====================
+
+    /**
+     * Get Category 1 courseid for a user.
+     */
+    public function get_user_cat1_courseid(int $userid): int {
+        global $DB;
+        $sql = "SELECT c.id
+                FROM {course} c
+                JOIN {course_categories} cc ON c.category = cc.id
+                JOIN {enrol} e ON e.courseid = c.id
+                JOIN {user_enrolments} ue ON ue.enrolid = e.id
+                WHERE ue.userid = :uid AND ue.status = 0 AND e.status = 0
+                  AND cc.name = 'Category 1'
+                ORDER BY c.id ASC";
+        $rec = $DB->get_record_sql($sql, ['uid' => $userid], IGNORE_MULTIPLE);
+        return $rec ? (int)$rec->id : 0;
+    }
+
+    /**
+     * Get Category 1 course name for display.
+     */
+    public function get_cat1_course_name(int $userid): string {
+        global $DB;
+        $sql = "SELECT c.fullname
+                FROM {course} c
+                JOIN {course_categories} cc ON c.category = cc.id
+                JOIN {enrol} e ON e.courseid = c.id
+                JOIN {user_enrolments} ue ON ue.enrolid = e.id
+                WHERE ue.userid = :uid AND ue.status = 0 AND e.status = 0
+                  AND cc.name = 'Category 1'
+                ORDER BY c.id ASC";
+        $rec = $DB->get_record_sql($sql, ['uid' => $userid], IGNORE_MULTIPLE);
+        return $rec ? $rec->fullname : '(No Category 1 course)';
+    }
+
+    /**
+     * Get available due dates for books — combines live quiz timeclose + past snapshot dates.
+     * Returns the live due date + up to 4 most recent past due dates from Category 1.
+     */
+    public function get_user_cat1_duedates(int $userid): array {
+        global $DB;
+
+        $all_dates = [];
+
+        // 1. Live/future quiz due dates from Category 1 courses
+        $sql_quiz = "SELECT DISTINCT q.timeclose
+                FROM {quiz} q
+                JOIN {course} c ON q.course = c.id
+                JOIN {course_categories} cc ON c.category = cc.id
+                JOIN {enrol} e ON e.courseid = c.id
+                JOIN {user_enrolments} ue ON ue.enrolid = e.id
+                WHERE ue.userid = :uid AND ue.status = 0 AND e.status = 0
+                  AND cc.name = 'Category 1'
+                  AND q.timeclose > :now
+                ORDER BY q.timeclose ASC";
+        $quiz_dates = $DB->get_records_sql($sql_quiz, ['uid' => $userid, 'now' => time()]);
+        foreach ($quiz_dates as $r) {
+            if ((int)$r->timeclose > 0) {
+                $all_dates[(int)$r->timeclose] = true;
+            }
+        }
+
+        // 2. Past due dates from homework status snapshots (Category 1)
+        $sql_past = "SELECT DISTINCT hs.timeclose
+                FROM {local_homework_status} hs
+                JOIN {course} c ON hs.courseid = c.id
+                JOIN {course_categories} cc ON c.category = cc.id
+                WHERE hs.userid = :uid AND cc.name = 'Category 1'
+                  AND hs.timeclose > 0
+                ORDER BY hs.timeclose DESC";
+        $past_dates = $DB->get_records_sql($sql_past, ['uid' => $userid], 0, 4);
+        foreach ($past_dates as $r) {
+            if ((int)$r->timeclose > 0) {
+                $all_dates[(int)$r->timeclose] = true;
+            }
+        }
+
+        // Sort descending (most recent first) and format
+        $timestamps = array_keys($all_dates);
+        rsort($timestamps);
+
+        $dates = [];
+        foreach ($timestamps as $ts) {
+            $dates[] = [
+                'timeclose' => $ts,
+                'label' => userdate($ts, get_string('strftimedatetime', 'langconfig'))
+            ];
+        }
+        return $dates;
+    }
+
+    /**
+     * Get all books for a user (most recent first).
+     */
+    public function get_user_books(int $userid): array {
+        global $DB;
+        $records = $DB->get_records('local_hw_books', ['userid' => $userid], 'week_ending DESC, timecreated DESC');
+        $books = [];
+        foreach ($records as $r) {
+            $books[] = [
+                'id' => (int)$r->id,
+                'userid' => (int)$r->userid,
+                'title' => $r->title,
+                'author' => $r->author,
+                'finished' => (int)$r->finished,
+                'points_awarded' => (float)$r->points_awarded,
+                'week_ending' => (int)$r->week_ending,
+                'week_label' => userdate($r->week_ending, get_string('strftimedate', 'langconfig')),
+                'timecreated' => (int)$r->timecreated
+            ];
+        }
+        return $books;
+    }
 }
