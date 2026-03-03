@@ -20,6 +20,18 @@ if ($hassiteconfig) {
         PARAM_TEXT
     ));
 
+    // AI Provider Selection
+    $settings->add(new admin_setting_configselect(
+        'local_homeworkdashboard/ai_provider',
+        'AI Provider',
+        'Select the AI provider for generating homework report commentary. If the primary provider fails, it will NOT automatically fall back.',
+        'gemini',
+        [
+            'gemini' => 'Gemini (Google)',
+            'anthropic' => 'Anthropic (Claude)'
+        ]
+    ));
+
     // Gemini API Settings
     $settings->add(new admin_setting_configtext(
         'local_homeworkdashboard/gemini_api_key',
@@ -39,6 +51,26 @@ if ($hassiteconfig) {
             'gemini-2.0-flash' => 'Gemini 2.0 Flash (Fast & Smart)',
             'gemini-1.5-pro' => 'Gemini 1.5 Pro (Stable)',
             'gemini-1.5-flash' => 'Gemini 1.5 Flash (Fast)'
+        ]
+    ));
+
+    // Anthropic API Settings
+    $settings->add(new admin_setting_configpasswordunmask(
+        'local_homeworkdashboard/anthropic_api_key',
+        'Anthropic API Key',
+        'API Key for Anthropic Claude. If left blank, will attempt to use the key from Quiz Dashboard settings.',
+        ''
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'local_homeworkdashboard/anthropic_model',
+        'Anthropic Model',
+        'Select the Anthropic Claude model to use.',
+        'claude-sonnet-4-6',
+        [
+            'claude-sonnet-4-6' => 'Claude Sonnet 4.6 (Recommended)',
+            'claude-sonnet-4-0' => 'Claude Sonnet 4.0',
+            'claude-3-5-haiku-latest' => 'Claude 3.5 Haiku (Fast & Cheap)'
         ]
     ));
 
