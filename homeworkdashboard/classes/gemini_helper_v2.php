@@ -183,18 +183,30 @@ class gemini_helper {
             $prompt .= "      - **독서 코멘트로 가장 먼저 시작하세요.**\n";
             
             if (!empty($books)) {
-                $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $books);
-                $books_str = implode(', ', $book_titles);
-                $prompt .= "      - **독서 활동**: 이번 주에 읽은 책({$books_str})을 첫 문장으로 명시하고 독서 성과를 강력하게 칭찬하세요.\n";
+                $finished_books = array_filter($books, function($b) { return !empty($b['finished']); });
+                $inprogress_books = array_filter($books, function($b) { return empty($b['finished']); });
+                
+                $prompt .= "      - **독서 활동 (첫 문장)**: 전체 독서 코멘트를 반드시 `<p style='color: #2980B9; margin-bottom: 15px;'>` 와 `</p>` 태그로 감싸서 파란 글씨로 출력하세요. ";
+                if (!empty($finished_books)) {
+                    $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $finished_books);
+                    $books_str = implode(', ', $book_titles);
+                    $prompt .= "이번 주에 완독한 책({$books_str})을 명시하고 독서 성과를 강력히 칭찬하세요. ";
+                }
+                if (!empty($inprogress_books)) {
+                    $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $inprogress_books);
+                    $books_str = implode(', ', $book_titles);
+                    $prompt .= "현재 읽고 있는 책({$books_str})을 언급하며 계속해서 꾸준히 읽도록 격려하세요. ";
+                }
+                $prompt .= "\n";
             } else {
-                $prompt .= "      - **독서 경고 필수**: 첫 문장으로 이번 주 독서 기록이 전혀 없음을 단호하게 지적하고, 매주 최소 한 권의 책을 읽는 것의 압도적인 중요성을 강력하게 권고하세요.\n";
+                $prompt .= "      - **독서 경고 필수 (첫 문장)**: 이번 주 독서 기록이 전혀 없음을 단호하게 지적하고, 매주 최소 한 권의 책을 읽는 것의 압도적인 중요성을 강력하게 권고하세요. 이 경고 메시지는 반드시 `<div style='background-color: #FFF3CD; color: #D8000C; padding: 15px; border: 1px solid #FFEEBA; border-radius: 5px; margin-bottom: 15px;'>` 와 `</div>` 태그로 감싸서 노란색 박스 안의 빨간색 글씨로 출력해야 합니다.\n";
             }
             $prompt .= "      - 독서 코멘트 직후, 다음 문장을 추가하세요: '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'\n";
             $prompt .= "      - 그 다음, 전체적인 성실도와 학습 태도를 총평해주세요.\n";
             
             $prompt .= "   2. **New Topics (새로운 과제) 상세 분석** (헤더: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
             $prompt .= "      - **통계 요약 필수**: '이번 주 새로운 과제에서 총 {$new_stats['total_qs']}문항을 풀었으며, 플래그(Flag) {$new_stats['flags']}개, 노트(Note) {$new_stats['notes']}개를 기록했습니다.' 라는 문장을 반드시 섹션 시작 부분에 포함하세요.\n";
-            $prompt .= "      - 각 과목(Math, English 등)별로 **점수(%), 소요 시간, 문항 수**를 구체적으로 언급하며 분석하세요.\n";
+            $prompt .= "      - 각 과목별로 **점수(%), 소요 시간, 문항 수**를 구체적으로 언급하며 분석하세요. **단, 과목명은 수학, 독서, 사고력, 글쓰기 등의 한국어가 아닌 반드시 영어(Math, Reading, Thinking, Writing 등) 그대로 표기하세요.**\n";
             $prompt .= "      - **데이터**를 반드시 인용하세요 (예: '20문항/8분/60%').\n";
             $prompt .= "      - **시간 분석**: 문제당 평균 1분 미만이면 '내용을 제대로 읽지 않고 풀었을 가능성'을 우려하세요.\n";
             $prompt .= "      - **점수 분석**: 점수가 낮다면(60% 미만) '개념 이해가 부족하니 해당 주제 복습이 시급함'을 구체적으로 알리세요.\n";
@@ -249,11 +261,23 @@ class gemini_helper {
             $prompt .= "      - **The very first sentence must be about reading activity.**\n";
             
             if (!empty($books)) {
-                $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $books);
-                $books_str = implode(', ', $book_titles);
-                $prompt .= "      - **Reading Activity**: Start the Summary by mentioning the books read this week ({$books_str}) and heavily praise their reading achievement.\n";
+                $finished_books = array_filter($books, function($b) { return !empty($b['finished']); });
+                $inprogress_books = array_filter($books, function($b) { return empty($b['finished']); });
+                
+                $prompt .= "      - **Reading Activity (First Sentence)**: Start the Summary by discussing their reading. You MUST wrap the entire reading commentary in `<p style='color: #2980B9; margin-bottom: 15px;'>` and `</p>` tags so it is blue text. ";
+                if (!empty($finished_books)) {
+                    $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $finished_books);
+                    $books_str = implode(', ', $book_titles);
+                    $prompt .= "Specifically state they finished reading ({$books_str}) and heavily praise their achievement. ";
+                }
+                if (!empty($inprogress_books)) {
+                    $book_titles = array_map(function($b) { return '"' . $b['title'] . '"'; }, $inprogress_books);
+                    $books_str = implode(', ', $book_titles);
+                    $prompt .= "Mention they are currently reading ({$books_str}) and strongly encourage them to keep going and finish the book. ";
+                }
+                $prompt .= "\n";
             } else {
-                $prompt .= "      - **Reading Warning**: Start the Summary with a firm, strong warning that no books were recorded this week, emphasizing the critical importance of reading at least one book per week.\n";
+                $prompt .= "      - **Reading Warning (First Sentence)**: Start the Summary with a firm, strong warning that no books were recorded this week, emphasizing the critical importance of reading at least one book per week. You MUST wrap this warning in a yellow box with red text using exactly these tags: `<div style='background-color: #FFF3CD; color: #D8000C; padding: 15px; border: 1px solid #FFEEBA; border-radius: 5px; margin-bottom: 15px;'>` and `</div>`.\n";
             }
             $prompt .= "      - After the reading commentary, state: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
             $prompt .= "      - Then provide an overall assessment of diligence and learning attitude.\n";
@@ -387,7 +411,7 @@ class gemini_helper {
 
         $generation_config = [
             'temperature' => 0.7,
-            'maxOutputTokens' => 4000,
+            'maxOutputTokens' => 8192,
         ];
 
         // Thinking Model Configuration (gemini-3.1-pro-preview is a thinking model)
@@ -486,7 +510,7 @@ class gemini_helper {
 
         $payload = [
             'model' => $model,
-            'max_tokens' => 4096,
+            'max_tokens' => 8192,
             'system' => 'You are an education expert generating detailed homework progress report commentary for parents. Output HTML formatted content.',
             'messages' => [
                 [
