@@ -6,27 +6,33 @@ defined('MOODLE_INTERNAL') || die();
 require_once($CFG->libdir . '/filelib.php');
 
 /**
- * Helper class for Google Gemini AI interactions.
+ * Helper class for AI interactions (Gemini + Anthropic).
  */
 class gemini_helper {
 
     private $api_key;
     private $model;
+    private $provider;
     private $api_url_base = 'https://generativelanguage.googleapis.com/v1beta/models/';
     private $last_error = null;
     private $last_response = null;
 
     public function __construct() {
         $config = get_config('local_homeworkdashboard');
+        $this->provider = $config->ai_provider ?? 'gemini';
+
+        // Gemini config
         $this->api_key = $config->gemini_api_key ?? '';
-        // Default to Gemini 3.1 Pro Preview as requested
         $this->model = $config->gemini_model ?? 'gemini-3.1-pro-preview';
     }
 
     /**
-     * Check if API key is configured.
+     * Check if current provider is configured.
      */
     public function is_configured(): bool {
+        if ($this->provider === 'anthropic') {
+            return !empty($this->get_anthropic_api_key());
+        }
         return !empty($this->api_key);
     }
 
@@ -45,6 +51,31 @@ class gemini_helper {
     }
 
     /**
+     * Get Anthropic API key - tries homeworkdashboard first, falls back to quizdashboard.
+     */
+    private function get_anthropic_api_key(): string {
+        $key = get_config('local_homeworkdashboard', 'anthropic_api_key');
+        if (!empty($key)) {
+            return trim((string)$key);
+        }
+        // Fallback: use quizdashboard's Anthropic key
+        $key = get_config('local_quizdashboard', 'anthropic_apikey');
+        return !empty($key) ? trim((string)$key) : '';
+    }
+
+    /**
+     * Get Anthropic model from config.
+     */
+    private function get_anthropic_model(): string {
+        $model = get_config('local_homeworkdashboard', 'anthropic_model');
+        $model = is_string($model) ? trim($model) : '';
+        if ($model === '' || in_array(strtolower($model), ['sonnet-4', 'sonnet4', 'claude-4', 'claude4'], true)) {
+            return 'claude-sonnet-4-6';
+        }
+        return $model;
+    }
+
+    /**
      * Generate commentary for a student based on their homework activity.
      *
      * @param string $student_name
@@ -55,7 +86,7 @@ class gemini_helper {
      */
     public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en'): ?string {
         if (!$this->is_configured()) {
-            return "AI Commentary unavailable: API Key not configured.";
+            return "AI Commentary unavailable: API Key not configured for provider '{$this->provider}'.";
         }
 
         // Calculate completion stats
@@ -111,7 +142,12 @@ class gemini_helper {
         }
 
         $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats);
-        error_log('GEMINI_DEBUG: Prompt constructed. Length: ' . strlen($prompt));
+        error_log('AI_DEBUG: Prompt constructed. Length: ' . strlen($prompt) . ' | Provider: ' . $this->provider);
+
+        // Route to the selected provider
+        if ($this->provider === 'anthropic') {
+            return $this->call_anthropic_api($prompt);
+        }
 
         return $this->call_api($prompt);
     }
@@ -301,7 +337,7 @@ class gemini_helper {
     }
 
     /**
-     * Call the Gemini API.
+     * Call the Gemini API with retry logic.
      */
     private function call_api(string $text_prompt): ?string {
         $url = $this->api_url_base . $this->model . ':generateContent?key=' . $this->api_key;
@@ -335,7 +371,7 @@ class gemini_helper {
         $curl = new \curl();
         $options = [
             'CURLOPT_HTTPHEADER' => ['Content-Type: application/json'],
-            'CURLOPT_TIMEOUT' => 120, // Increase timeout to handle slow API responses
+            'CURLOPT_TIMEOUT' => 120,
             'CURLOPT_RETURNTRANSFER' => true
         ];
 
@@ -373,11 +409,11 @@ class gemini_helper {
             }
         }
 
-        $this->last_response = $response; // Store raw response
-        error_log('GEMINI_DEBUG: Raw API Response: ' . substr($response, 0, 500)); // Log first 500 chars
+        $this->last_response = $response;
+        error_log('GEMINI_DEBUG: Raw API Response: ' . substr($response, 0, 500));
 
         if ($curl->get_errno() || $http_code != 200) {
-            return null; // Ensure we return null if all retries failed or it was a fatal error
+            return null;
         }
 
         $data = json_decode($response, true);
@@ -389,5 +425,123 @@ class gemini_helper {
             error_log('GEMINI_DEBUG: ' . $this->last_error);
             return null;
         }
+    }
+
+    /**
+     * Call the Anthropic Claude API with retry logic.
+     * Borrowed from quizdashboard's make_anthropic_api_call pattern.
+     */
+    private function call_anthropic_api(string $text_prompt): ?string {
+        $apikey = $this->get_anthropic_api_key();
+        if (empty($apikey)) {
+            $this->last_error = 'Anthropic API key not configured';
+            return null;
+        }
+
+        $model = $this->get_anthropic_model();
+        error_log("ANTHROPIC_DEBUG: Using model: {$model}");
+
+        $payload = [
+            'model' => $model,
+            'max_tokens' => 4096,
+            'system' => 'You are an education expert generating detailed homework progress report commentary for parents. Output HTML formatted content.',
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => [
+                        ['type' => 'text', 'text' => $text_prompt]
+                    ]
+                ]
+            ]
+        ];
+
+        $max_retries = 3;
+        $retry_count = 0;
+        $response = null;
+
+        while ($retry_count < $max_retries) {
+            $retry_count++;
+            error_log("ANTHROPIC_DEBUG: Attempt {$retry_count}/{$max_retries}");
+
+            try {
+                $curl = new \curl();
+                $curl->setHeader([
+                    'Content-Type: application/json',
+                    'x-api-key: ' . $apikey,
+                    'anthropic-version: 2023-06-01'
+                ]);
+
+                $curl->setopt([
+                    'CURLOPT_TIMEOUT' => 120,
+                    'CURLOPT_CONNECTTIMEOUT' => 30,
+                    'CURLOPT_NOSIGNAL' => 1,
+                    'CURLOPT_TCP_KEEPALIVE' => 1
+                ]);
+
+                $response = $curl->post('https://api.anthropic.com/v1/messages', json_encode($payload));
+                $this->last_response = $response;
+
+                if ($curl->get_errno() !== 0) {
+                    $this->last_error = 'Curl Error: ' . $curl->error;
+                    error_log("ANTHROPIC_DEBUG: Attempt {$retry_count} curl error: " . $this->last_error);
+                    if ($retry_count < $max_retries) {
+                        sleep(2 * $retry_count);
+                        continue;
+                    }
+                    return null;
+                }
+
+                $body = json_decode($response, true);
+
+                if (isset($body['error'])) {
+                    $msg = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string)$body['error'];
+                    $this->last_error = 'API error: ' . $msg;
+                    error_log("ANTHROPIC_DEBUG: Attempt {$retry_count} API error: " . $this->last_error);
+
+                    $lower = strtolower($msg);
+                    $isRate = (strpos($lower, 'rate limit') !== false) || (strpos($lower, 'overloaded') !== false);
+                    if ($retry_count < $max_retries) {
+                        $wait = $isRate ? rand(10, 20) : (5 * $retry_count);
+                        error_log("ANTHROPIC_DEBUG: Retrying in {$wait} seconds...");
+                        sleep($wait);
+                        continue;
+                    }
+                    return null;
+                }
+
+                // Extract text content from Anthropic response
+                $text = '';
+                if (isset($body['content']) && is_array($body['content'])) {
+                    foreach ($body['content'] as $part) {
+                        if (isset($part['type']) && $part['type'] === 'text' && isset($part['text'])) {
+                            $text .= $part['text'];
+                        }
+                    }
+                }
+
+                if ($text === '') {
+                    $this->last_error = 'Empty response from Anthropic API';
+                    error_log("ANTHROPIC_DEBUG: Attempt {$retry_count} empty response");
+                    if ($retry_count < $max_retries) {
+                        sleep(2 * $retry_count);
+                        continue;
+                    }
+                    return null;
+                }
+
+                error_log("ANTHROPIC_DEBUG: Success on attempt {$retry_count}. Response length: " . strlen($text));
+                return $text;
+
+            } catch (\Exception $e) {
+                $this->last_error = 'Exception: ' . $e->getMessage();
+                error_log("ANTHROPIC_DEBUG: Attempt {$retry_count} exception: " . $this->last_error);
+                if ($retry_count < $max_retries) {
+                    sleep(3 * $retry_count);
+                    continue;
+                }
+            }
+        }
+
+        return null;
     }
 }

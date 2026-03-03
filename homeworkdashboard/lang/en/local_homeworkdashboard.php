@@ -42,3 +42,7 @@ $string['col_category'] = 'Category';
 $string['col_course'] = 'Course';
 $string['filterquiz'] = 'Quiz';
 $string['no_data'] = 'No data found';
+
+// Settings strings
+$string['defaultwindowdays'] = 'Default window (days)';
+$string['defaultwindowdays_desc'] = 'Default number of days before due date to include in homework window.';
