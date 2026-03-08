@@ -455,10 +455,10 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="sortable-column" data-sort="score">Score</th>
 
                     <!-- Grade column removed - keeping only Score column -->
-                    <th>Feedback</th>
+                    <th>Feedback Summary</th>
+                    <th>Details</th>
                     <th>AI %</th>
                     <th>Similarity</th>
-                    <th>Auto Grade</th>
                     <th>Homework</th>
                 </tr>
             </thead>
@@ -510,7 +510,24 @@ require_once(__DIR__ . '/navigation_fallback.php');
 <td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
 <td><?php echo $row->initial_score !== null ? ((int)$row->initial_score) . ' / 100' : '-'; ?></td>
 <td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
-<td class="ai-likelihood-cell" style="text-align: center;">
+<td class="feedback-summary-cell" style="text-align: center;">
+                                <?php if ($row->is_graded): ?>
+                                    <button type="button" class="btn btn-sm btn-info" onclick="openFeedbackSummary(<?php echo $row->attemptid; ?>)" title="Open priorities summary">Summary</button>
+                                <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="auto-grade-cell" style="text-align: center;">
+                                <?php if ($row->is_graded): ?>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="viewFeedback(<?php echo $row->attemptid; ?>)">View</button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="openFeedbackWindow(<?php echo $row->attemptid; ?>)" title="Open in new window">🗗</button>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="status-badge status-secondary">Not Graded</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="ai-likelihood-cell" style="text-align: center;">
                                 <?php if ($row->ai_likelihood): ?>
                                     <span class="ai-likelihood-display"><?php echo htmlspecialchars($row->ai_likelihood); ?></span>
                                 <?php elseif ($row->is_graded): ?>
@@ -521,7 +538,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <button type="button" class="btn btn-sm btn-info check-ai-btn" onclick="checkAILikelihood(<?php echo $row->attemptid; ?>, this)">Check</button>
                                 <?php endif; ?>
                             </td>
-<td class="similarity-cell" style="text-align: center;">
+                            <td class="similarity-cell" style="text-align: center;">
                                 <?php if ($row->similarity_percent !== null): ?>
                                     <?php if ($row->similarity_flag): ?>
                                         <span class="badge bg-danger" title="Similarity violation - penalty applied">
@@ -534,16 +551,6 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">-</span>
-                                <?php endif; ?>
-                            </td>
-<td class="auto-grade-cell" style="text-align: center;">
-                                <?php if ($row->is_graded): ?>
-                                    <div class="btn-group" role="group">
-                                        <button type="button" class="btn btn-sm btn-primary" onclick="viewFeedback(<?php echo $row->attemptid; ?>)">View</button>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="openFeedbackWindow(<?php echo $row->attemptid; ?>)" title="Open in new window">🗗</button>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="status-badge status-secondary">Not Graded</span>
                                 <?php endif; ?>
                             </td>
 <td class="homework-cell" style="text-align: center;">

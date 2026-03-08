@@ -85,7 +85,7 @@ if (empty($overall_comments)) {
     // For now, we'll just output it nicely.
     
     // Check if the comment hints at poor progress (for styling)
-    $is_warning = preg_match('/(?:did not|minimal|little|no)\\s+(?:improve|progress|change)/i', $overall_comments) || 
+    $is_warning = preg_match('/(?:did not|minimal|little|no)\s+(?:improve|progress|change)/i', $overall_comments) || 
                   preg_match('/(?:copy|copied)/i', $overall_comments);
                   
     if ($is_warning) {

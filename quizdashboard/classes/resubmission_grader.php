@@ -120,7 +120,11 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 </ul>
 
 <h2 style=\"font-size:18px;\">Overall Comments</h2>
-<div id=\"overall-comments\"><p>Provide up to three short paragraphs (1–2 sentences each), concise and encouraging with concrete next steps.</p></div>
+<div id=\"overall-comments\"><ul>
+<li>Provide 3-4 concise bullet points summarizing the most important feedback.</li>
+<li>Each bullet point should be 1-2 sentences, encouraging, and provide concrete next steps.</li>
+<li>Do NOT provide paragraphs. You must use bullet points formatted as an HTML list.</li>
+</ul></div>
 
 <h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous → New): [PREVIOUS_TOTAL]/100 → [NEW_TOTAL]/100</strong></p></h2>
 
@@ -1498,7 +1502,21 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '</ul>';
         }
 
-        $html .= '<h2 style="font-size:18px;">Overall Comments</h2>';
+        $html .= '<h2 style="font-size:18px;">Top 4 Priorities for Improvement</h2>
+<ul>
+<li><strong>[Name of Priority 1]:</strong> Provide a 1-2 sentence explanation of why this is a priority. Then, provide exactly TWO distinct examples of this issue from the student's essay, formatted like this:
+<ul>
+<li><span style="color:#808080;">Original: [student's mistake in grey]</span></li>
+<li><span style="color:#3399cc;">Improved: [corrected version in blue]</span></li>
+</ul>
+<br><strong>IMPORTANT:</strong> You must supply EXACTLY TWO examples per priority. If you cannot find two, provide one or a hypothetical one. Do NOT supply more or less. Each example MUST be inside an `<li>` tag as shown.
+</li>
+<li><strong>[Name of Priority 2]:</strong> (same format)</li>
+<li><strong>[Name of Priority 3]:</strong> (same format)</li>
+<li><strong>[Name of Priority 4]:</strong> (same format)</li>
+</ul>
+
+<h2 style="font-size:18px;">Overall Comments</h2>';
         $html .= '<div id="overall-comments"><p><strong>' . $penalty_message . ' We encourage you to try again with your own improvements.</strong></p></div>';
         $html .= '<h2 style="font-size:16px;"><p><strong>Final Score (Previous → New): ' . $previous_total . '/100 → 0/100</strong></p></h2>';
 
