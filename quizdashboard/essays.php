@@ -248,6 +248,7 @@ foreach ($records as $r) {
         'score_language_use' => $r->score_language_use ?? null,
         'score_creativity_originality' => $r->score_creativity_originality ?? null,
         'score_mechanics' => $r->score_mechanics ?? null,
+        'initial_score' => $grading->initial_score ?? null,
         'score'         => $r->score,
         'maxscore'      => $r->maxscore,
 
@@ -440,20 +441,21 @@ require_once(__DIR__ . '/navigation_fallback.php');
                     <th class="sortable-column" data-sort="studentname">Name</th>
                     <th>Category</th>
                     <th class="sortable-column" data-sort="coursename">Course</th>
-                    <th class="sortable-column" data-sort="sectionname">Section</th>
-                    <th class="sortable-column" data-sort="quizname" style="width: 22%;">Quiz</th>
-                    <th class="sortable-column" data-sort="attemptno" style="width: 7%;">Attempt #</th>
+                    <th class="sortable-column" data-sort="quizname" style="width: 26%;">Quiz</th>
+                    <th class="sortable-column" data-sort="attemptno" style="width: 3%;">Attempt #</th>
                     <th class="sortable-column" data-sort="status">Status</th>
                     <th class="sortable-column" data-sort="timefinish">Finished</th>
                     <th class="sortable-column" data-sort="time_taken">Duration</th>
-                    <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)" style="width: 4%;">C&I</th>
-                    <th class="sortable-column" data-sort="score_structure_organization" title="Structure & Organization (25)" style="width: 4%;">Structure</th>
-                    <th class="sortable-column" data-sort="score_language_use" title="Language Use (20)" style="width: 4%;">Language</th>
-                    <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)" style="width: 4%;">Creativity</th>
-                    <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)" style="width: 4%;">Mechanics</th>
+                    <th class="sortable-column" data-sort="score_content_ideas" title="Content & Ideas (25)" style="width: 5%;">C&I</th>
+                    <th class="sortable-column" data-sort="score_structure_organization" title="Structure & Organization (25)" style="width: 4%;">S</th>
+                    <th class="sortable-column" data-sort="score_language_use" title="Language Use (20)" style="width: 4%;">L</th>
+                    <th class="sortable-column" data-sort="score_creativity_originality" title="Creativity & Originality (20)" style="width: 4%;">C</th>
+                    <th class="sortable-column" data-sort="score_mechanics" title="Mechanics (10)" style="width: 4%;">M</th>
+                    <th class="sortable-column" data-sort="initial_score" title="Initial Draft Score (sum of subcategories)" style="width: 5%;">Init Score</th>
                     <th class="sortable-column" data-sort="score">Score</th>
 
                     <!-- Grade column removed - keeping only Score column -->
+                    <th>Feedback</th>
                     <th>AI %</th>
                     <th>Similarity</th>
                     <th>Auto Grade</th>
@@ -491,7 +493,6 @@ require_once(__DIR__ . '/navigation_fallback.php');
                                 </a>
                                 <a href="<?php echo $row->course_url; ?>" class="course-link" title="Open course" target="_blank" style="margin-left:6px;">↗</a>
                             </td>
-                            <td><?php echo htmlspecialchars(!empty($row->sectionname) ? $row->sectionname : 'Section ' . $row->sectionnumber); ?></td>
 <td>
                                 <a href="<?php echo (new moodle_url('/local/quizdashboard/essays.php', ['quizname' => $row->quizname]))->out(false); ?>" class="quiz-link">
                                     <?php echo htmlspecialchars($row->quizname); ?>
@@ -507,6 +508,7 @@ require_once(__DIR__ . '/navigation_fallback.php');
 <td><?php echo $row->score_language_use !== null ? ((int)$row->score_language_use) . ' / 20' : '-'; ?></td>
 <td><?php echo $row->score_creativity_originality !== null ? ((int)$row->score_creativity_originality) . ' / 20' : '-'; ?></td>
 <td><?php echo $row->score_mechanics !== null ? ((int)$row->score_mechanics) . ' / 10' : '-'; ?></td>
+<td><?php echo $row->initial_score !== null ? ((int)$row->initial_score) . ' / 100' : '-'; ?></td>
 <td><?php echo ($row->score !== null && $row->maxscore !== null) ? round($row->score) . ' / ' . round($row->maxscore) : '-'; ?></td>
 <td class="ai-likelihood-cell" style="text-align: center;">
                                 <?php if ($row->ai_likelihood): ?>
@@ -840,6 +842,16 @@ function executeBulkAction() {
 function openFeedbackWindow(attemptId) {
     var url = '<?php echo (new moodle_url('/local/quizdashboard/viewfeedback.php'))->out(false); ?>?clean=1&id=' + attemptId;
     var feedbackWindow = window.open(url, 'feedback_' + attemptId, 'width=1000,height=700,scrollbars=yes,resizable=yes,menubar=yes,toolbar=yes');
+    if (feedbackWindow) {
+        feedbackWindow.focus();
+    } else {
+        alert('Please allow popups for this site to open feedback in a new window.');
+    }
+}
+
+function openFeedbackSummary(attemptId) {
+    var url = '<?php echo (new moodle_url('/local/quizdashboard/feedback_summary.php'))->out(false); ?>?clean=1&id=' + attemptId;
+    var feedbackWindow = window.open(url, 'feedback_summary_' + attemptId, 'width=850,height=750,scrollbars=yes,resizable=yes,menubar=yes,toolbar=yes');
     if (feedbackWindow) {
         feedbackWindow.focus();
     } else {

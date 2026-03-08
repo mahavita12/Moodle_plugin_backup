@@ -198,7 +198,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
     /**
      * Build complete resubmission feedback HTML
      */
-    private function build_resubmission_feedback_html($current_essay_data, $feedback_data, $revision_html, $previous_grading, $submission_number, $progress_commentary_current = '', $current_initial_essay = null) {
+    private function build_resubmission_feedback_html($current_essay_data, $feedback_data, $revision_html, $previous_grading, $submission_number, $progress_commentary_current = '', $current_initial_essay = null, $final_scores_result = null, $initial_scores_extracted = null) {
         $ordinal = ucfirst($this->get_ordinal_string($submission_number));
 
         $print_styles = "
@@ -324,8 +324,104 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '<hr>';
         $html .= '</div>';
 
-        // Your Writing Journey for THIS resubmission (against its own initial draft)
-        if (!empty($progress_commentary_current)) {
+        // DUAL-SCORE: Your Writing Journey — score table + per-subcategory commentary (BEFORE Homework)
+        if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data'])) {
+            $fsd = $final_scores_result['data'];
+            // FIXED: Use pre-extracted initial scores
+            $is_ci = (int)($initial_scores_extracted['content_and_ideas'] ?? 0);
+            $is_so = (int)($initial_scores_extracted['structure_and_organization'] ?? 0);
+            $is_lu = (int)($initial_scores_extracted['language_use'] ?? 0);
+            $is_co = (int)($initial_scores_extracted['creativity_and_originality'] ?? 0);
+            $is_me = (int)($initial_scores_extracted['mechanics'] ?? 0);
+            $is_total = $is_ci + $is_so + $is_lu + $is_co + $is_me;
+
+            $fs_ci = (int)($fsd['content_and_ideas']['score'] ?? 0);
+            $fs_so = (int)($fsd['structure_and_organization']['score'] ?? 0);
+            $fs_lu = (int)($fsd['language_use']['score'] ?? 0);
+            $fs_co = (int)($fsd['creativity_and_originality']['score'] ?? 0);
+            $fs_me = (int)($fsd['mechanics']['score'] ?? 0);
+            $fs_total = (int)($fsd['final_total'] ?? ($fs_ci + $fs_so + $fs_lu + $fs_co + $fs_me));
+
+            $improvement = $fs_total - $is_total;
+            $imp_color = $improvement >= 0 ? '#2e7d32' : '#c62828';
+
+            $html .= '<div class="feedback-section">';
+            $html .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey</h2>';
+            $html .= '<hr>';
+
+            // Score table
+            $html .= '<div style="background: #f1f8e9; padding: 20px; border-radius: 8px; border: 1px solid #c8e6c9; margin: 10px 0;">';
+            $html .= '<h3 style="color: #2e7d32; margin: 0 0 15px 0; font-size: 16px;">Score Improvement</h3>';
+            $html .= '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">';
+            $html .= '<tr style="background: #e8f5e9; font-weight: 600;">';
+            $html .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7;">Category</td>';
+            $html .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Initial Draft</td>';
+            $html .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Final Submission</td>';
+            $html .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Change</td>';
+            $html .= '</tr>';
+            $cats = [
+                ['Content & Ideas', $is_ci, $fs_ci, 25],
+                ['Structure & Organisation', $is_so, $fs_so, 25],
+                ['Language Use', $is_lu, $fs_lu, 20],
+                ['Creativity & Originality', $is_co, $fs_co, 20],
+                ['Mechanics', $is_me, $fs_me, 10],
+            ];
+            foreach ($cats as $cat) {
+                $diff = $cat[2] - $cat[1];
+                $dc = $diff >= 0 ? '#2e7d32' : '#c62828';
+                $ds = $diff >= 0 ? '+' . $diff : (string)$diff;
+                $html .= '<tr>';
+                $html .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0;">' . $cat[0] . '</td>';
+                $html .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">' . $cat[1] . '/' . $cat[3] . '</td>';
+                $html .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">' . $cat[2] . '/' . $cat[3] . '</td>';
+                $html .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center; color: ' . $dc . '; font-weight: 600;">' . $ds . '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '<tr style="font-weight: 700; background: #e8f5e9;">';
+            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7;">Total</td>';
+            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $is_total . '/100</td>';
+            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $fs_total . '/100</td>';
+            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center; color: ' . $imp_color . ';">' . ($improvement >= 0 ? '+' : '') . $improvement . ' ' . ($improvement >= 0 ? '↑' : '↓') . '</td>';
+            $html .= '</tr>';
+            $html .= '</table></div>';
+
+            // Per-subcategory commentary
+            $cat_comments = [
+                'Content & Ideas' => $fsd['content_and_ideas']['comment'] ?? '',
+                'Structure & Organisation' => $fsd['structure_and_organization']['comment'] ?? '',
+                'Language Use' => $fsd['language_use']['comment'] ?? '',
+                'Creativity & Originality' => $fsd['creativity_and_originality']['comment'] ?? '',
+                'Mechanics' => $fsd['mechanics']['comment'] ?? '',
+            ];
+            $has_comments = false;
+            foreach ($cat_comments as $c) { if (!empty(trim($c))) { $has_comments = true; break; } }
+            if ($has_comments) {
+                $html .= '<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">';
+                foreach ($cat_comments as $title => $comment) {
+                    if (!empty(trim($comment))) {
+                        $html .= '<p style="margin: 8px 0; line-height: 1.6; color: #2e7d32;"><strong>' . htmlspecialchars($title) . ':</strong> ' . htmlspecialchars($comment) . '</p>';
+                    }
+                }
+                $html .= '</div>';
+            }
+
+            // Overall Comment — encouraging if improved, STERN RED WARNING if not
+            $overall_comment = $fsd['overall_comment'] ?? '';
+            if (!empty(trim($overall_comment))) {
+                if ($improvement <= 0) {
+                    $html .= '<div style="background: #fbe9e7; padding: 15px; border-radius: 8px; border-left: 4px solid #c62828; margin: 15px 0;">';
+                    $html .= '<p style="margin: 0; line-height: 1.7; color: #b71c1c; font-size: 15px;"><strong>⚠ Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html .= '</div>';
+                } else {
+                    $html .= '<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #1976d2; margin: 15px 0;">';
+                    $html .= '<p style="margin: 0; line-height: 1.7; color: #1565c0; font-size: 15px;"><strong>Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html .= '</div>';
+                }
+            }
+
+            $html .= '<hr></div>';
+        } elseif (!empty($progress_commentary_current)) {
+            // Fallback: old-style progress commentary
             $html .= '<div class="feedback-section">';
             $html .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft</h2>';
             $html .= '<hr>';
@@ -780,6 +876,21 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 return ['success' => false, 'message' => 'Could not extract current essay data.'];
             }
 
+            // DUAL-SCORE: Get initial draft for THIS resubmission and swap for grading
+            $current_initial = null;
+            $current_essay_data['final_answer_text'] = $current_essay_data['answer_text'];
+            try {
+                if (method_exists($this, 'get_initial_essay_submission') && !empty($current_essay_data['attempt_uniqueid'])) {
+                    $current_initial = $this->get_initial_essay_submission($current_essay_data['attempt_uniqueid']);
+                    if (!empty($current_initial)) {
+                        $current_essay_data['answer_text'] = $current_initial;
+                        error_log("DUAL-SCORE [Resubmission]: Using initial draft for grading attempt {$attempt_id}");
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('DUAL-SCORE [Resubmission]: get_initial_essay_submission failed: ' . $e->getMessage());
+            }
+
             // 4) Previous scores for context - this will use DB scores when available
             $previous_scores = $this->extract_previous_scores($previous_grading);
 
@@ -858,20 +969,32 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // 8) Revision of the current essay
             $revision_html = $this->generate_essay_revision($current_essay_data['answer_text'], $level, $feedback_result['data']);
 
-            // 8.5) Generate "Your Writing Journey" commentary for THIS resubmission
+            // 8.5) DUAL-SCORE: Generate improvement scores for THIS resubmission (initial draft vs final)
+            $final_scores_result = null;
             $progress_commentary_current = '';
-            try {
-                if (method_exists($this, 'get_initial_essay_submission') && !empty($current_essay_data['attempt_uniqueid'])) {
-                    $current_initial = $this->get_initial_essay_submission($current_essay_data['attempt_uniqueid']);
-                    if (!empty($current_initial) && method_exists($this, 'generate_progress_commentary')) {
-                        $progress_commentary_current = $this->generate_progress_commentary($current_initial, $current_essay_data['answer_text']);
+            if (!empty($current_initial)) {
+                try {
+                    $final_essay_data = $current_essay_data;
+                    $final_essay_data['answer_text'] = $current_essay_data['final_answer_text'];
+                    $final_essay_data['initial_draft'] = $current_initial;
+                    $final_essay_data['initial_scores'] = $initial_scores_extracted;
+                    $final_scores_result = $this->generate_final_scores_with_commentary($final_essay_data, $level);
+                    if ($final_scores_result && $final_scores_result['success']) {
+                        error_log("DUAL-SCORE [Resubmission]: Final scores generated for attempt {$attempt_id}: " . json_encode($final_scores_result['data']));
                     }
+                } catch (\Throwable $e) {
+                    error_log('DUAL-SCORE [Resubmission]: Final scores generation failed: ' . $e->getMessage());
                 }
-            } catch (\Throwable $e) {
-                error_log('DEBUG: Progress commentary generation failed for resubmission: ' . $e->getMessage());
             }
 
-            // 9) Build complete HTML (resubmission-flavoured)
+            // 9a) DUAL-SCORE: Extract initial draft scores from comparative feedback BEFORE building report
+            $initial_scores_extracted = null;
+            if (!empty($feedback_result['data']['feedback_html'])) {
+                $initial_scores_extracted = $this->extract_resubmission_scores($feedback_result['data']['feedback_html']);
+                error_log("DUAL-SCORE [Resubmission]: Initial scores extracted for report: " . json_encode($initial_scores_extracted));
+            }
+
+            // 9b) Build complete HTML (resubmission-flavoured) — now with dual-score data
             $complete_html = $this->build_resubmission_feedback_html(
                 $current_essay_data,
                 $feedback_result['data'],
@@ -879,7 +1002,9 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 $previous_grading,
                 $submission_number,
                 $progress_commentary_current,
-                isset($current_initial) ? $current_initial : (isset($initial_for_ai) ? $initial_for_ai : null)
+                isset($current_initial) ? $current_initial : (isset($initial_for_ai) ? $initial_for_ai : null),
+                $final_scores_result,
+                $initial_scores_extracted
             );
 
             // 10) Extract current (NEW) subcategory scores from comparative feedback
@@ -938,18 +1063,22 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 );
             }
 
-            // 11b) Save grading record including scores and AI likelihood (+ similarity metadata if computed)
+            // 11b) Save grading record including scores, AI likelihood, dual-score data (+ similarity metadata if computed)
             if (!isset($feedback_result['data'])) { $feedback_result['data'] = []; }
             $feedback_result['data']['similarity_percent'] = isset($similarity['percentage']) ? (int)$similarity['percentage'] : null;
             $feedback_result['data']['similarity_flag'] = (!empty($similarity['is_copy']) && !$autozero) ? 1 : 0;
-            $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '');
+            $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, '', $final_scores_result);
 
             // 12) Save resubmission tracking with scores
             $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, !empty($similarity['is_copy']), (float)($similarity['percentage'] ?? 0), $prev_total, $new_total);
 
-            // 13) Save grade to Moodle using the calculated new_total
-            // Use the specialized resubmission method that takes the calculated total
-            $this->save_resubmission_grade_to_moodle($current_essay_data, $feedback_result['data'], $new_total, 100);
+            // 13) DUAL-SCORE: Save grade to Moodle — use FINAL submission score if available
+            $moodle_score = $new_total;
+            if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data']['final_total'])) {
+                $moodle_score = (int)$final_scores_result['data']['final_total'];
+                error_log("DUAL-SCORE [Resubmission]: Using FINAL score {$moodle_score} for Moodle gradebook (attempt {$attempt_id})");
+            }
+            $this->save_resubmission_grade_to_moodle($current_essay_data, $feedback_result['data'], $moodle_score, 100);
 
             // 14) Optional Drive upload with submission suffix
             $drive_link = null;

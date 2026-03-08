@@ -158,6 +158,30 @@ function xmldb_local_quizdashboard_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2025111403, 'local', 'quizdashboard');
     }
 
+    // Dual-score columns: initial_score, final_score, final subcategory scores, journey_json
+    if ($oldversion < 2026030801) {
+        $table = new xmldb_table('local_quizdashboard_gradings');
+
+        $fields = [
+            new xmldb_field('initial_score', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'score_mechanics'),
+            new xmldb_field('final_score', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'initial_score'),
+            new xmldb_field('final_score_content_ideas', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'final_score'),
+            new xmldb_field('final_score_structure', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'final_score_content_ideas'),
+            new xmldb_field('final_score_language', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'final_score_structure'),
+            new xmldb_field('final_score_creativity', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'final_score_language'),
+            new xmldb_field('final_score_mechanics', XMLDB_TYPE_INTEGER, '3', null, null, null, null, 'final_score_creativity'),
+            new xmldb_field('journey_json', XMLDB_TYPE_TEXT, 'big', null, null, null, null, 'revision_json'),
+        ];
+
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026030801, 'local', 'quizdashboard');
+    }
+
     return true;
 }
 

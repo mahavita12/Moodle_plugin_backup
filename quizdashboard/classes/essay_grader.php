@@ -261,7 +261,17 @@ class essay_grader {
                 return ['success' => false, 'message' => 'Essay is too short for grading.'];
             }
 
-            // 2. Generate AI feedback
+            // DUAL-SCORE: Get initial draft and swap for AI grading
+            $initial_essay = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
+            $essay_data['final_answer_text'] = $essay_data['answer_text']; // preserve final submission
+            if (!empty($initial_essay)) {
+                $essay_data['answer_text'] = $initial_essay; // grade initial draft
+                error_log("DUAL-SCORE: Using initial draft for grading attempt {$attempt_id}");
+            } else {
+                error_log("DUAL-SCORE: No initial draft found, using final submission for attempt {$attempt_id}");
+            }
+
+            // 2. Generate AI feedback on INITIAL DRAFT
             $feedback_result = $this->generate_essay_feedback($essay_data, $level);
             if (!$feedback_result['success']) {
                 // TIMEOUT FIX: Restore timeout before early return
@@ -269,38 +279,46 @@ class essay_grader {
                 return $feedback_result;
             }
 
-            // 3. Detect AI likelihood on INITIAL DRAFT (not final submission)
-            // This makes more sense as we want to check if the ORIGINAL work was AI-generated
-            // Get initial essay first for AI detection
-            $initial_essay_for_ai = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
+            // 2b. DUAL-SCORE: Extract initial draft scores from feedback HTML RIGHT AWAY (needed for step 3)
+            $initial_scores_extracted = null;
+            if (!empty($feedback_result['data']['feedback_html'])) {
+                $initial_scores_extracted = $this->extract_scores_from_json($feedback_result['data']['feedback_html']);
+                if (!$initial_scores_extracted) {
+                    $initial_scores_extracted = $this->extract_scores_from_html($feedback_result['data']['feedback_html']);
+                }
+                error_log("DUAL-SCORE: Initial scores extracted: " . json_encode($initial_scores_extracted));
+            }
+
+            // 3. DUAL-SCORE: Generate final scores with brief commentary — evaluates IMPROVEMENT
+            $final_scores_result = null;
+            if (!empty($initial_essay)) {
+                $final_essay_data = $essay_data;
+                $final_essay_data['answer_text'] = $essay_data['final_answer_text'];
+                $final_essay_data['initial_draft'] = $initial_essay;
+                // Pass initial scores so AI knows the baseline
+                $final_essay_data['initial_scores'] = $initial_scores_extracted;
+                $final_scores_result = $this->generate_final_scores_with_commentary($final_essay_data, $level);
+                if ($final_scores_result && $final_scores_result['success']) {
+                    error_log("DUAL-SCORE: Final improvement scores generated for attempt {$attempt_id}: " . json_encode($final_scores_result['data']));
+                } else {
+                    error_log("DUAL-SCORE: Final improvement scores generation failed for attempt {$attempt_id}");
+                }
+            }
+
+            // 4. Detect AI likelihood on INITIAL DRAFT
             $ai_likelihood = 'N/A';
-            if ($initial_essay_for_ai) {
-                $ai_likelihood = $this->detect_ai_assistance($initial_essay_for_ai);
+            if (!empty($initial_essay)) {
+                $ai_likelihood = $this->detect_ai_assistance($initial_essay);
                 error_log("Essays Master: AI detection on INITIAL DRAFT - Likelihood: " . $ai_likelihood);
             } else {
-                // Fallback to final submission if initial draft not found
                 $ai_likelihood = $this->detect_ai_assistance($essay_data['answer_text']);
                 error_log("Essays Master: AI detection on FINAL submission (fallback) - Likelihood: " . $ai_likelihood);
             }
 
-            // 4. Generate revision
+            // 5. Generate revision (based on initial draft)
             $revision_html = $this->generate_essay_revision($essay_data['answer_text'], $level, $feedback_result['data']);
             
-            // 4.5. Get initial essay and generate progress commentary
-            $initial_essay = $this->get_initial_essay_submission($essay_data['attempt_uniqueid']);
-            $progress_commentary = '';
-            // Resolve student's first name for name policy in journey commentary
-            $student_name = '';
-            try {
-                if (isset($essay_data['user']) && !empty($essay_data['user']->firstname)) {
-                    $student_name = format_string($essay_data['user']->firstname, true);
-                }
-            } catch (\Throwable $e) { $student_name = ''; }
-            if ($initial_essay) {
-                $progress_commentary = $this->generate_progress_commentary($initial_essay, $essay_data['answer_text'], $student_name);
-            }
-            
-            // 5. Generate homework if requested
+            // 6. Generate homework if requested
             $homework_html = '';
             if ($include_homework) {
                 $homework_base_text = !empty($initial_essay) ? $initial_essay : $essay_data['answer_text'];
@@ -310,21 +328,23 @@ class essay_grader {
                 }
             }
 
-            // 6. Build complete feedback HTML
+            // 7. Build complete feedback HTML (with Writing Journey + dual scores)
             $complete_html = $this->build_complete_feedback_html(
                 $feedback_result['data'], 
                 $revision_html, 
                 $essay_data,
                 $homework_html,
                 $initial_essay,
-                $progress_commentary
+                '', // progress_commentary replaced by Writing Journey
+                $final_scores_result,
+                $initial_scores_extracted
             );
 
-            // 7. Save results
-            $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, $homework_html);
+            // 8. Save results (both initial and final scores)
+            $this->save_grading_result($attempt_id, $complete_html, $feedback_result['data'], $ai_likelihood, $homework_html, $final_scores_result);
 
-            // 8. Save grade to Moodle
-            $this->save_grade_to_moodle($essay_data, $feedback_result['data']);
+            // 9. Save grade to Moodle — use FINAL score if available
+            $this->save_grade_to_moodle($essay_data, $feedback_result['data'], $final_scores_result);
 
             // 9. Upload to Google Drive if configured
             $drive_link = null;
@@ -569,6 +589,175 @@ Provide an encouraging but factual commentary about the student's writing journe
     }
 
     /**
+     * DUAL-SCORE: Evaluate improvement from initial draft to final submission.
+     * Receives BOTH drafts + initial scores. Scores must be >= initial scores.
+     * Commentary focuses on what improved, not independent quality assessment.
+     */
+    protected function generate_final_scores_with_commentary($essay_data, $level = 'general') {
+        $provider = $this->get_provider();
+        
+        $student_name = '';
+        try {
+            if (isset($essay_data['user']) && !empty($essay_data['user']->firstname)) {
+                $student_name = format_string($essay_data['user']->firstname, true);
+            }
+        } catch (\Throwable $e) { $student_name = ''; }
+
+        // Build initial scores context string
+        $init = $essay_data['initial_scores'] ?? [];
+        $init_ci = (int)($init['content_and_ideas'] ?? 0);
+        $init_so = (int)($init['structure_and_organization'] ?? 0);
+        $init_lu = (int)($init['language_use'] ?? 0);
+        $init_co = (int)($init['creativity_and_originality'] ?? 0);
+        $init_me = (int)($init['mechanics'] ?? 0);
+        $init_total = $init_ci + $init_so + $init_lu + $init_co + $init_me;
+
+        $scores_context = "INITIAL DRAFT SCORES (baseline):
+- Content and Ideas: {$init_ci}/25
+- Structure and Organization: {$init_so}/25
+- Language Use: {$init_lu}/20
+- Creativity and Originality: {$init_co}/20
+- Mechanics: {$init_me}/10
+- Total: {$init_total}/100";
+
+        $system_prompt = "You are an expert essay improvement evaluator. Your job is to evaluate HOW MUCH the student's writing improved from their initial draft to their final submission after revision. Use Australian English.
+
+CRITICAL RULES:
+1. Final scores MUST be EQUAL TO or HIGHER than the initial scores. The student revised their work — scores cannot decline.
+2. If genuine improvement is visible, award appropriate score increases.
+3. If minimal or no improvement is visible, keep scores the SAME as initial (do not decrease).
+4. Commentary must focus on WHAT IMPROVED between drafts, not on the absolute quality.
+5. If a category shows no improvement, say so directly (e.g. \"No significant change from initial draft.\")
+
+{$scores_context}
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no code fences, no extra text):
+{
+  \"content_and_ideas\": {\"score\": X, \"comment\": \"What improved in this category.\"},
+  \"structure_and_organization\": {\"score\": X, \"comment\": \"What improved in this category.\"},
+  \"language_use\": {\"score\": X, \"comment\": \"What improved in this category.\"},
+  \"creativity_and_originality\": {\"score\": X, \"comment\": \"What improved in this category.\"},
+  \"mechanics\": {\"score\": X, \"comment\": \"What improved in this category.\"},
+  \"overall_comment\": \"2-3 sentence summary. If good improvement, be encouraging about what changed. If limited/no improvement, give a STERN but fair warning: note that limited progress was detected and urge the student to take the revision process more seriously.\"
+}
+
+Scoring scale (same as initial):
+- Content and Ideas: out of 25
+- Structure and Organization: out of 25
+- Language Use: out of 20
+- Creativity and Originality: out of 20
+- Mechanics: out of 10
+
+Commentary rules:
+- Each comment: 1-2 sentences about what CHANGED between drafts
+- Focus on improvement, not absolute quality
+- If no improvement in a category, state it plainly
+- Do NOT provide examples or improvement suggestions
+- Do NOT include any HTML or formatting
+
+NAME POLICY: Do not address the student by name.";
+
+        $initial_draft_text = $essay_data['initial_draft'] ?? '';
+        $user_content = "Essay Question:\n" . $essay_data['question_text'] . "\n\n--- INITIAL DRAFT (before revision) ---\n" . $initial_draft_text . "\n\n--- FINAL SUBMISSION (after revision) ---\n" . $essay_data['answer_text'];
+
+        try {
+            if ($provider === 'gemini') {
+                $data = [
+                    'model' => $this->get_gemini_model(),
+                    'system' => $system_prompt,
+                    'messages' => [['role' => 'user', 'content' => $user_content]],
+                    'max_tokens' => 800,
+                    'temperature' => 0.3
+                ];
+                $result = $this->make_gemini_api_call($data, 'final_scores_with_commentary');
+            } elseif ($provider === 'anthropic') {
+                $data = [
+                    'model' => $this->get_anthropic_model(),
+                    'system' => $system_prompt,
+                    'messages' => [['role' => 'user', 'content' => [['type' => 'text', 'text' => $user_content]]]],
+                    'max_tokens' => 800,
+                    'temperature' => 0.3
+                ];
+                $result = $this->make_anthropic_api_call($data, 'final_scores_with_commentary');
+            } else {
+                $data = [
+                    'model' => $this->get_openai_model(),
+                    'messages' => [
+                        ['role' => 'system', 'content' => $system_prompt],
+                        ['role' => 'user', 'content' => $user_content]
+                    ],
+                    'max_completion_tokens' => 800,
+                    'temperature' => 0.3
+                ];
+                $result = $this->make_openai_api_call($data, 'final_scores_with_commentary');
+            }
+
+            if (!$result['success']) {
+                error_log("DUAL-SCORE: final_scores_with_commentary API call failed: " . ($result['message'] ?? 'unknown'));
+                return ['success' => false, 'message' => $result['message'] ?? 'API call failed'];
+            }
+
+            // Parse JSON response
+            $response_text = trim($result['response']);
+            // Strip markdown code fences if present
+            $response_text = preg_replace('/^```(?:json)?\s*/i', '', $response_text);
+            $response_text = preg_replace('/\s*```$/', '', $response_text);
+            
+            // Auto-close truncated JSON
+            $response_text = $this->json_autoclose($response_text);
+            
+            $parsed = json_decode($response_text, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($parsed)) {
+                error_log("DUAL-SCORE: Failed to parse final scores JSON: " . json_last_error_msg() . " — Raw: " . substr($response_text, 0, 500));
+                return ['success' => false, 'message' => 'Failed to parse scores JSON'];
+            }
+
+            // Validate, extract and ENFORCE scores >= initial scores
+            $data_out = [];
+            $init_map = [
+                'content_and_ideas' => $init_ci,
+                'structure_and_organization' => $init_so,
+                'language_use' => $init_lu,
+                'creativity_and_originality' => $init_co,
+                'mechanics' => $init_me,
+            ];
+            $categories = ['content_and_ideas', 'structure_and_organization', 'language_use', 'creativity_and_originality', 'mechanics'];
+            foreach ($categories as $cat) {
+                $ai_score = 0;
+                $comment = '';
+                if (isset($parsed[$cat]) && is_array($parsed[$cat])) {
+                    $ai_score = (int)($parsed[$cat]['score'] ?? 0);
+                    $comment = $this->enforce_name_policy(trim((string)($parsed[$cat]['comment'] ?? '')), $student_name);
+                }
+                // SERVER-SIDE CLAMP: final score must be >= initial score
+                $baseline = $init_map[$cat] ?? 0;
+                if ($ai_score < $baseline) {
+                    error_log("DUAL-SCORE CLAMP: {$cat} AI returned {$ai_score} < initial {$baseline}, clamping to {$baseline}");
+                    $ai_score = $baseline;
+                }
+                $data_out[$cat] = ['score' => $ai_score, 'comment' => $comment];
+            }
+
+            // Extract overall_comment
+            $data_out['overall_comment'] = $this->enforce_name_policy(trim((string)($parsed['overall_comment'] ?? '')), $student_name);
+
+            // Calculate total
+            $total = 0;
+            foreach ($data_out as $cat => $info) {
+                if (is_array($info) && isset($info['score'])) { $total += $info['score']; }
+            }
+            $data_out['final_total'] = $total;
+
+            error_log("DUAL-SCORE: Final scores parsed - Total: {$total}/100");
+            return ['success' => true, 'data' => $data_out];
+
+        } catch (\Exception $e) {
+            error_log("DUAL-SCORE: Exception in final_scores_with_commentary: " . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
          * Generate homework exercises for an already graded essay
          */
         public function generate_homework_for_attempt($attempt_id, $level = 'general') {
@@ -724,7 +913,7 @@ Provide an encouraging but factual commentary about the student's writing journe
     /**
      * ✅ UPDATED: Extracts the grade and calls the new helper to save it to Moodle.
      */
-    protected function save_grade_to_moodle(array $essay_data, array $feedback_data): void {
+    protected function save_grade_to_moodle(array $essay_data, array $feedback_data, $final_scores_result = null): void {
         $student_comment = $this->create_student_feedback($feedback_data['feedback_html'], $essay_data['attempt_id']);
         
         $fraction = 0.0;
@@ -794,7 +983,11 @@ Provide an encouraging but factual commentary about the student's writing journe
                 $essay_data['user_id']
             );
             
-            // CRITICAL FIX: Add direct sumgrades update to ensure grades are properly saved
+            // DUAL-SCORE: Use final submission score for Moodle gradebook when available
+            if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data']['final_total'])) {
+                $score = (int)$final_scores_result['data']['final_total'];
+                error_log("DUAL-SCORE: Using FINAL score {$score} for Moodle gradebook (attempt {$essay_data['attempt_id']})");
+            }
             if (isset($score) && $score > 0 && isset($max_score) && $max_score > 0) {
                 $this->ensure_sumgrades_updated($essay_data['attempt_id'], $score);
             }
@@ -1387,7 +1580,7 @@ Provide an encouraging but factual commentary about the student's writing journe
         /**
      * Build complete feedback HTML with optional homework
      */
-    protected function build_complete_feedback_html($feedback_result, $revision_html, $essay_data, $homework_html = '', $initial_essay = null, $progress_commentary = '') {
+    protected function build_complete_feedback_html($feedback_result, $revision_html, $essay_data, $homework_html = '', $initial_essay = null, $progress_commentary = '', $final_scores_result = null, $initial_scores_extracted = null) {
         // IMPROVED: Much better print styles
         $print_styles = "
         <style>
@@ -1611,37 +1804,6 @@ Provide an encouraging but factual commentary about the student's writing journe
             $html_output .= '</div>';
         }
 
-        // Original/Final essay section - WITH STRATEGIC MARKERS FOR RESUBMISSION GRADER
-        $html_output .= '<div class="feedback-section">';
-        $html_output .= '<h2 class="section-header" style="color: #17a2b8;">Final Draft - First Submission</h2>';
-        $html_output .= '<hr>';
-        // START MARKER for original essay text extraction
-        $html_output .= '<!-- EXTRACT_ORIGINAL_START -->';
-        $html_output .= '<div style="background: #e8f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #17a2b8; margin: 10px 0;">';
-        // CLEANUP: sanitize pasted HTML/markdown artifacts (e.g., <p spellcheck="false">)
-        $clean_original_text = $this->sanitize_original_essay_text($essay_data['answer_text']);
-        $paragraphs = preg_split("/\r\n|\n|\r/", trim($clean_original_text));
-        foreach ($paragraphs as $p) {
-            if (!empty(trim($p))) {
-                $html_output .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
-            }
-        }
-        $html_output .= '</div>';
-        // END MARKER for original essay text extraction
-        $html_output .= '<!-- EXTRACT_ORIGINAL_END -->';
-        $html_output .= '<hr>';
-        $html_output .= '</div>';
-        
-        // Your Writing Journey (progress commentary) - AFTER Final Draft
-        if (!empty($progress_commentary)) {
-            $html_output .= '<div class="feedback-section">';
-            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft - First Submission</h2>';
-            $html_output .= '<hr>';
-            $html_output .= $progress_commentary;
-            $html_output .= '<hr>';
-            $html_output .= '</div>';
-        }
-
         // Revision section (if exists) - WITH STRATEGIC MARKERS
         if (!empty($revision_html)) {
             $html_output .= '<div class="feedback-section page-break-before">';
@@ -1671,6 +1833,139 @@ Provide an encouraging but factual commentary about the student's writing journe
         $html_output .= '<hr>';
         $html_output .= '</div>';
         
+        // Final Draft section (MOVED: now after Feedback, before Writing Journey) - WITH STRATEGIC MARKERS
+        $final_text = $essay_data['final_answer_text'] ?? $essay_data['answer_text'];
+        $html_output .= '<div class="feedback-section">';
+        $html_output .= '<h2 class="section-header" style="color: #17a2b8;">Final Draft - First Submission</h2>';
+        $html_output .= '<hr>';
+        $html_output .= '<!-- EXTRACT_ORIGINAL_START -->';
+        $html_output .= '<div style="background: #e8f5f9; padding: 20px; border-radius: 8px; border-left: 4px solid #17a2b8; margin: 10px 0;">';
+        $clean_final_text = $this->sanitize_original_essay_text($final_text);
+        $final_paragraphs = preg_split("/\r\n|\n|\r/", trim($clean_final_text));
+        foreach ($final_paragraphs as $p) {
+            if (!empty(trim($p))) {
+                $html_output .= '<p style="margin-bottom: 15px; font-size: 15px; line-height: 1.7; color: #0c5460;">' . htmlspecialchars($p) . '</p>';
+            }
+        }
+        $html_output .= '</div>';
+        $html_output .= '<!-- EXTRACT_ORIGINAL_END -->';
+        $html_output .= '<hr>';
+        $html_output .= '</div>';
+
+        // DUAL-SCORE: Your Writing Journey — score table + per-subcategory commentary (BEFORE Homework)
+        if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data'])) {
+            $fsd = $final_scores_result['data'];
+            // FIXED: Use pre-extracted initial scores (from SCORES_JSON markers)
+            $is_ci = (int)($initial_scores_extracted['content_and_ideas'] ?? 0);
+            $is_so = (int)($initial_scores_extracted['structure_and_organization'] ?? 0);
+            $is_lu = (int)($initial_scores_extracted['language_use'] ?? 0);
+            $is_co = (int)($initial_scores_extracted['creativity_and_originality'] ?? 0);
+            $is_me = (int)($initial_scores_extracted['mechanics'] ?? 0);
+            $is_total = $is_ci + $is_so + $is_lu + $is_co + $is_me;
+
+            $fs_ci = (int)($fsd['content_and_ideas']['score'] ?? 0);
+            $fs_so = (int)($fsd['structure_and_organization']['score'] ?? 0);
+            $fs_lu = (int)($fsd['language_use']['score'] ?? 0);
+            $fs_co = (int)($fsd['creativity_and_originality']['score'] ?? 0);
+            $fs_me = (int)($fsd['mechanics']['score'] ?? 0);
+            $fs_total = (int)($fsd['final_total'] ?? ($fs_ci + $fs_so + $fs_lu + $fs_co + $fs_me));
+
+            $improvement = $fs_total - $is_total;
+            $arrow = $improvement >= 0 ? '↑' : '↓';
+            $imp_color = $improvement >= 0 ? '#2e7d32' : '#c62828';
+
+            $html_output .= '<div class="feedback-section">';
+            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey</h2>';
+            $html_output .= '<hr>';
+
+            // Score comparison table
+            $html_output .= '<div style="background: #f1f8e9; padding: 20px; border-radius: 8px; border: 1px solid #c8e6c9; margin: 10px 0;">';
+            $html_output .= '<h3 style="color: #2e7d32; margin: 0 0 15px 0; font-size: 16px;">Score Improvement</h3>';
+            $html_output .= '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">';
+            $html_output .= '<tr style="background: #e8f5e9; font-weight: 600;">';
+            $html_output .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7;">Category</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Initial Draft</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Final Submission</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-bottom: 2px solid #a5d6a7; text-align: center;">Change</td>';
+            $html_output .= '</tr>';
+
+            $cats = [
+                ['Content & Ideas', $is_ci, $fs_ci, 25],
+                ['Structure & Organisation', $is_so, $fs_so, 25],
+                ['Language Use', $is_lu, $fs_lu, 20],
+                ['Creativity & Originality', $is_co, $fs_co, 20],
+                ['Mechanics', $is_me, $fs_me, 10],
+            ];
+            foreach ($cats as $cat) {
+                $diff = $cat[2] - $cat[1];
+                $dc = $diff >= 0 ? '#2e7d32' : '#c62828';
+                $ds = $diff >= 0 ? '+' . $diff : (string)$diff;
+                $html_output .= '<tr>';
+                $html_output .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0;">' . $cat[0] . '</td>';
+                $html_output .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">' . $cat[1] . '/' . $cat[3] . '</td>';
+                $html_output .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">' . $cat[2] . '/' . $cat[3] . '</td>';
+                $html_output .= '<td style="padding: 6px 12px; border-bottom: 1px solid #e0e0e0; text-align: center; color: ' . $dc . '; font-weight: 600;">' . $ds . '</td>';
+                $html_output .= '</tr>';
+            }
+            // Total row
+            $html_output .= '<tr style="font-weight: 700; background: #e8f5e9;">';
+            $html_output .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7;">Total</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $is_total . '/100</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $fs_total . '/100</td>';
+            $html_output .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center; color: ' . $imp_color . ';">' . ($improvement >= 0 ? '+' : '') . $improvement . ' ' . $arrow . '</td>';
+            $html_output .= '</tr>';
+            $html_output .= '</table>';
+            $html_output .= '</div>';
+
+            // Per-subcategory commentary
+            $cat_comments = [
+                'Content & Ideas' => $fsd['content_and_ideas']['comment'] ?? '',
+                'Structure & Organisation' => $fsd['structure_and_organization']['comment'] ?? '',
+                'Language Use' => $fsd['language_use']['comment'] ?? '',
+                'Creativity & Originality' => $fsd['creativity_and_originality']['comment'] ?? '',
+                'Mechanics' => $fsd['mechanics']['comment'] ?? '',
+            ];
+            $has_comments = false;
+            foreach ($cat_comments as $c) { if (!empty(trim($c))) { $has_comments = true; break; } }
+
+            if ($has_comments) {
+                $html_output .= '<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; border-left: 4px solid #4caf50; margin: 15px 0;">';
+                foreach ($cat_comments as $title => $comment) {
+                    if (!empty(trim($comment))) {
+                        $html_output .= '<p style="margin: 8px 0; line-height: 1.6; color: #2e7d32;"><strong>' . htmlspecialchars($title) . ':</strong> ' . htmlspecialchars($comment) . '</p>';
+                    }
+                }
+                $html_output .= '</div>';
+            }
+
+            // Overall Comment — encouraging if improved, STERN RED WARNING if not
+            $overall_comment = $fsd['overall_comment'] ?? '';
+            if (!empty(trim($overall_comment))) {
+                if ($improvement <= 0) {
+                    // NO IMPROVEMENT → red stern warning
+                    $html_output .= '<div style="background: #fbe9e7; padding: 15px; border-radius: 8px; border-left: 4px solid #c62828; margin: 15px 0;">';
+                    $html_output .= '<p style="margin: 0; line-height: 1.7; color: #b71c1c; font-size: 15px;"><strong>⚠ Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html_output .= '</div>';
+                } else {
+                    // IMPROVED → encouraging blue
+                    $html_output .= '<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #1976d2; margin: 15px 0;">';
+                    $html_output .= '<p style="margin: 0; line-height: 1.7; color: #1565c0; font-size: 15px;"><strong>Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html_output .= '</div>';
+                }
+            }
+
+            $html_output .= '<hr>';
+            $html_output .= '</div>';
+        } elseif (!empty($progress_commentary)) {
+            // Fallback: old-style progress commentary if dual-score is not available
+            $html_output .= '<div class="feedback-section">';
+            $html_output .= '<h2 class="section-header" style="color: #4caf50;">Your Writing Journey from Initial Draft - First Submission</h2>';
+            $html_output .= '<hr>';
+            $html_output .= $progress_commentary;
+            $html_output .= '<hr>';
+            $html_output .= '</div>';
+        }
+
         // FIXED: Add homework if provided with proper wrapper and strategic markers
         if (!empty($homework_html)) {
             // Ensure homework is wrapped in feedback-section for consistent styling with clear markers
@@ -1708,7 +2003,7 @@ Provide an encouraging but factual commentary about the student's writing journe
     /**
      * Save grading result with optional homework
      */
-        protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '') {
+        protected function save_grading_result($attempt_id, $complete_html, $feedback_data, $ai_likelihood = null, $homework_html = '', $final_scores_result = null) {
         global $DB;
         
         error_log("DEBUG: Starting save_grading_result for attempt {$attempt_id}");
@@ -1769,6 +2064,22 @@ Provide an encouraging but factual commentary about the student's writing journe
             $record->score_language_use = $score_language_use;
             $record->score_creativity_originality = $score_creativity_originality;
             $record->score_mechanics = $score_mechanics;
+
+            // DUAL-SCORE: Calculate and save initial_score (sum of initial draft subcategories)
+            $record->initial_score = $score_content_ideas + $score_structure_organization + $score_language_use + $score_creativity_originality + $score_mechanics;
+
+            // DUAL-SCORE: Save final submission scores if available
+            if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data'])) {
+                $fsd = $final_scores_result['data'];
+                $record->final_score = (int)($fsd['final_total'] ?? 0);
+                $record->final_score_content_ideas = (int)($fsd['content_and_ideas']['score'] ?? 0);
+                $record->final_score_structure = (int)($fsd['structure_and_organization']['score'] ?? 0);
+                $record->final_score_language = (int)($fsd['language_use']['score'] ?? 0);
+                $record->final_score_creativity = (int)($fsd['creativity_and_originality']['score'] ?? 0);
+                $record->final_score_mechanics = (int)($fsd['mechanics']['score'] ?? 0);
+                // Save journey JSON (scores + commentary)
+                $record->journey_json = json_encode($fsd, JSON_UNESCAPED_UNICODE);
+            }
             // Similarity fields may have been computed in resubmission flow; keep existing if not provided
             if (isset($feedback_data['similarity_percent'])) {
                 $record->similarity_percent = (int)$feedback_data['similarity_percent'];
