@@ -137,10 +137,14 @@ if (!empty($row->next_due_date)) {
 // Find Classroom (Category 1 or Category 2 Course)
 $classroom = '';
 $classroom_short = '';
+$is_category_1 = false;
 foreach ($rows as $r) {
     if (strcasecmp($r->categoryname ?? '', 'Category 1') === 0 || strcasecmp($r->categoryname ?? '', 'Category 2') === 0) {
         $classroom = $r->coursename;
         $classroom_short = $r->courseshortname ?? $r->coursename; // Fallback to fullname if shortname missing
+        if (strcasecmp($r->categoryname ?? '', 'Category 1') === 0) {
+            $is_category_1 = true;
+        }
         break;
     }
 }
@@ -263,7 +267,7 @@ foreach ($books_data as $bk) {
 $gemini = new \local_homeworkdashboard\gemini_helper();
 error_log('AI_DEBUG: Starting generation for ' . fullname($user) . ' | Books: ' . count($books_for_ai));
 // Generate AI Commentary (with books data)
-$ai_commentary = $gemini->generate_commentary($user->firstname, $new_acts_data, $rev_acts_data, $lang, $books_for_ai);
+$ai_commentary = $gemini->generate_commentary($user->firstname, $new_acts_data, $rev_acts_data, $lang, $books_for_ai, $is_category_1);
 
 // Post-process AI commentary
 if (!empty($ai_commentary)) {
@@ -313,38 +317,40 @@ $html = '
     <div class="ai-commentary" style="background-color: #f8f9fa; padding: 20px; margin-bottom: 20px; border-radius: 4px;">
         <h4 style="margin-top: 0; color: #0056b3; margin-bottom: 15px;">GrowMinds Academy Summary</h4>';
 
-// Reading Activity Section (moved under GrowMinds Academy Summary, aligned with quiz table)
-$html .= '<h5 style="color: #2C3E50; margin-bottom: 10px;">Reading Activity</h5>
-    <table class="report-table" style="' . $style_table . '">
-        <thead>
-            <tr>
-                <th style="' . $style_th . '">Book Title</th>
-                <th style="' . $style_th . '">Author</th>
-                <th style="' . $style_th . '">Status</th>
-                <th style="' . $style_th . '">Finished Date</th>
-            </tr>
-        </thead>
-        <tbody>';
+// Reading Activity Section
+if ($is_category_1) {
+    $html .= '<h5 style="color: #2C3E50; margin-bottom: 10px;">Reading Activity</h5>
+        <table class="report-table" style="' . $style_table . '">
+            <thead>
+                <tr>
+                    <th style="' . $style_th . '">Book Title</th>
+                    <th style="' . $style_th . '">Author</th>
+                    <th style="' . $style_th . '">Status</th>
+                    <th style="' . $style_th . '">Finished Date</th>
+                </tr>
+            </thead>
+            <tbody>';
 
-if (!empty($books_data)) {
-    foreach ($books_data as $bk) {
-        $bk_status = $bk->finished ? 'Finished ✓' : 'In Progress';
-        $bk_status_style = $bk->finished
-            ? 'background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;'
-            : 'background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;';
-        $finished_date = $bk->finished ? userdate($bk->week_ending, get_string('strftimedate', 'langconfig')) : '-';
-        $html .= '<tr>
-            <td style="' . $style_td . '">' . s($bk->title) . '</td>
-            <td style="' . $style_td . '">' . s($bk->author ?: '-') . '</td>
-            <td style="' . $style_td . '"><span style="' . $bk_status_style . '">' . $bk_status . '</span></td>
-            <td style="' . $style_td . '">' . $finished_date . '</td>
-        </tr>';
+    if (!empty($books_data)) {
+        foreach ($books_data as $bk) {
+            $bk_status = $bk->finished ? 'Finished ✓' : 'In Progress';
+            $bk_status_style = $bk->finished
+                ? 'background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;'
+                : 'background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;';
+            $finished_date = $bk->finished ? userdate($bk->week_ending, get_string('strftimedate', 'langconfig')) : '-';
+            $html .= '<tr>
+                <td style="' . $style_td . '">' . s($bk->title) . '</td>
+                <td style="' . $style_td . '">' . s($bk->author ?: '-') . '</td>
+                <td style="' . $style_td . '"><span style="' . $bk_status_style . '">' . $bk_status . '</span></td>
+                <td style="' . $style_td . '">' . $finished_date . '</td>
+            </tr>';
+        }
+    } else {
+        $html .= '<tr><td colspan="4" style="' . $style_td . ' font-style: italic; color: #777; text-align: center;">No books recorded this week</td></tr>';
     }
-} else {
-    $html .= '<tr><td colspan="4" style="' . $style_td . ' font-style: italic; color: #777; text-align: center;">No books recorded this week</td></tr>';
-}
 
-$html .= '</tbody></table>';
+    $html .= '</tbody></table>';
+}
 $html .= '
     <h5 style="color: #2C3E50; margin-bottom: 10px; margin-top: 20px;">Quiz Activity</h5>';
     $html .= '

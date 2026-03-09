@@ -84,7 +84,7 @@ class gemini_helper {
      * @param string $lang Language code ('en' or 'ko')
      * @return string|null Generated commentary or null on failure
      */
-    public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en', array $books = []): ?string {
+    public function generate_commentary(string $student_name, array $new_activities, array $revision_activities, string $lang = 'en', array $books = [], bool $is_category_1 = true): ?string {
         if (!$this->is_configured()) {
             return "AI Commentary unavailable: API Key not configured for provider '{$this->provider}'.";
         }
@@ -141,7 +141,7 @@ class gemini_helper {
             $new_stats['notes'] += ($act['stats_notes'] ?? 0);
         }
 
-        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats, $books);
+        $prompt = $this->construct_prompt($student_name, $new_activities, $revision_activities, $completed_new, $total_new, $completed_revision, $total_revision, $lang, $new_stats, $rev_stats, $books, $is_category_1);
         error_log('AI_DEBUG: Prompt constructed. Length: ' . strlen($prompt) . ' | Provider: ' . $this->provider . ' | Books: ' . count($books));
 
         // Route to the selected provider
@@ -152,7 +152,7 @@ class gemini_helper {
         return $this->call_api($prompt);
     }
 
-    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang, array $new_stats = [], array $rev_stats = [], array $books = []): string {
+    private function construct_prompt(string $student_name, array $new_activities, array $revision_activities, int $completed_new, int $total_new, int $completed_revision, int $total_revision, string $lang, array $new_stats = [], array $rev_stats = [], array $books = [], bool $is_category_1 = true): string {
 
         if ($lang === 'ko') {
             // --- KOREAN PROMPT (Native Generation) ---
@@ -180,7 +180,9 @@ class gemini_helper {
             
             $prompt .= "[필수 포함 내용]\n";
             $prompt .= "   1. **종합 요약** (헤더: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
-            $prompt .= "      - **독서 코멘트로 가장 먼저 시작하세요.**\n";
+            
+            if ($is_category_1) {
+                $prompt .= "      - **독서 코멘트로 가장 먼저 시작하세요.**\n";
             
             if (!empty($books)) {
                 $finished_books = array_filter($books, function($b) { return !empty($b['finished']); });
@@ -202,6 +204,9 @@ class gemini_helper {
                 $prompt .= "      - **독서 경고 필수 (첫 문장)**: 이번 주 독서 기록이 전혀 없음을 단호하게 지적하고, 매주 최소 한 권의 책을 읽는 것의 압도적인 중요성을 강력하게 권고하세요. 이 경고 메시지는 반드시 `<div style='background-color: #FFF3CD; color: #D8000C; padding: 15px; border: 1px solid #FFEEBA; border-radius: 5px; margin-bottom: 15px;'>` 와 `</div>` 태그로 감싸서 노란색 박스 안의 빨간색 글씨로 출력해야 합니다.\n";
             }
             $prompt .= "      - 독서 코멘트 직후, 다음 문장을 추가하세요: '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'\n";
+        } else {
+            $prompt .= "      - 가장 먼저, 다음 요약 문장으로 시작하세요: '{$student_name} (은)는 이번 주 새로운 과제 {$total_new}개 중 {$completed_new}개, 복습 과제 {$total_revision}개 중 {$completed_revision}개를 완료했습니다.'\n";
+        }
             $prompt .= "      - 그 다음, 전체적인 성실도와 학습 태도를 총평해주세요.\n";
             
             $prompt .= "   2. **New Topics (새로운 과제) 상세 분석** (헤더: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
@@ -258,7 +263,9 @@ class gemini_helper {
             
             $prompt .= "[Required Content]\n";
             $prompt .= "   1. **Summary** (Header: <h4 style='color: #2C3E50; border-bottom: 2px solid #2C3E50; padding-bottom: 5px;'>Summary</h4>):\n";
-            $prompt .= "      - **The very first sentence must be about reading activity.**\n";
+            
+            if ($is_category_1) {
+                $prompt .= "      - **The very first sentence must be about reading activity.**\n";
             
             if (!empty($books)) {
                 $finished_books = array_filter($books, function($b) { return !empty($b['finished']); });
@@ -280,6 +287,9 @@ class gemini_helper {
                 $prompt .= "      - **Reading Warning (First Sentence)**: Start the Summary with a firm, strong warning that no books were recorded this week, emphasizing the critical importance of reading at least one book per week. You MUST wrap this warning in a yellow box with red text using exactly these tags: `<div style='background-color: #FFF3CD; color: #D8000C; padding: 15px; border: 1px solid #FFEEBA; border-radius: 5px; margin-bottom: 15px;'>` and `</div>`.\n";
             }
             $prompt .= "      - After the reading commentary, state: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
+        } else {
+            $prompt .= "      - The very first sentence must be the following summary: '{$student_name} completed {$completed_new} out of {$total_new} new activities and {$completed_revision} out of {$total_revision} revision activities.'\n";
+        }
             $prompt .= "      - Then provide an overall assessment of diligence and learning attitude.\n";
             
             $prompt .= "   2. **New Topics Detailed Analysis** (Header: <h4 style='color: #2980B9; border-bottom: 1px solid #2980B9; padding-bottom: 5px;'>New Topics</h4>):\n";
@@ -309,13 +319,15 @@ class gemini_helper {
             $prompt .= "      - If revision work is completed too quickly, express concern about 'quality of learning'.\n";
             $prompt .= "      - **Revision Quality**: Analyze Flag vs Note counts. If many flags but few notes, warn: 'Many questions were flagged but notes are lacking.'\n";
 
-            if (!empty($books)) {
-                $prompt .= "   5. **Reading Activity** (Header: <h4 style='color: #27AE60; border-bottom: 1px solid #27AE60; padding-bottom: 5px;'>Reading</h4>):\n";
-                $prompt .= "      - Comment on the student's reading engagement. Mention specific book titles.\n";
-                $prompt .= "      - If a book is finished, praise the achievement. If in progress, encourage continuation.\n";
-                $prompt .= "      - Connect reading habits to overall academic development.\n";
-            } else {
-                $prompt .= "   5. **Reading Activity**: No books were recorded this week. Briefly encourage independent reading.\n";
+            if ($is_category_1) {
+                if (!empty($books)) {
+                    $prompt .= "   5. **Reading Activity** (Header: <h4 style='color: #27AE60; border-bottom: 1px solid #27AE60; padding-bottom: 5px;'>Reading</h4>):\n";
+                    $prompt .= "      - Comment on the student's reading engagement. Mention specific book titles.\n";
+                    $prompt .= "      - If a book is finished, praise the achievement. If in progress, encourage continuation.\n";
+                    $prompt .= "      - Connect reading habits to overall academic development.\n";
+                } else {
+                    $prompt .= "   5. **Reading Activity**: No books recorded this week. Briefly encourage independent reading.\n";
+                }
             }
 
             $prompt .= "- **Formatting**: Use HTML (<p>, <strong>, <ul>, <li>). **All <ul> tags must be properly closed**.\n\n";
@@ -389,14 +401,16 @@ class gemini_helper {
         }
 
         // Reading Activity Data
-        $prompt .= "\nReading Activity:\n";
-        if (empty($books)) {
-            $prompt .= "- No books recorded this week.\n";
-        } else {
-            foreach ($books as $bk) {
-                $status = !empty($bk['finished']) ? 'Finished' : 'In Progress';
-                $author_str = !empty($bk['author']) ? ' by ' . $bk['author'] : '';
-                $prompt .= "- {$status}: \"{$bk['title']}\"{$author_str} (+{$bk['points']} pts)\n";
+        if ($is_category_1) {
+            $prompt .= "\nReading Activity:\n";
+            if (empty($books)) {
+                $prompt .= "- No books recorded this week.\n";
+            } else {
+                foreach ($books as $bk) {
+                    $status = !empty($bk['finished']) ? 'Finished' : 'In Progress';
+                    $author_str = !empty($bk['author']) ? ' by ' . $bk['author'] : '';
+                    $prompt .= "- {$status}: \"{$bk['title']}\"{$author_str} (+{$bk['points']} pts)\n";
+                }
             }
         }
 
