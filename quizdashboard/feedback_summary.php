@@ -39,10 +39,36 @@ if (!$data) {
 }
 
 $top_priorities = $data['top_priorities'] ?? [];
-$overall_comments = $data['overall_comments'] ?? '';
+
+$journey_json = $grading->journey_json ?? '';
+$is_resubmission = !empty($journey_json);
+$overall_comments = '';
+$overall_title = 'Overall Comments';
+
+if ($is_resubmission) {
+    $journey_data = json_decode($journey_json, true);
+    if (!empty($journey_data['overall_comment'])) {
+        $overall_comments = $journey_data['overall_comment'];
+        $overall_title = 'Your Writing Journey';
+    } else {
+        $overall_comments = $data['overall_comments'] ?? ''; // fallback
+    }
+} else {
+    $overall_comments = $data['overall_comments'] ?? '';
+}
+
+// Ensure the comments are formatted as a proper HTML list if the AI returned bulleted text
+$overall_comments = preg_replace('/^- (.*?)$/m', '<li>$1</li>', $overall_comments);
+if (strpos($overall_comments, '<li>') !== false) {
+    $overall_comments = '<ul style="margin: 0; padding-left: 20px;">' . $overall_comments . '</ul>';
+} else {
+    $overall_comments = nl2br(htmlspecialchars($overall_comments)); // fallback to normal paragraphs
+}
 
 // Display logic here
-echo "<div class='container mt-4 mb-4' style='font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif; max-width: 800px;'>";
+// Display logic here
+// Wrap everything in a nice card
+echo "<div class='container mt-4 mb-4' style='font-family: \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; padding: 30px; border: 1px solid #dcdcdc; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background-color: #ffffff;'>";
 
 echo "<h2 style='color:#003366; font-size:24px; border-bottom:2px solid #003366; padding-bottom:10px; margin-bottom:20px;'>Top 4 Priorities for Improvement</h2>";
 
@@ -75,7 +101,7 @@ if (empty($top_priorities)) {
     echo "</ol>";
 }
 
-echo "<h2 style='color:#003366; font-size:24px; border-bottom:2px solid #003366; padding-bottom:10px; margin-top:40px; margin-bottom:20px;'>Overall Comments (Writing Journey)</h2>";
+echo "<h2 style='color:#003366; font-size:24px; border-bottom:2px solid #003366; padding-bottom:10px; margin-top:40px; margin-bottom:20px;'>{$overall_title}</h2>";
 
 if (empty($overall_comments)) {
     echo "<p>No overall comments were found.</p>";
@@ -91,12 +117,12 @@ if (empty($overall_comments)) {
     if ($is_warning) {
         echo "<div style='background-color: #fbe9e7; padding: 20px; border-radius: 8px; border-left: 5px solid #d32f2f; margin-bottom: 20px;'>";
         echo "<p style='color: #c62828; font-size: 16px; margin: 0; line-height: 1.6; font-weight: 500;'>";
-        echo "⚠️ " . nl2br(htmlspecialchars($overall_comments));
+        echo "⚠️ " . $overall_comments;
         echo "</p></div>";
     } else {
         echo "<div style='background-color: #e3f2fd; padding: 20px; border-radius: 8px; border-left: 5px solid #1976d2; margin-bottom: 20px;'>";
         echo "<p style='color: #1565c0; font-size: 16px; margin: 0; line-height: 1.6;'>";
-        echo nl2br(htmlspecialchars($overall_comments));
+        echo $overall_comments;
         echo "</p></div>";
     }
 }

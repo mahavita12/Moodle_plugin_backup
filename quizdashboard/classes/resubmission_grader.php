@@ -43,11 +43,11 @@ This student previously submitted this essay and received feedback. You are now 
 Previous scores from {$prev_ordinal} submission:
 " . $this->format_previous_scores_for_prompt($previous_scores) . "
 
-- Show improvement as: Previous Score ??? New Score  
+- Show improvement as: Previous Score → New Score  
 
 
 **FINAL SCORE RULE**:
-- The Final Score (Previous ??? New) MUST equal the sum of the five NEW subcategory scores.
+- The Final Score (Previous → New) MUST equal the sum of the five NEW subcategory scores.
 - Use exact integer arithmetic. Do not invent totals; compute them from your NEW subcategory scores.
 
 **CRITICAL FORMATTING RULES FOR EXAMPLES:**
@@ -62,12 +62,12 @@ Improved: [corrected text]
 **LIMITS (STRICT):**
 - For every category, the 'Areas for Improvement' list must contain no more than 3 concise bullets (maximum 3).
 - In Content and Ideas, Structure and Organization, and Creativity and Originality sections, the 'Examples' list must contain no more than 3 items (maximum 3). Do not mention quantities in the output.
-- In Language Use and Mechanics, include no more than 5 Original ??? Improved pairs (maximum 5). Do not mention quantities in the output.
+- In Language Use and Mechanics, include no more than 5 Original → Improved pairs (maximum 5). Do not mention quantities in the output.
 
 **OUTPUT STRUCTURE**: You must follow this exact HTML format:
 
 <h2 style=\"font-size:18px;\">1. Content and Ideas (25%)</h2>
-<p><strong>Score (Previous ??? New):</strong> [PREVIOUS_SCORE]/25 ??? [NEW_SCORE]/25</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li>
@@ -76,7 +76,7 @@ Improved: [corrected text]
 </ul>
 
 <h2 style=\"font-size:18px;\">2. Structure and Organization (25%)</h2>
-<p><strong>Score (Previous ??? New):</strong> [PREVIOUS_SCORE]/25 ??? [NEW_SCORE]/25</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/25 → [NEW_SCORE]/25</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Strengths:</strong><ul><li>Provide exactly one concise bullet summarising the main strength.</li></ul></li>
@@ -85,7 +85,7 @@ Improved: [corrected text]
 </ul>
 
 <h2 style=\"font-size:18px;\">3. Language Use (20%)</h2>
-<p><strong>Score (Previous ??? New):</strong> [PREVIOUS_SCORE]/20 ??? [NEW_SCORE]/20</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/20 → [NEW_SCORE]/20</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -107,7 +107,7 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 </ul>
 
 <h2 style=\"font-size:18px;\">5. Mechanics (10%)</h2>
-<p><strong>Score (Previous ??? New):</strong> [PREVIOUS_SCORE]/10 ??? [NEW_SCORE]/10</p>
+<p><strong>Score (Previous → New):</strong> [PREVIOUS_SCORE]/10 → [NEW_SCORE]/10</p>
 <ul>
 <li><strong>Analysis of Changes:</strong> [How the student addressed previous feedback for this criterion]</li>
 <li><strong>Areas for Improvement:</strong><ul><li>[Specific areas still needing work]</li></ul></li>
@@ -119,14 +119,24 @@ NON-NEGOTIABLE REQUIREMENT: The word 'Original:' and all student text following 
 <li><span style=\"color:#3399cc;\">- Include up to 5 examples (maximum 5) showing the original and improved version separately on different lines. Do not mention the limit in the output.</span></li></ul></li>
 </ul>
 
-<h2 style=\"font-size:18px;\">Overall Comments</h2>
-<div id=\"overall-comments\"><ul>
-<li>Provide 3-4 concise bullet points summarizing the most important feedback.</li>
-<li>Each bullet point should be 1-2 sentences, encouraging, and provide concrete next steps.</li>
-<li>Do NOT provide paragraphs. You must use bullet points formatted as an HTML list.</li>
-</ul></div>
+<h2 style=\"font-size:18px;\">Top 4 Priorities for Improvement</h2>
+<ul>
+<li><strong>[Name of Priority 1]:</strong> Provide a 1-2 sentence explanation of why this is a priority. Then, provide exactly TWO distinct examples of this issue from the student's essay, formatted like this:
+<ul>
+<li><span style=\"color:#808080;\">Original: [student's mistake in grey]</span></li>
+<li><span style=\"color:#3399cc;\">Improved: [corrected version in blue]</span></li>
+</ul>
+<br><strong>IMPORTANT:</strong> You must supply EXACTLY TWO examples per priority. If you cannot find two, provide one or a hypothetical one. Do NOT supply more or less. Each example MUST be inside an `<li>` tag as shown.
+</li>
+<li><strong>[Name of Priority 2]:</strong> (same format)</li>
+<li><strong>[Name of Priority 3]:</strong> (same format)</li>
+<li><strong>[Name of Priority 4]:</strong> (same format)</li>
+</ul>
 
-<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous ??? New): [PREVIOUS_TOTAL]/100 ??? [NEW_TOTAL]/100</strong></p></h2>
+<h2 style=\"font-size:18px;\">Overall Comments</h2>
+<div id=\"overall-comments\"><p>Provide a 3-4 sentence summary of the most important feedback. Be encouraging and provide concrete next steps.</p></div>
+
+<h2 style=\"font-size:16px;\"><p><strong>Final Score (Previous → New): [PREVIOUS_TOTAL]/100 → [NEW_TOTAL]/100</strong></p></h2>
 
 <!-- SCORES_JSON_START -->
 {\"content_and_ideas\": [NEW_SCORE], \"structure_and_organization\": [NEW_SCORE], \"language_use\": [NEW_SCORE], \"creativity_and_originality\": [NEW_SCORE], \"mechanics\": [NEW_SCORE], \"final_score\": [NEW_TOTAL]}
@@ -197,8 +207,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
         $feedback_html = $result['response'];
 
-        // Remove "Top 4 Priorities for Improvement" section to hide it from students
-        $feedback_html = preg_replace('/<h2[^>]*>Top 4 Priorities for Improvement<\/h2>\s*<ul.*?(?=<h2)/is', '', $feedback_html);
+        // Priorities are no longer stripped here so they can be parsed into JSON later
 
         return [
             'success' => true,
@@ -313,6 +322,44 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '</div>';
         }
 
+
+
+
+        // MOVED: Your Writing Journey section is now located at the end
+
+        // Revision section (with consistent styling)
+        if (!empty($revision_html)) {
+            $filtered_revision_html = $this->remove_homework_from_html($revision_html);
+            if (!empty($filtered_revision_html)) {
+                $html .= '<div class="feedback-section page-break-before">';
+                $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Revision - ' . $ordinal . ' Submission</h2>';
+                $html .= '<hr>';
+                $html .= $filtered_revision_html;
+                $html .= '<hr>';
+                $html .= '</div>';
+    }
+    }
+        // Comparative feedback section (with consistent styling)
+        $html .= '<div class="feedback-section page-break-before">';
+        $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Comparative Feedback - ' . $ordinal . ' Submission</h2>';
+        $html .= '<hr>';
+        $html .= '<!-- EXTRACT_FEEDBACK_START -->';
+        // Hide JSON score summary from the visible comparative feedback
+        if (method_exists($this, 'hide_scores_json_for_display')) {
+            $segment = $this->hide_scores_json_for_display($feedback_data['feedback_html']);
+            if (method_exists($this, 'normalize_example_labels_for_display')) {
+                $segment = $this->normalize_example_labels_for_display($segment);
+            }
+            $html .= $segment;
+        } else {
+            $segment = preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $feedback_data['feedback_html']);
+            $segment = preg_replace('/(<li[^>]*>\s*)(?:&bull;|→)\s*(Original:|Improved:)/iu', '$1$2', $segment);
+            $html .= $segment;
+        }
+        $html .= '<!-- EXTRACT_FEEDBACK_END -->';
+        $html .= '<hr>';
+        $html .= '</div>';
+
         // Current (Final Draft) essay section - WITH STRATEGIC MARKERS FOR CONSISTENCY
         $html .= '<div class="feedback-section">';
         $html .= '<h2 class="section-header" style="color: #17a2b8;">Final Draft - ' . $ordinal . ' Submission</h2>';
@@ -334,41 +381,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         $html .= '<hr>';
         $html .= '</div>';
 
-
-        // MOVED: Your Writing Journey section is now located at the end
-
-        // Revision section (with consistent styling)
-        if (!empty($revision_html)) {
-            $filtered_revision_html = $this->remove_homework_from_html($revision_html);
-            if (!empty($filtered_revision_html)) {
-                $html .= '<div class="feedback-section page-break-before">';
-                $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Essay Revision - ' . $ordinal . ' Submission</h2>';
-                $html .= '<hr>';
-                $html .= $filtered_revision_html;
-                $html .= '<hr>';
-                $html .= '</div>';
-    }
-    }
-        // Comparative feedback section (with consistent styling)
-        $html .= '<div class="feedback-section page-break-before">';
-        $html .= '<h2 style="font-size:16px; color:#003366;">GrowMinds Academy Comparative Feedback - ' . $ordinal . ' Submission</h2>';
-        $html .= '<hr>';
-        // Hide JSON score summary from the visible comparative feedback
-        if (method_exists($this, 'hide_scores_json_for_display')) {
-            $segment = $this->hide_scores_json_for_display($feedback_data['feedback_html']);
-            if (method_exists($this, 'normalize_example_labels_for_display')) {
-                $segment = $this->normalize_example_labels_for_display($segment);
-            }
-            $html .= $segment;
-        } else {
-            $segment = preg_replace('/<!--\s*SCORES_JSON_START\s*-->.*?<!--\s*SCORES_JSON_END\s*-->/s', '', $feedback_data['feedback_html']);
-            $segment = preg_replace('/(<li[^>]*>\s*)(?:&bull;|???)\s*(Original:|Improved:)/iu', '$1$2', $segment);
-            $html .= $segment;
-        }
-        $html .= '<hr>';
-        $html .= '</div>';
-
-        // DUAL-SCORE: Your Writing Journey ??? score table + per-subcategory commentary (BEFORE Homework)
+        // DUAL-SCORE: Your Writing Journey → score table + per-subcategory commentary (BEFORE Homework)
         if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data'])) {
             $fsd = $final_scores_result['data'];
             // FIXED: Use pre-extracted initial scores
@@ -425,7 +438,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7;">Total</td>';
             $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $is_total . '/100</td>';
             $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center;">' . $fs_total . '/100</td>';
-            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center; color: ' . $imp_color . ';">' . ($improvement >= 0 ? '+' : '') . $improvement . ' ' . ($improvement >= 0 ? '???' : '???') . '</td>';
+            $html .= '<td style="padding: 8px 12px; border-top: 2px solid #a5d6a7; text-align: center; color: ' . $imp_color . ';">' . ($improvement >= 0 ? '+' : '') . $improvement . ' ' . ($improvement > 0 ? '↑' : ($improvement < 0 ? '↓' : '-')) . '</td>';
             $html .= '</tr>';
             $html .= '</table></div>';
 
@@ -449,16 +462,32 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 $html .= '</div>';
             }
 
-            // Overall Comment ??? encouraging if improved, STERN RED WARNING if not
+            // Overall Comment → encouraging if improved, STERN RED WARNING if not
             $overall_comment = $fsd['overall_comment'] ?? '';
-            if (!empty(trim($overall_comment))) {
+            // Handle array if AI returned JSON array by mistake
+            if (is_array($overall_comment)) {
+                $overall_comment = implode("
+", $overall_comment);
+            }
+            if (!empty(trim((string)$overall_comment))) {
+                // Convert text bullet points or newlines to HTML
+                $formatted_comment = preg_replace('/^- (.*?)$/m', '<li>$1</li>', (string)$overall_comment);
+                // Also handle markdown asterisks for bullets just in case
+                $formatted_comment = preg_replace('/^\* (.*?)$/m', '<li>$1</li>', $formatted_comment);
+                
+                if (strpos($formatted_comment, '<li>') !== false) {
+                    $formatted_comment = '<ul style="margin: 0; padding-left: 20px; line-height: 1.6;">' . $formatted_comment . '</ul>';
+                } else {
+                    $formatted_comment = nl2br($formatted_comment);
+                }
+
                 if ($improvement <= 0) {
                     $html .= '<div style="background: #fbe9e7; padding: 15px; border-radius: 8px; border-left: 4px solid #c62828; margin: 15px 0;">';
-                    $html .= '<p style="margin: 0; line-height: 1.7; color: #b71c1c; font-size: 15px;"><strong>??? Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html .= '<p style="margin: 0; line-height: 1.7; color: #b71c1c; font-size: 15px;"><strong>→ Overall:</strong> ' . $formatted_comment . '</p>';
                     $html .= '</div>';
                 } else {
                     $html .= '<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #1976d2; margin: 15px 0;">';
-                    $html .= '<p style="margin: 0; line-height: 1.7; color: #1565c0; font-size: 15px;"><strong>Overall:</strong> ' . htmlspecialchars($overall_comment) . '</p>';
+                    $html .= '<p style="margin: 0; line-height: 1.7; color: #1565c0; font-size: 15px;"><strong>Overall:</strong> ' . $formatted_comment . '</p>';
                     $html .= '</div>';
                 }
             }
@@ -731,27 +760,27 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         }
     }
 
-    // Helper: deterministically set the Final Score (Previous ??? New) line to avoid AI hallucination
+    // Helper: deterministically set the Final Score (Previous → New) line to avoid AI hallucination
     private function enforce_final_score($html, $prev_total, $new_total) {
         // Debug logging
         error_log("DEBUG: enforce_final_score called with prev_total=$prev_total, new_total=$new_total");
 
         // Build replacement strong line and wrapped block
-        $strong = '<strong>Final Score (Previous ??? New): ' . (int)$prev_total . '/100 ??? ' . (int)$new_total . '/100</strong>';
+        $strong = '<strong>Final Score (Previous → New): ' . (int)$prev_total . '/100 → ' . (int)$new_total . '/100</strong>';
         $wrapped = '<h2 style="font-size:16px;"><p>' . $strong . '</p></h2>';
 
         // Normalise common arrow entities to a single form to ease matching
-        $normalized = str_replace(['&rarr;', '&#8594;', '-&gt;'], '???', $html);
+        $normalized = str_replace(['&rarr;', '&#8594;', '-&gt;'], '→', $html);
 
         // Remove any bare numeric Final Score lines (various wrappers)
         $patternsToStrip = [
-            // <h2><p><strong>X/100 ??? Y/100</strong></p></h2>
-            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*\d+\s*\/\s*100\s*(?:???|&gt;|???|???|???)\s*\d+\s*\/\s*100\s*<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
-            // <p><strong>X/100 ??? Y/100</strong></p>
-            '/<p[^>]*>\s*<strong>\s*\d+\s*\/\s*100\s*(?:???|&gt;|???|???|???)\s*\d+\s*\/\s*100\s*<\/strong>\s*<\/p>/siu',
-            // <strong>X/100 ??? Y/100</strong>
-            '/<strong>\s*\d+\s*\/\s*100\s*(?:???|&gt;|???|???|???)\s*\d+\s*\/\s*100\s*<\/strong>/siu',
-            // Any existing "Final Score (Previous ??? New): ..." line
+            // <h2><p><strong>X/100 → Y/100</strong></p></h2>
+            '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|→|→|→)\s*\d+\s*\/\s*100\s*<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
+            // <p><strong>X/100 → Y/100</strong></p>
+            '/<p[^>]*>\s*<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|→|→|→)\s*\d+\s*\/\s*100\s*<\/strong>\s*<\/p>/siu',
+            // <strong>X/100 → Y/100</strong>
+            '/<strong>\s*\d+\s*\/\s*100\s*(?:→|&gt;|→|→|→)\s*\d+\s*\/\s*100\s*<\/strong>/siu',
+            // Any existing "Final Score (Previous → New): ..." line
             '/<h2[^>]*>\s*(?:<p[^>]*>\s*)?<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>\s*(?:<\/p>)?\s*<\/h2>/siu',
             '/<strong>\s*Final\s+Score\s*\(Previous.*?New\)\s*:.*?<\/strong>/siu',
         ];
@@ -773,7 +802,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         }
 
         // Fallbacks: try replacing any remaining simple patterns (legacy)
-        $html2 = preg_replace('/<p><strong>\s*\d+\/100\s*???\s*\d+\/100\s*<\/strong><\/p>/si', '<p>' . $strong . '</p>', $normalized);
+        $html2 = preg_replace('/<p><strong>\s*\d+\/100\s*→\s*\d+\/100\s*<\/strong><\/p>/si', '<p>' . $strong . '</p>', $normalized);
         if ($html2 !== null && $html2 !== $normalized) {
             error_log('DEBUG: enforce_final_score replaced bare score paragraph');
             return $html2;
@@ -797,14 +826,14 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             return null;
         }
 
-        // Normalise entities so ??? or &rarr; are comparable
+        // Normalise entities so → or &rarr; are comparable
         $normalized = html_entity_decode($segment, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-        // Prefer explicit Previous ??? New pattern and capture the NEW score (second number)
-        if (preg_match('/(\d+)\s*\/\s*' . $max . '\s*(?:???|->)\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $arrowMatch)) {
+        // Prefer explicit Previous → New pattern and capture the NEW score (second number)
+        if (preg_match('/(\d+)\s*\/\s*' . $max . '\s*(?:→|->)\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $arrowMatch)) {
             return (int)$arrowMatch[2];
         }
-        if (preg_match('/???\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $justArrow)) {
+        if (preg_match('/→\s*(\d+)\s*\/\s*' . $max . '/siu', $normalized, $justArrow)) {
             return (int)$justArrow[1];
         }
 
@@ -951,6 +980,13 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // 8) Revision of the current essay
             $revision_html = $this->generate_essay_revision($current_essay_data['answer_text'], $level, $feedback_result['data']);
 
+            // 8.4) DUAL-SCORE: Extract initial draft scores from comparative feedback BEFORE generating improvement scores
+            $initial_scores_extracted = null;
+            if (!empty($feedback_result['data']['feedback_html'])) {
+                $initial_scores_extracted = $this->extract_resubmission_scores($feedback_result['data']['feedback_html']);
+                error_log("DUAL-SCORE [Resubmission]: Initial scores extracted for report: " . json_encode($initial_scores_extracted));
+            }
+
             // 8.5) DUAL-SCORE: Generate improvement scores for THIS resubmission (initial draft vs final)
             $final_scores_result = null;
             $progress_commentary_current = '';
@@ -969,14 +1005,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
                 }
             }
 
-            // 9a) DUAL-SCORE: Extract initial draft scores from comparative feedback BEFORE building report
-            $initial_scores_extracted = null;
-            if (!empty($feedback_result['data']['feedback_html'])) {
-                $initial_scores_extracted = $this->extract_resubmission_scores($feedback_result['data']['feedback_html']);
-                error_log("DUAL-SCORE [Resubmission]: Initial scores extracted for report: " . json_encode($initial_scores_extracted));
-            }
-
-            // 9b) Build complete HTML (resubmission-flavoured) ??? now with dual-score data
+            // 9b) Build complete HTML (resubmission-flavoured) → now with dual-score data
             $complete_html = $this->build_resubmission_feedback_html(
                 $current_essay_data,
                 $feedback_result['data'],
@@ -1021,7 +1050,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
             error_log("DEBUG: New scores breakdown: Content={$current_scores['content_and_ideas']}, Structure={$current_scores['structure_and_organization']}, Language={$current_scores['language_use']}, Creativity={$current_scores['creativity_and_originality']}, Mechanics={$current_scores['mechanics']}");
             error_log("DEBUG: New total calculated: {$new_total}/100");
-            error_log("DEBUG: Score comparison: Previous={$prev_total}/100 ??? New={$new_total}/100");
+            error_log("DEBUG: Score comparison: Previous={$prev_total}/100 → New={$new_total}/100");
 
             // Patch the comparative feedback block and the already-built complete HTML
             if (!empty($feedback_result['data']['feedback_html'])) {
@@ -1054,7 +1083,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // 12) Save resubmission tracking with scores
             $this->save_resubmission_record($attempt_id, $previous_attempt_id, $submission_number, !empty($similarity['is_copy']), (float)($similarity['percentage'] ?? 0), $prev_total, $new_total);
 
-            // 13) DUAL-SCORE: Save grade to Moodle ??? use FINAL submission score if available
+            // 13) DUAL-SCORE: Save grade to Moodle → use FINAL submission score if available
             $moodle_score = $new_total;
             if ($final_scores_result && $final_scores_result['success'] && isset($final_scores_result['data']['final_total'])) {
                 $moodle_score = (int)$final_scores_result['data']['final_total'];
@@ -1286,14 +1315,14 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
         // Determine final score (prefer HTML explicit value)
         if (preg_match('/<!-- EXTRACT_FINAL_SCORE_START -->(.*?)<!-- EXTRACT_FINAL_SCORE_END -->/si', $feedback_html, $final_marker_matches)) {
             $final = $final_marker_matches[1];
-            if (preg_match('/Final Score \(Previous.*????.*?New\):.*?\d+\s*\/\s*100\s*???\s*(\d+)\s*\/\s*100/si', $final, $m)) {
+            if (preg_match('/Final Score \(Previous.*→?.*?New\):.*?\d+\s*\/\s*100\s*→\s*(\d+)\s*\/\s*100/si', $final, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
             } elseif (preg_match('/Final Score:.*?(\d+)\s*\/\s*100/si', $final, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
             }
         }
         if (!isset($scores['final_score'])) {
-            if (preg_match('/Final Score \(Previous.*????.*?New\):.*?\d+\s*\/\s*100\s*???\s*(\d+)\s*\/\s*100/si', $feedback_html, $m)) {
+            if (preg_match('/Final Score \(Previous.*→?.*?New\):.*?\d+\s*\/\s*100\s*→\s*(\d+)\s*\/\s*100/si', $feedback_html, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
             } elseif (preg_match('/Final Score:.*?(\d+)\s*\/\s*100/si', $feedback_html, $m)) {
                 $scores['final_score'] = ['score' => (int)$m[1], 'max' => 100];
@@ -1347,10 +1376,10 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             // Try multiple patterns to extract the NEW score (after the arrow)
             // We need to handle various arrow encodings and formats
             $patterns = [
-                // Pattern 1: Look for "X/max ??? Y/max" and capture Y
-                "/{$title}.*?Score.*?\\d+\\s*\\/\\s*{$max}\\s*(?:???|->|???|???|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
-                // Pattern 2: Look for just "??? Y/max" and capture Y
-                "/{$title}.*?Score.*?(?:???|->|???|???|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                // Pattern 1: Look for "X/max → Y/max" and capture Y
+                "/{$title}.*?Score.*?\\d+\\s*\\/\\s*{$max}\\s*(?:→|->|→|→|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
+                // Pattern 2: Look for just "→ Y/max" and capture Y
+                "/{$title}.*?Score.*?(?:→|->|→|→|&rarr;|&gt;)\\s*(\\d+)\\s*\\/\\s*{$max}/si",
                 // Pattern 3: If no arrow found, look for the LAST score in the section (which should be the NEW score)
                 "/{$title}.*?Score.*?(\\d+)\\s*\\/\\s*{$max}(?!.*\\d+\\s*\\/\\s*{$max})/si",
                 // Pattern 4: Simple fallback - just find any score for this section
@@ -1473,7 +1502,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
             $prev_score = (int)($previous_scores[$key]['score'] ?? 0);
             $previous_total += $prev_score;
             $html .= '<h2 style="font-size:18px;">' . $cfg['title'] . '</h2>';
-            $html .= '<p><strong>Score (Previous ??? New):</strong> ' . $prev_score . '/' . $cfg['max'] . ' ??? 0/' . $cfg['max'] . '</p>';
+            $html .= '<p><strong>Score (Previous → New):</strong> ' . $prev_score . '/' . $cfg['max'] . ' → 0/' . $cfg['max'] . '</p>';
             $html .= '<ul>';
             $html .= '<li><strong>Analysis of Changes:</strong> ' . $penalty_message . '</li>';
             $html .= '<li><strong>Areas for Improvement:</strong><ul><li>Please revise the essay using your own ideas and words, incorporating the feedback provided. Focus on genuine improvement rather than copying.</li></ul></li>';
@@ -1496,7 +1525,7 @@ CRITICAL: After the Final Score section, you MUST include the JSON scores block 
 
 <h2 style="font-size:18px;">Overall Comments</h2>';
         $html .= '<div id="overall-comments"><p><strong>' . $penalty_message . ' We encourage you to try again with your own improvements.</strong></p></div>';
-        $html .= '<h2 style="font-size:16px;"><p><strong>Final Score (Previous ??? New): ' . $previous_total . '/100 ??? 0/100</strong></p></h2>';
+        $html .= '<h2 style="font-size:16px;"><p><strong>Final Score (Previous → New): ' . $previous_total . '/100 → 0/100</strong></p></h2>';
 
         return $html;
     }

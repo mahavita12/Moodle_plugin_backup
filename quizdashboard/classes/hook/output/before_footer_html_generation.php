@@ -53,7 +53,7 @@ class before_footer_html_generation {
                     $html = (string)$grading->feedback_html;
                     
                     // Extract data for the card
-                    $meta = [ 'score' => self::extract_final_score($grading, $html), 'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart), 'initial_scores' => self::extract_initial_scores($grading), 'journey_commentary' => self::extract_journey_commentary($grading) ];
+                    $meta = [ 'score' => self::extract_final_score($grading, $html), 'total_score' => self::extract_total_score($grading, $html), 'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart), 'initial_scores' => self::extract_initial_scores($grading), 'journey_commentary' => self::extract_journey_commentary($grading) ];
                     $items = [
                         'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
                         'Structure and Organization (25%)' => self::extract_improvement_items($html, 'Structure\s+and\s+Organi[sz]ation', 3),
@@ -113,11 +113,12 @@ class before_footer_html_generation {
                 
                 // Reuse existing extraction logic
                 $meta = [
-                    'score' => self::extract_final_score($grading, $html),
-                    'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart),
-                    'initial_scores' => self::extract_initial_scores($grading),
-                    'journey_commentary' => self::extract_journey_commentary($grading)
-                ];
+                'score' => self::extract_final_score($grading, $html),
+                'total_score' => self::extract_total_score($grading, $html),
+                'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart),
+                'initial_scores' => self::extract_initial_scores($grading),
+                'journey_commentary' => self::extract_journey_commentary($grading)
+            ];
 
                 $items = [
                     'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
@@ -233,11 +234,12 @@ class before_footer_html_generation {
 
         // Extract summaries using lightweight regex fallbacks
         $meta = [
-            'score' => self::extract_final_score($grading, $html),
-            'submitted' => userdate($prev->timestart),
-            'initial_scores' => self::extract_initial_scores($grading),
-            'journey_commentary' => self::extract_journey_commentary($grading)
-        ];
+                'score' => self::extract_final_score($grading, $html),
+                'total_score' => self::extract_total_score($grading, $html),
+                'submitted' => userdate($attempt->timefinish > 0 ? $attempt->timefinish : $attempt->timestart),
+                'initial_scores' => self::extract_initial_scores($grading),
+                'journey_commentary' => self::extract_journey_commentary($grading)
+            ];
 
         $items = [
             'Content and Ideas (25%)' => self::extract_improvement_items($html, 'Content\s+and\s+Ideas', 3),
@@ -557,11 +559,7 @@ class before_footer_html_generation {
         return trim(implode(' ', array_slice($parts, 0, $max)));
     }
 
-    private static function extract_final_score($grading, $html) : string {
-        // DUAL-SCORE: If final_score column exists, use it (this is the official Moodle score)
-        if (!empty($grading->final_score)) {
-            return (int)$grading->final_score . ' / 100';
-        }
+    private static function extract_total_score($grading, $html) : string {
         if (!empty($grading->score_content_ideas)) {
             $total = (int)$grading->score_content_ideas + (int)$grading->score_structure_organization
                    + (int)$grading->score_language_use + (int)$grading->score_creativity_originality
@@ -572,6 +570,14 @@ class before_footer_html_generation {
             return ((int)$m[1]) . ' / 100';
         }
         return '';
+    }
+
+    private static function extract_final_score($grading, $html) : string {
+        // DUAL-SCORE: If final_score column exists, use it (this is the official Moodle score)
+        if (isset($grading->final_score) && $grading->final_score !== null && $grading->final_score !== '') {
+            return (int)$grading->final_score . ' / 100';
+        }
+        return self::extract_total_score($grading, $html);
     }
 
     /**
@@ -688,6 +694,7 @@ class before_footer_html_generation {
         }
 
         $score = $esc($meta['score'] ?? '');
+        $total_score = $esc($meta['total_score'] ?? $score);
         $submitted = $esc($meta['submitted'] ?? '');
 
         $html = '<div id="qd-prev-summary" class="qd-prev-summary" data-prev-attempt="' . (int)$previd . '">'
@@ -718,14 +725,13 @@ class before_footer_html_generation {
             . '<button class="qd-prev-summary__toggle" type="button" aria-label="Toggle summary">▾</button>'
             . '</div>'
             . '<div id="qd-prev-summary-body" class="qd-prev-summary__body" aria-hidden="true">'
-            .   '<div class="qd-prev-summary__meta">'
-            .     '<div class="qd-prev-summary__meta-item"><strong>Final Score:</strong> ' . $score . '</div>'
+            .   '<div class="qd-prev-summary__meta" style="grid-template-columns: 1fr;">'
             .     '<div class="qd-prev-summary__meta-item"><strong>Submitted:</strong> ' . $submitted . '</div>'
             .   '</div>'
             .   (isset($meta['initial_scores']) && !empty($meta['initial_scores']) ? self::render_initial_scores_block($meta['initial_scores']) : '')
-            .   (isset($meta['journey_commentary']) && !empty($meta['journey_commentary']) ? '<div class="qd-prev-summary__meta-item" style="grid-column: 1/-1; background:#e8f5e9; border-left:3px solid #4caf50; margin-top:4px;"><strong style="color:#2e7d32;">Writing Journey:</strong><br>' . $meta['journey_commentary'] . '</div>' : '')
             .   $sec
             .   $overallhtml
+            .   (isset($meta['journey_commentary']) && !empty($meta['journey_commentary']) ? '<div class="qd-prev-summary__meta-item" style="grid-column: 1/-1; background:#e8f5e9; border-left:3px solid #4caf50; margin:10px 0 16px 0;"><strong style="color:#2e7d32; font-size:14px;">Your Writing Journey:</strong><br><div style="margin-top:8px;">' . $meta['journey_commentary'] . '</div><div style="margin-top:15px; font-size:15px; font-weight:bold; color:#0b69c7; border-top: 1px solid #c8e6c9; padding-top: 10px;">Final Score (after Your Writing Journey): ' . $score . '</div></div>' : '<div class="qd-prev-summary__meta-item" style="grid-column: 1/-1; margin:10px 0 16px 0; font-size:15px; font-weight:bold; color:#0b69c7; border-left: 3px solid #0b69c7;">Final Score: ' . $score . '</div>')
             .   '<div class="qd-prev-summary__footer">'
             .     '<a class="qd-prev-summary__link" href="' . new \moodle_url('/local/quizdashboard/viewfeedback.php', ['clean'=>1,'id'=>$previd]) . '" target="_blank" rel="noopener">' . ($titleOverride ? 'View full feedback' : 'View full feedback from ' . $esc($ordinal) . ' Submission') . '</a>'
             .   '</div>'

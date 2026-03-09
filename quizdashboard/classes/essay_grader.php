@@ -666,7 +666,7 @@ NAME POLICY: Do not address the student by name.";
                     'model' => $this->get_gemini_model(),
                     'system' => $system_prompt,
                     'messages' => [['role' => 'user', 'content' => $user_content]],
-                    'max_tokens' => 800,
+                    'max_tokens' => 2500,
                     'temperature' => 0.3
                 ];
                 $result = $this->make_gemini_api_call($data, 'final_scores_with_commentary');
@@ -675,7 +675,7 @@ NAME POLICY: Do not address the student by name.";
                     'model' => $this->get_anthropic_model(),
                     'system' => $system_prompt,
                     'messages' => [['role' => 'user', 'content' => [['type' => 'text', 'text' => $user_content]]]],
-                    'max_tokens' => 800,
+                    'max_tokens' => 2500,
                     'temperature' => 0.3
                 ];
                 $result = $this->make_anthropic_api_call($data, 'final_scores_with_commentary');
@@ -1198,7 +1198,7 @@ NAME POLICY: Do not address the student by name.";
         - For every category, the 'Areas for Improvement' list must contain no more than 3 concise bullets (maximum 3).
         - In Content and Ideas, Structure and Organization, and Creativity and Originality sections, the 'Examples' list must contain no more than 3 items (maximum 3). Do not mention quantities in the output.
         - In Language Use and Mechanics, include no more than 5 Original → Improved pairs (maximum 5). Do not mention quantities in the output.
-        - Overall Comments must be concise and formatted as 3-4 bullet points. Do NOT use paragraphs.
+        - Overall Comments must be a short 3-4 sentence paragraph summarizing the most important feedback.
 
         Output structured feedback with these sections: 
 
@@ -1274,11 +1274,7 @@ NAME POLICY: Do not address the student by name.";
         </ul>
 
         <h2 style=\"font-size:18px;\">Overall Comments</h2> 
-        <div id=\"overall-comments\"><ul>
-<li>Provide 3-4 concise bullet points summarizing the most important feedback.</li>
-<li>Each bullet point should be 1-2 sentences, encouraging, and provide concrete next steps.</li>
-<li>Do NOT provide paragraphs. You must use bullet points formatted as an HTML list.</li>
-</ul></div> 
+        <div id=\"overall-comments\"><p>Provide a 3-4 sentence summary of the most important feedback. Be encouraging and provide concrete next steps.</p></div> 
 
         <h2 style=\"font-size:16px;\"><p><strong>Final Score: X/100</strong></p></h2> 
 
@@ -2126,6 +2122,10 @@ NAME POLICY: Do not address the student by name.";
                 error_log('DEBUG: JSON build error (ignored): '.$e->getMessage());
             }
             
+            // Remove "Top 4 Priorities for Improvement" section to hide it from students, AFTER JSON extraction
+            $complete_html = preg_replace('/<h2[^>]*>Top 4 Priorities for Improvement<\/h2>\s*<ul.*?(?=<h2)/is', '', $complete_html);
+            $record->feedback_html = $complete_html;
+
             error_log("DEBUG: Checking for existing record...");
             $existing = $DB->get_record('local_quizdashboard_gradings', ['attempt_id' => $attempt_id]);
             
